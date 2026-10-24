@@ -155,6 +155,7 @@ Persistence is described in
 
 ## Current Top-Level Categories
 
+- `booru`
 - `comment`
 - `compact`
 - `conditioning`

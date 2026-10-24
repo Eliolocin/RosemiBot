@@ -11,6 +11,8 @@ import {
 import {
   allowedRatingsFor,
   DANBOORU_PUBLIC_RATINGS,
+  DANBOORU_RATING_LETTERS,
+  type DanbooruRatingName,
   danbooruPostUrl,
   hasBlockedTag,
   isAgeRestrictedChannel,
@@ -181,20 +183,11 @@ export class DanbooruSearchTagsTool extends BaseTool {
   }
 }
 
-type RatingName = "general" | "sensitive" | "questionable" | "explicit";
-
-const RATING_NAMES: Readonly<Record<DanbooruRating, RatingName>> = {
+const RATING_NAMES: Readonly<Record<DanbooruRating, DanbooruRatingName>> = {
   g: "general",
   s: "sensitive",
   q: "questionable",
   e: "explicit",
-};
-
-const RATING_LETTERS: Readonly<Record<RatingName, DanbooruRating>> = {
-  general: "g",
-  sensitive: "s",
-  questionable: "q",
-  explicit: "e",
 };
 
 const INVALID_POST_REFERENCE_ERROR = "That is not a Danbooru post ID or danbooru.donmai.us/posts/ link.";
@@ -348,7 +341,7 @@ export class DanbooruSearchPostsTool extends BaseTool {
     if (tags.length > MAX_POST_SEARCH_TAGS) return { success: false, error: DANBOORU_FAILURE_MESSAGES.tag_limit };
 
     const ratings = parsed.data.rating
-      ? [...new Set(parsed.data.rating.map((name) => RATING_LETTERS[name]))]
+      ? [...new Set(parsed.data.rating.map((name) => DANBOORU_RATING_LETTERS[name]))]
       : DANBOORU_PUBLIC_RATINGS;
     const channelRatings = allowedRatingsFor(isAgeRestrictedChannel(context.channel));
     if (ratings.some((rating) => !channelRatings.includes(rating))) {

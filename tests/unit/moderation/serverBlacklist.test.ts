@@ -75,6 +75,7 @@ describe("isBlacklistGatedCommand", () => {
     ["punish", null, "bonk"],
     ["impersonate", null, "user"],
     ["generate", null, "image"],
+    ["booru", null, "search"],
     ["compact", null, null],
     ["learn", null, "history"],
     ["conditioning", null, "manage"],

@@ -79,6 +79,8 @@ export default {
         video_generation_description: `Clip ngắn, có thể kèm khung hình đầu tùy chọn`,
         speech_generation: `Tạo giọng nói`,
         speech_generation_description: `Chuyển văn bản thành tin nhắn thoại`,
+        art_search: `Tìm kiếm tranh ảnh`,
+        art_search_description: `Gửi tranh anime có sẵn từ Danbooru`,
         behavior_tuning: `Tinh chỉnh hành vi`,
         behavior_tuning_description: `Model, humanizer, hướng dẫn và công cụ`,
         server_wide_settings: `Cài đặt toàn máy chủ`,
@@ -458,6 +460,11 @@ Nhập \`{project_id}::{location}\` bằng {configSetup} hoặc {configApikeySet
         title: `Tạo giọng nói`,
         description:
           "{generateVoice} chuyển văn bản thành tin nhắn thoại bằng giọng của persona hiện tại.\n\nCần đăng ký endpoint giọng nói trước, trực tuyến hoặc tự host: xem **Endpoint tùy chỉnh (nâng cao)** ở mục Thiết lập.\n> Mỗi persona có thể có giọng khác nhau. Giọng nói được đặt trong {configPersonaVoice}.",
+      },
+      art_search: {
+        title: `Tìm kiếm tranh ảnh`,
+        description:
+          "{booruSearch} gửi 4 ảnh Danbooru ngẫu nhiên được đánh giá cao cho một hoặc hai thẻ. Gợi ý sẽ xuất hiện khi bạn nhập, và biệt danh hoặc lỗi chính tả sẽ chuyển thành thẻ thực tế.\n> Kết quả nghi vấn và 18+ chỉ hiển thị trong các kênh giới hạn độ tuổi.\n\nBạn cũng có thể chỉ cần yêu cầu mình hiển thị tranh ảnh: công tắc **Tìm kiếm Danbooru** trong {configTools} sẽ kiểm soát điều đó. Để giới hạn người có thể chạy lệnh, hãy dùng Cài đặt máy chủ > Tích hợp.",
       },
     },
     tons_of_tweakability: {

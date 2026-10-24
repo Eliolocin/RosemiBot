@@ -79,6 +79,8 @@ export default {
         video_generation_description: `短いクリップを、任意の最初のフレームから作成します`,
         speech_generation: `音声生成`,
         speech_generation_description: `テキストを音声メッセージに変換します`,
+        art_search: `イラスト検索`,
+        art_search_description: `Danbooruから既存のアニメイラストを投稿します`,
         behavior_tuning: `動作の調整`,
         behavior_tuning_description: `モデル、ヒューマナイザー、指示、ツールについて`,
         server_wide_settings: `サーバー全体の設定`,
@@ -460,6 +462,11 @@ export default {
         title: `音声生成`,
         description:
           "{generateVoice} は現在のペルソナの音声で、テキストを 音声メッセージに変換します。\n\nホスト型またはセルフホスト型の音声エンドポイントを最初に 登録する必要があります。セットアップの下の **カスタムエンドポイント（高度）** を参照してください。\n> 各ペルソナは異なるように聞こえることができます。音声は {configPersonaVoice} から取得されます。",
+      },
+      art_search: {
+        title: `イラスト検索`,
+        description:
+          "{booruSearch} は1つまたは2つのタグに対して、評価の高いDanbooruの画像をランダムに4枚投稿します。入力時にサジェストが表示され、ニックネームや誤字も実際のタグに変換されます。\n> クエスチョナブルおよび明示的な結果は、年齢制限付きチャンネルでのみ表示されます。\n\n私にイラストを見せるよう頼むだけでも構いません。{configTools} の **Danbooru検索** スイッチで制御できます。コマンドを実行できる人を制限するには、サーバー設定 > 連携サービス を使用してください。",
       },
     },
     tons_of_tweakability: {

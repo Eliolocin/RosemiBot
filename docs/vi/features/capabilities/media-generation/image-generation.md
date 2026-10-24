@@ -29,6 +29,13 @@ Mọi nguồn thẻ đều có thể được chỉnh sửa tại chỗ bằng m
 - **`/personal config`**: thẻ xuất hiện của riêng bạn, được áp dụng bất cứ khi nào thế hệ hình ảnh tham chiếu đến bạn. Theo dõi bạn trên mọi máy chủ (xem [Cá nhân hóa](/vi/features/knowledge/personalization/)).
 - **`/config` > `Model` > `Mặc định tạo hình ảnh`**: sử dụng `Sửa tích cực` và `Sửa tiêu cực` để đặt các thẻ mặc định được thêm vào hoặc loại bỏ khỏi mọi thế hệ. Thẻ phủ định chỉ áp dụng khi phần phụ trợ hỗ trợ lời nhắc phủ định. Việc gửi một ô trống sẽ đặt lại các giá trị mặc định tích hợp sẵn.
 
+## Tra cứu thẻ
+<!-- anchor: tag-lookup -->
+
+Khi bật **Tìm kiếm Danbooru** (`/config` > Plugin > Công cụ khả dụng), mình có thể tra cứu chính xác thẻ và trang phục của nhân vật trước khi vẽ, để yêu cầu như "OC của tôi mặc trang phục của Ryza" sẽ vẽ trang phục của Ryza cho OC của bạn. Xem [Tra cứu thẻ Danbooru](/features/capabilities/tools-and-extensions/#danbooru-tag-lookup).
+
+Mình sẽ tra cứu thẻ đáng tin cậy hơn với preset chỉ dẫn hệ thống `Default + Image Generation Expert` (`/config` > Hành vi > Hành vi chung), preset này cũng hướng dẫn mình cách sắp xếp các thẻ anime và khi nào nên viết bằng văn xuôi. `/generate image` ở chế độ Auto cũng có thể tra cứu thẻ.
+
 ## Thiết lập
 
 1. Định cấu hình model hình ảnh với `/config` > `Model` > Chuyển model.

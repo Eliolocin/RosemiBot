@@ -49,6 +49,9 @@ aiGenerated: true
 | 处理YouTube视频 | `{youtube_tool}` | 具有视频支持的模型 | 按需分析特定的YouTube链接。|
 | 分析图像 | `{image_analysis_tool}` | 配置为`vision_llm` | 将图像理解委托给单独的视觉模型。|
 | 生成图像/动漫图像 | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + 有能力的提供商 | 生成或编辑图像（请参阅[媒体生成](/zh-CN/features/capabilities/media-generation/)）。|
+| Danbooru 标签查询 | `{tag_search_tool}` | `danbooru_enabled` | 将角色名称、昵称和猜测的标签转换为准确的 Danbooru 标签（参见 [Danbooru 标签查询](#danbooru-tag-lookup)）。|
+| Danbooru 插画搜索 | `{booru_post_search_tool}` | `danbooru_enabled` | 发送最多 4 张符合 1 到 2 个标签的现有 Danbooru 图像（参见 [插画搜索与投稿读取](#art-search-and-post-reading)）。|
+| Danbooru 投稿读取 | - | `danbooru_enabled` | 通过 ID 或链接读取单个 Danbooru 投稿的分组标签。|
 | 生成语音消息 | `{voice_message_tool}` | ElevenLabs键+人格语音+`voice_message_enabled` | 发送语音Discord语音回复。|
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Do not promise to save long-term memories.
 支持的功能名称为`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`和`time_awareness`。
 
 工具条件反映了提供程序/模型支持、服务器配置、配置的后端、MCP替换以及当前的故意工具模式白名单。它们不会绕过或预测工具执行时执行的Discord权限检查。未知的功能名称评估为错误并被记录； 格式错误的块被省略。原始聊天消息、模型输出和工具结果永远不会被视为条件模板。
+
+## Danbooru 标签查询
+<!-- anchor: danbooru-tag-lookup -->
+
+诸如 NovelAI 等动漫图像模型能理解 Danbooru 标签，因此猜测的标签（例如用 `half-up braid` 代替 `half up braid`）或未知的角色服装会降低图像质量。开启 **Danbooru 搜索** 后（`/config` > `插件` > `可用工具`，默认开启），她可以在作画前查询标签：
+
+- 名字、昵称与拼写错误会解析为真实标签（例如 `ryza` 会变成 `reisalin stout`），并附带使用该标签的投稿数量。纠错或部分匹配的结果可能指代不同的事物，因此她会对此进行核对。
+- 对于某个角色或其特定服装，她还会获取最常与其一同出现的标签、该角色的专属服装与 Cosplay 标签，以及一段简短的 Wiki 简介。在所有频道中，这些标签仅来自全年龄与敏感投稿。
+
+每次查询都会发送一张 **Danbooru 标签查询** 卡片列出找到的内容，并附带可直接复制粘贴到手动 `/generate image` 提示词中的角色标签区块。该卡片在所有提示详细度级别下均保持可见，后续回复无需重新搜索即可复用其中的标签。如需隐藏，可在 `/config` > `行为` > `提示行为` 中像其他提示一样将其关闭。
+
+### 插画搜索与投稿读取
+<!-- anchor: art-search-and-post-reading -->
+
+同一个开关还允许她分享现有插画并读取投稿的标签：
+
+- 当被要求展示某样事物的插画时，她会在一条消息中最多发送 4 张随机的高分 Danbooru 图像，并附带每张投稿的链接。所有高于全年龄分级的图像均会添加剧透遮罩。Danbooru 每次搜索仅允许使用 2 个标签，因此她会挑选最具体的标签，通常是角色或所属作品。
+- 给出 Danbooru 投稿 ID 或 `danbooru.donmai.us/posts/` 链接后，她会读取其标签，并按角色、作品、画师、元数据与通用进行分组展示。在明确工具模式下，消息中只要包含投稿链接就足以向她提供此工具。
+
+任何人也都可以运行 `/booru search` 来直接获取相同的画廊，而无需向她提问。指令会在输入时提供标签建议，并将昵称或拼写错误纠正为真实标签，页脚则会显示实际搜索的内容。该开关仅控制她的工具，不影响斜杠指令；如需限制谁能运行 `/booru search`，请使用 Discord 的**服务器设置 > 整合**。
+
+分级遵循频道属性。全年龄与敏感投稿在所有地方均可展示；存疑与明确成人投稿仅在年龄限制频道中生效。子区遵循其父频道的设置，私信则视为非年龄限制频道。任何分级高于全年龄且带有 `loli`、`shota` 或 `toddlercon` 标签的投稿，在任何频道中都绝不会被发送或读取。
 
 ## 网页搜索与URL读取
 <!-- anchor: web-search--url-reading -->

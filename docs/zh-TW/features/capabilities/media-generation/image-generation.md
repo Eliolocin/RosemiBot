@@ -29,6 +29,13 @@ TomoriBot可以根據文字提示或編輯參考圖像來產生圖像。使用`/
 - **`/personal config`**：你自己的外觀標籤，每當圖像生成引用你時就會套用。跟隨你穿越每台伺服器（請參閱[個人化](/zh-TW/features/knowledge/personalization/)）。
 - **`/config` > `模型` > 影像產生預設值**：使用`編輯正向`和`編輯負向`設定新增至每一代或遠離每一代的預設標籤。負標籤僅在後端支援負提示時適用。提交空框將重設為內建預設值。
 
+## 標籤查詢
+<!-- anchor: tag-lookup -->
+
+開啟 **Danbooru 搜尋** 後（`/config` > `外掛` > `可用工具`），她可以在作畫前查詢角色的準確標籤與服裝，例如「我的 OC 穿著萊莎的衣服」就能讓你的 OC 穿上萊莎的服裝。請參閱 [Danbooru 標籤查詢](/features/capabilities/tools-and-extensions/#danbooru-tag-lookup)。
+
+使用 `Default + Image Generation Expert` 系統提示詞預設集（`/config` > `行為` > `一般行為`）時，她查詢標籤會更加穩定，該預設集也會指導她如何排列動漫標籤以及何時改用自然語言描述。在 Auto 模式下執行 `/generate image` 也能查詢標籤。
+
 ## 設定
 
 1. 透過`/config` > `模型` > `切換模型`配置影像模型。

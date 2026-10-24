@@ -92,6 +92,7 @@ export default {
       post_title: `🖼️  Reading Danbooru post #{id}`,
       post_description: `{url}`,
       gallery_footer: `Danbooru: {query}`,
+      gallery_resolved_tag: `\`{typed}\` → \`{tag}\``,
       gallery_post_link: `[#{id}]({url})`,
     },
     user_info_update: {

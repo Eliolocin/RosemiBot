@@ -119,6 +119,7 @@ every notice verbosity, and later replies can reuse its tags without searching a
 under `/config` > Behavior > Notices like any other notice.
 
 ### Art Search and Post Reading
+<!-- anchor: art-search-and-post-reading -->
 
 The same toggle lets her share existing art and read a post's tags:
 
@@ -128,6 +129,11 @@ The same toggle lets her share existing art and read a post's tags:
 - Given a Danbooru post ID or `danbooru.donmai.us/posts/` link, she reads its tags grouped into
   character, series, artist, meta, and general. Under Deliberate Tool Mode, a post link in the
   message is enough to offer her this tool.
+
+Anyone can also run `/booru search` to get the same gallery without asking her. It suggests tags as
+you type and turns a nickname or typo into the real tag, and the footer shows what it searched for.
+The toggle only controls her tools, not the command; to limit who can run `/booru search`, use
+Discord's **Server Settings > Integrations**.
 
 Ratings follow the channel. General and sensitive posts work everywhere; questionable and explicit
 posts only in age-restricted channels. A thread follows its parent channel, and DMs count as not

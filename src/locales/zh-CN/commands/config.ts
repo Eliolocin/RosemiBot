@@ -1363,7 +1363,7 @@ export default {
         notice_youtube_processing_description: `显示 YouTube 观看提示。`,
         notice_mcp_tool_call_label: `MCP 工具调用`,
         notice_mcp_tool_call_description: `显示通用的 MCP 工具调用提示。`,
-        notice_respond_embed_label: `Respond 成功`,
+        notice_respond_embed_label: `/respond 成功`,
         notice_respond_embed_description: `显示 /respond 成功嵌入。`,
         notice_impersonation_notice_label: `扮演提示`,
         notice_impersonation_notice_description: `显示人格与用户扮演的提示嵌入。`,
@@ -1375,6 +1375,8 @@ export default {
         notice_task_update_description: `在创建、编辑或删除任务或提醒时显示提示。`,
         notice_user_info_update_label: `资料更新`,
         notice_user_info_update_description: `在用户保存的资料被更新时显示提示。`,
+        notice_danbooru_tags_label: `Danbooru 标签查询`,
+        notice_danbooru_tags_description: `在 Danbooru 查询角色或标签时显示找到的标签。`,
       },
     },
     humanizer: {

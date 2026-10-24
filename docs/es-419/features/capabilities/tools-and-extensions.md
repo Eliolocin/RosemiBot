@@ -49,6 +49,9 @@ Las herramientas dependen del proveedor activo y del modelo que respalda la llam
 | Procesar vídeo de YouTube | `{youtube_tool}` | modelo con soporte de video | Analiza un enlace específico de YouTube bajo demanda. |
 | Analizar imagen | `{image_analysis_tool}` | configurado `vision_llm` | Delegar la comprensión de la imagen a un modelo de visión independiente. |
 | Generar imagen/imagen anime | `{image_generation_tool}` / `{anime_image_generation_tool}` | Proveedor compatible con `imagegen_enabled` + | Genere o edite imágenes (consulte [Generación de medios](/es-419/features/capabilities/media-generation/)). |
+| Búsqueda de etiquetas en Danbooru | `{tag_search_tool}` | `danbooru_enabled` | Convierte nombres de personajes, apodos y conjeturas en etiquetas exactas de Danbooru (consulta [Búsqueda de etiquetas de Danbooru](#danbooru-tag-lookup)). |
+| Búsqueda de arte en Danbooru | `{booru_post_search_tool}` | `danbooru_enabled` | Publica hasta 4 imágenes existentes de Danbooru para 1 o 2 etiquetas (consulta [Búsqueda de arte y lectura de publicaciones](#art-search-and-post-reading)). |
+| Lectura de publicaciones en Danbooru | - | `danbooru_enabled` | Lee las etiquetas agrupadas de una publicación de Danbooru a partir de su ID o enlace. |
 | Generar mensaje de voz | `{voice_message_tool}` | Tecla ElevenLabs + voz personal + `voice_message_enabled` | Envíe una respuesta de voz hablada Discord. |
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Utilice `capability:<name>` para una configuración TomoriBot habilitada, o `too
 Los nombres de capacidad admitidos son `tool_use`, `self_teaching`, `personal_memories`, `emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`, `image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory` y `time_awareness`.
 
 Las condiciones de la herramienta reflejan la compatibilidad del proveedor/modelo, la configuración del servidor, los backends configurados, los reemplazos de MCP y la lista de permitidos actual del modo de herramienta deliberada. No omiten ni predicen las comprobaciones de permisos Discord realizadas cuando se ejecuta una herramienta. Los nombres de capacidades desconocidas se evalúan como falsos y se registran; Se omiten los bloques mal formados. Los mensajes de chat sin procesar, los resultados del modelo y los resultados de las herramientas nunca se tratan como plantillas condicionales.
+
+## Búsqueda de etiquetas de Danbooru
+<!-- anchor: danbooru-tag-lookup -->
+
+Los modelos de imágenes de anime como NovelAI leen etiquetas de Danbooru, por lo que una etiqueta supuesta (`half-up braid` en vez de `half up braid`) o un atuendo desconocido debilitan la imagen. Con **Búsqueda en Danbooru** activada (`/config` > Plugins > Herramientas disponibles, activada de forma predeterminada), ella puede buscar etiquetas antes de dibujar:
+
+- Los nombres, apodos y errores tipográficos se resuelven a la etiqueta real (`ryza` pasa a ser `reisalin stout`), indicando cuántas publicaciones la usan. Una coincidencia corregida o parcial puede ser algo distinto, por lo que ella lo comprueba.
+- Para un personaje o uno de sus atuendos, también obtiene las etiquetas que aparecen con más frecuencia junto a él, sus atuendos nombrados, la etiqueta de cosplay y un breve resumen de wiki. Estas etiquetas provienen exclusivamente de publicaciones generales y sensibles, en todos los canales.
+
+Cada búsqueda publica una tarjeta de **Búsqueda de etiquetas de Danbooru** con lo encontrado, incluyendo las etiquetas del personaje en un bloque que puedes copiar y pegar en un prompt manual de `/generate image`. La tarjeta permanece visible en cualquier nivel de detalle de avisos, y las respuestas posteriores pueden reutilizar sus etiquetas sin volver a buscar. Puedes ocultarla en `/config` > Comportamiento > Comportamiento de avisos como cualquier otro aviso.
+
+### Búsqueda de arte y lectura de publicaciones
+<!-- anchor: art-search-and-post-reading -->
+
+El mismo interruptor le permite compartir arte existente y leer las etiquetas de una publicación:
+
+- Si le pides que muestre arte de algo, publica hasta 4 imágenes aleatorias bien valoradas de Danbooru en un solo mensaje, con un enlace a cada publicación. Cualquier imagen con clasificación superior a general se oculta tras un spoiler. Danbooru solo permite 2 etiquetas por búsqueda, así que ella elige las más específicas, habitualmente el personaje o la serie.
+- Si le das un ID de publicación de Danbooru o un enlace `danbooru.donmai.us/posts/`, lee sus etiquetas agrupadas en personaje, serie, artista, meta y general. En el modo de herramientas deliberado, basta con que el mensaje contenga un enlace a una publicación para ofrecerle esta herramienta.
+
+Cualquiera puede ejecutar también `/booru search` para obtener la misma galería sin pedírselo a ella. Sugiere etiquetas a medida que escribes, convierte un apodo o error tipográfico en la etiqueta real, y el pie de página muestra lo que se buscó. El interruptor solo controla sus herramientas, no el comando; para restringir quién puede usar `/booru search`, usa **Ajustes del servidor > Integraciones** en Discord.
+
+Las clasificaciones siguen las reglas del canal. Las publicaciones generales y sensibles funcionan en cualquier lugar; las cuestionables y explícitas solo en canales para mayores de edad. Un hilo sigue a su canal principal, y los mensajes directos cuentan como no restringidos por edad. Una publicación con clasificación superior a general que esté etiquetada como `loli`, `shota` o `toddlercon` nunca se publica ni se lee, en ningún canal.
 
 ## Búsqueda web y lectura de URL
 <!-- anchor: web-search--url-reading -->

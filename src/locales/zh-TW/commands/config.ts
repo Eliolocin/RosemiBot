@@ -1367,7 +1367,7 @@ CFG 權重：**{cfg_weight}**
         notice_youtube_processing_description: `顯示觀看 YouTube 的通知。`,
         notice_mcp_tool_call_label: `MCP 工具呼叫`,
         notice_mcp_tool_call_description: `顯示一般 MCP 工具呼叫的通知。`,
-        notice_respond_embed_label: `Respond 成功`,
+        notice_respond_embed_label: `/respond 成功`,
         notice_respond_embed_description: `顯示 /respond 的成功嵌入。`,
         notice_impersonation_notice_label: `模擬通知`,
         notice_impersonation_notice_description: `顯示人格與使用者模擬的通知嵌入。`,
@@ -1379,6 +1379,8 @@ CFG 權重：**{cfg_weight}**
         notice_task_update_description: `在建立、編輯或刪除任務或提醒時顯示通知。`,
         notice_user_info_update_label: `個人資料更新`,
         notice_user_info_update_description: `在使用者儲存的個人資料被更新時顯示通知。`,
+        notice_danbooru_tags_label: `Danbooru 標籤查詢`,
+        notice_danbooru_tags_description: `在 Danbooru 查詢角色或標籤時顯示找到的標籤。`,
       },
     },
     humanizer: {

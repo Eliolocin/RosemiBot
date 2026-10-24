@@ -11,7 +11,15 @@ sidebar:
 
 Tất cả các lệnh slash hiện được TomoriBot đăng ký, được tạo từ cùng trình xây dựng lệnh và mô tả tiếng Việt dùng để đăng ký trên Discord (mô tả chưa được dịch sẽ hiển thị bằng tiếng Anh).
 
-Các nhóm lệnh cấp cao nhất: **42**. Các lệnh slash có thể thực thi: **89**.
+Các nhóm lệnh cấp cao nhất: **43**. Các lệnh slash có thể thực thi: **90**.
+
+## `/booru`
+
+Tìm tranh anime có sẵn
+
+| Lệnh | Tóm tắt |
+|---|---|
+| `/booru search` | Gửi 4 ảnh Danbooru ngẫu nhiên được đánh giá cao cho một hoặc hai thẻ |
 
 ## `/comment`
 

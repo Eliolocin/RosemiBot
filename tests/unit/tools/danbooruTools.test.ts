@@ -32,6 +32,7 @@ import {
   resolveAutocomplete,
   shapeOutfits,
   shapeSignatureTags,
+  suggestDanbooruTags,
   summarizeWikiBody,
   type TagLookupResult,
 } from "@/tools/restAPIs/danbooru/tagLookup";
@@ -477,6 +478,38 @@ describe("Danbooru gallery", () => {
     ) as { items: Array<{ spoiler?: boolean }> } | undefined;
 
     expect(gallery?.items.map((item) => item.spoiler)).toEqual([false, true, true, true]);
+  });
+
+  it("shows what was typed beside a tag that resolution changed, and only there", async () => {
+    const [base] = await posts();
+    const images = [{ post: base, imageUrl: base.large_file_url ?? "" }];
+
+    const footer = buildDanbooruGalleryPayload("en-US", ["reisalin stout", "swimsuit"], images, [
+      "ryza",
+      "swimsuit",
+    ]).components.find((component) => "type" in component && component.type === ComponentType.TextDisplay) as
+      | { content: string }
+      | undefined;
+
+    const resolved = localizedCopy("en-US", "tools.danbooru.gallery_resolved_tag", {
+      typed: "ryza",
+      tag: "reisalin stout",
+    });
+    expect(footer?.content).toContain(`${resolved}, \`swimsuit\``);
+  });
+});
+
+describe("Danbooru tag suggestions", () => {
+  it("returns spaced tags and answers a repeated prefix from the cache", async () => {
+    const requests: RecordedRequest[] = [];
+    fetchSpy = stubDanbooru(requests);
+
+    const first = await suggestDanbooruTags("ryza");
+    const second = await suggestDanbooruTags("Ryza ");
+
+    expect(first.ok && first.data[0]).toEqual({ tag: "reisalin stout", post_count: 4637 });
+    expect(second).toEqual(first);
+    expect(requests).toHaveLength(1);
   });
 });
 

@@ -18,6 +18,15 @@ const MIN_POST_SCORE = 3;
 export const DANBOORU_PUBLIC_RATINGS: readonly DanbooruRating[] = ["g", "s"];
 const DANBOORU_ALL_RATINGS: readonly DanbooruRating[] = ["g", "s", "q", "e"];
 
+export type DanbooruRatingName = "general" | "sensitive" | "questionable" | "explicit";
+
+export const DANBOORU_RATING_LETTERS: Readonly<Record<DanbooruRatingName, DanbooruRating>> = {
+  general: "g",
+  sensitive: "s",
+  questionable: "q",
+  explicit: "e",
+};
+
 // Discord prohibits sexualized depictions of minors even in age-restricted channels, so no server setting lifts this.
 const DANBOORU_BLOCKED_TAGS: ReadonlySet<string> = new Set(["loli", "shota", "toddlercon"]);
 

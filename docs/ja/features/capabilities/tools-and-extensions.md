@@ -49,6 +49,9 @@ aiGenerated: true
 | YouTubeビデオを処理する | `{youtube_tool}` | ビデオサポート付きモデル | 特定のYouTubeリンクをオンデマンドで分析します。|
 | 画像を解析する | `{image_analysis_tool}` | `vision_llm`を構成しました | 画像の理解を別の視覚モデルに委任します。|
 | 画像・アニメ画像の生成 | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + 対応プロバイダー | 画像を生成または編集します ([メディア生成](/ja/features/capabilities/media-generation/) を参照)。|
+| Danbooruタグ検索 | `{tag_search_tool}` | `danbooru_enabled` | キャラクター名、ニックネーム、タグの推測を正確なDanbooruタグに変換します（[Danbooruタグ検索](#danbooru-tag-lookup) を参照）。|
+| Danbooruイラスト検索 | `{booru_post_search_tool}` | `danbooru_enabled` | 1つまたは2つのタグで既存のDanbooru画像を最大4枚投稿します（[イラスト検索と投稿の読み込み](#art-search-and-post-reading) を参照）。|
+| Danbooru投稿の読み込み | - | `danbooru_enabled` | IDまたはリンクから1つのDanbooru投稿のグループ化されたタグを読み込みます。|
 | 音声メッセージを生成する | `{voice_message_tool}` | ElevenLabsキー+ペルソナボイス+`voice_message_enabled` | Discord音声応答を音声で送信します。|
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Do not promise to save long-term memories.
 サポートされている機能名は、`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`、および`time_awareness`。
 
 ツールの条件には、プロバイダー/モデルのサポート、サーバー構成、構成されたバックエンド、MCPの置換、および現在の計画的ツールモードの許可リストが反映されます。これらは、ツールの実行時に実行されるDiscord権限チェックをバイパスしたり予測したりしません。不明な機能名はfalseとして評価され、ログに記録されます。不正な形式のブロックは省略されます。生のチャットメッセージ、モデル出力、ツールの結果は、条件付きテンプレートとして扱われることはありません。
+
+## Danbooruタグ検索
+<!-- anchor: danbooru-tag-lookup -->
+
+NovelAIなどのアニメ画像モデルはDanbooruタグを解釈するため、推測されたタグ（`half up braid` に対する `half-up braid` など）や不明なキャラクター衣装は画像の品質を低下させます。**Danbooru検索** を有効にすると（`/config` > `プラグイン` > `利用可能なツール`、デフォルトで有効）、彼女は作画前にタグを検索できます：
+
+- 名前、ニックネーム、誤字が実際のタグ（`ryza` が `reisalin stout` になるなど）と、その使用投稿数に解決されます。修正された一致や部分一致は異なる対象である可能性があるため、彼女はそれを確認します。
+- キャラクターまたはその衣装の1つについて、最も頻繁に一緒に表示されるタグ、キャラクターの名前付き衣装やコスプレタグ、短いwiki概要も取得します。これらのタグは、すべてのチャンネルにおいて、一般およびセンシティブの投稿からのみ取得されます。
+
+検索ごとに、見つかった内容を一覧表示する **Danbooruタグ検索** カードが投稿され、手動の `/generate image` プロンプトに貼り付け可能なブロックにキャラクターのタグが表示されます。このカードはすべての通知詳細度で表示されたままになり、後の返信でも再検索せずにタグを再利用できます。他の通知と同様に、`/config` > `動作` > `通知動作` で非表示にできます。
+
+### イラスト検索と投稿の読み込み
+<!-- anchor: art-search-and-post-reading -->
+
+同じトグルにより、既存のイラストの共有と投稿タグの読み込みも可能になります：
+
+- 何かのイラストを見せるよう求められると、彼女は1つのメッセージでランダムに選ばれた最大4枚の高評価Danbooru画像を各投稿へのリンク付きで投稿します。一般を超えるレーティングの画像にはすべてスポイラー（閲覧注意）が付きます。Danbooruは1回の検索につき2つのタグのみを許可するため、彼女は最も具体的なタグ（通常はキャラクターまたはシリーズ）を選択します。
+- Danbooruの投稿IDまたは `danbooru.donmai.us/posts/` リンクが与えられると、キャラクター、シリーズ、絵師、メタ、一般にグループ化されたタグを読み込みます。明示的ツールモードでは、メッセージ内に投稿リンクがあるだけでこのツールが彼女に提供されます。
+
+誰でも `/booru search` を実行して、彼女に頼むことなく同じギャラリーを取得できます。入力中にタグがサジェストされ、ニックネームや誤字が実際のタグに変換され、フッターに検索内容が表示されます。このトグルは彼女のツールのみを制御し、コマンドは制御しません。`/booru search` を実行できるユーザーを制限するには、Discordの **サーバー設定 > 連携サービス** を使用してください。
+
+レーティングはチャンネルの設定に従います。一般およびセンシティブの投稿はどこでも機能しますが、クエスチョナブルおよび明示的な投稿は年齢制限チャンネルでのみ機能します。スレッドは親チャンネルに従い、DMは年齢制限なしとして扱われます。一般を超えるレーティングで `loli`、`shota`、または `toddlercon` のタグが付いた投稿は、いかなるチャンネルでも投稿または読み込まれることはありません。
 
 ## ウェブ検索とURLの読み込み
 <!-- anchor: web-search--url-reading -->

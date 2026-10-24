@@ -75,7 +75,7 @@ Con `Uso de stickers` activado en `/config` > `Plugins`, envía como máximo una
 El mensaje del sistema se encuentra encima de la persona y da forma al `Comportamiento general`:
 
 - `/config` > `Comportamiento` > `Comportamiento general`: establece una instrucción personalizada del sistema (hasta 16.000 caracteres).
-- `/config` > `Comportamiento` > `Comportamiento general`: elija entre los mensajes preestablecidos del sistema.
+- `/config` > `Comportamiento` > `Comportamiento general`: elige entre los preajustes de instrucción del sistema. `Default + Image Generation Expert` agrega pautas para etiquetas de anime y atuendos de personajes precisos a la instrucción predeterminada (consulta [Búsqueda de etiquetas](/features/capabilities/media-generation/image-generation/#tag-lookup)).
 - `/config` > `Comportamiento` > `Comportamiento general`: restablecer los valores predeterminados. La confirmación muestra el mensaje anterior para que pueda restaurarlo si se borra accidentalmente.
 
 Cuando un [preajuste SillyTavern](/es-419/features/integrations/sillytavern-support/) está activo, se reemplaza el mensaje del sistema de respaldo incorporado, pero aún se envía uno personalizado que configuró aquí.

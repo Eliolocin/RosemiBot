@@ -21,6 +21,9 @@ const AUTOCOMPLETE_LIMIT = 10;
 const OUTFIT_AUTOCOMPLETE_LIMIT = 20;
 /** Fetched beyond MAX_SIGNATURE_TAGS so dropping `_(cosplay)` tags still leaves a full list. */
 const RELATED_TAG_LIMIT = 40;
+const SUGGESTION_LIMIT = 20;
+const SUGGESTION_CACHE_TTL_MS = 10 * 60_000;
+const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 500;
 
 export type TagStatus = "exact" | "alias" | "corrected" | "partial" | "not_found";
 export type TagCategory = "general" | "artist" | "copyright" | "character" | "meta";
@@ -106,6 +109,52 @@ export function resolveAutocomplete(query: string, entries: readonly DanbooruAut
     post_count: hit.post_count,
     ...(alternatives.length > 0 ? { alternatives } : {}),
   };
+}
+
+/** One Danbooru-form query's resolution, without the character description lookupDanbooruTags adds. */
+export async function resolveDanbooruTag(query: string, signal?: AbortSignal): Promise<DanbooruResult<TagResolution>> {
+  const result = await fetchTagAutocomplete(query, AUTOCOMPLETE_LIMIT, signal);
+  return result.ok ? { ok: true, data: resolveAutocomplete(query, result.data) } : result;
+}
+
+export interface TagSuggestion {
+  tag: string;
+  post_count: number;
+}
+
+/**
+ * Ceiling: the cache lives in one process, so every process warms its own copy. Move it to a shared
+ * store when the bot runs as several processes or a measured hit rate shows it missing.
+ */
+const suggestionCache = new Map<string, { expiresAt: number; suggestions: TagSuggestion[] }>();
+
+/** Tags matching a typed prefix (aliases and typo corrections included) in spaced form, cached by prefix. */
+export async function suggestDanbooruTags(
+  prefix: string,
+  signal?: AbortSignal,
+): Promise<DanbooruResult<TagSuggestion[]>> {
+  const key = toDanbooruTag(prefix);
+  const cached = suggestionCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return { ok: true, data: cached.suggestions };
+
+  const result = await fetchTagAutocomplete(key, SUGGESTION_LIMIT, signal);
+  if (!result.ok) return result;
+
+  const seen = new Set<string>();
+  const suggestions = toTagEntries(result.data).flatMap((entry) => {
+    if (seen.has(entry.value)) return [];
+    seen.add(entry.value);
+    return [{ tag: toNaiTag(entry.value), post_count: entry.post_count }];
+  });
+
+  // Deleting first moves the key to the end of insertion order, because eviction removes the first key as the oldest.
+  suggestionCache.delete(key);
+  if (suggestionCache.size >= MAX_AUTOCOMPLETE_CACHE_ENTRIES) {
+    const oldest = suggestionCache.keys().next();
+    if (!oldest.done) suggestionCache.delete(oldest.value);
+  }
+  suggestionCache.set(key, { expiresAt: Date.now() + SUGGESTION_CACHE_TTL_MS, suggestions });
+  return { ok: true, data: suggestions };
 }
 
 /** Related tags in Danbooru's order, minus cosplay tags, which describe other characters' wearers. */

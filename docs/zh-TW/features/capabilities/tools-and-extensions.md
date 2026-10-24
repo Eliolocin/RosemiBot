@@ -49,6 +49,9 @@ aiGenerated: true
 | 處理YouTube影片 | `{youtube_tool}` | 具有視訊支援的模型 | 按需分析特定的YouTube連結。|
 | 分析影像 | `{image_analysis_tool}` | 配置為`vision_llm` | 將圖像理解委託給單獨的視覺模型。|
 | 生成影像/動漫影像 | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + 有能力的供應商 | 產生或編輯圖像（請參閱[媒體生成](/zh-TW/features/capabilities/media-generation/)）。|
+| Danbooru 標籤查詢 | `{tag_search_tool}` | `danbooru_enabled` | 將角色名稱、暱稱和猜測的標籤轉換為準確的 Danbooru 標籤（請參閱 [Danbooru 標籤查詢](#danbooru-tag-lookup)）。|
+| Danbooru 插圖搜尋 | `{booru_post_search_tool}` | `danbooru_enabled` | 發送最多 4 張符合 1 到 2 個標籤的現有 Danbooru 圖片（請參閱 [插圖搜尋與貼文讀取](#art-search-and-post-reading)）。|
+| Danbooru 貼文讀取 | - | `danbooru_enabled` | 透過 ID 或連結讀取單則 Danbooru 貼文的分組標籤。|
 | 產生語音訊息 | `{voice_message_tool}` | ElevenLabs鍵+人格語音+`voice_message_enabled` | 發送語音Discord語音回覆。|
 
 :::note[For prompt authors]
@@ -72,6 +75,28 @@ Do not promise to save long-term memories.
 支援的功能名稱包括`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`、`time_awareness`。
 
 工具條件反映了供應商/模型支援、伺服器配置、配置的後端、MCP替換以及當前的故意工具模式白名單。它們不會繞過或預測工具執行時執行的Discord權限檢查。未知的功能名稱評估為錯誤並被記錄；格式錯誤的區塊被省略。原始聊天訊息、模型輸出和工具結果永遠不會被視為條件模板。
+
+## Danbooru 標籤查詢
+<!-- anchor: danbooru-tag-lookup -->
+
+諸如 NovelAI 等動漫圖片模型能理解 Danbooru 標籤，因此猜測的標籤（例如用 `half-up braid` 代替 `half up braid`）或未知的角色服裝會降低圖片品質。開啟 **Danbooru 搜尋** 後（`/config` > `外掛` > `可用工具`，預設開啟），她可以在作畫前查詢標籤：
+
+- 名字、暱稱與錯字會解析為真實標籤（例如 `ryza` 會變成 `reisalin stout`），並附帶使用該標籤的貼文數量。修正或部分符合的結果可能代表不同的事物，因此她會對此進行核對。
+- 對於某個角色或其特定服裝，她還會取得最常與其一同出現的標籤、該角色的專屬服裝與 Cosplay 標籤，以及一段簡短的 Wiki 簡介。在所有頻道中，這些標籤僅來自普遍級與敏感貼文。
+
+每次查詢都會發送一張 **Danbooru 標籤查詢** 卡片列出找到的內容，並附帶可直接複製貼上到手動 `/generate image` 提示詞中的角色標籤區塊。該卡片在所有通知詳細度層級下皆保持可見，後續回覆無需重新搜尋即可重複使用其中的標籤。如需隱藏，可在 `/config` > `行為` > `通知行為` 中像其他通知一樣將其關閉。
+
+### 插圖搜尋與貼文讀取
+<!-- anchor: art-search-and-post-reading -->
+
+同一個開關也允許她分享現有插圖並讀取貼文的標籤：
+
+- 當被要求展示某樣事物的插圖時，她會在單則訊息中最多發送 4 張隨機的高評價 Danbooru 圖片，並附帶每張貼文的連結。所有高於普遍級分級的圖片皆會加上防雷遮罩。Danbooru 每次搜尋僅允許使用 2 個標籤，因此她會挑選最特定的標籤，通常是角色或所屬作品。
+- 給出 Danbooru 貼文 ID 或 `danbooru.donmai.us/posts/` 連結後，她會讀取其標籤，並按角色、作品、繪師、詮釋資料與一般進行分組展示。在明確工具模式下，訊息中只要包含貼文連結就足以向她提供此工具。
+
+任何人也都可以執行 `/booru search` 來直接取得相同的圖庫，而無需向她提問。指令會在輸入時提供標籤建議，並將暱稱或錯字轉換為真實標籤，頁尾則會顯示實際搜尋的內容。該開關僅控制她的工具，不影響斜線指令；如需限制誰能執行 `/booru search`，請使用 Discord 的**伺服器設定 > 整合**。
+
+分級遵循頻道屬性。普遍級與敏感貼文在所有地方皆可展示；存疑與限制級貼文僅在年齡限制頻道中生效。討論串遵循其父頻道的設定，私訊則視為非年齡限制頻道。任何分級高於普遍級且帶有 `loli`、`shota` 或 `toddlercon` 標籤的貼文，在任何頻道中都絕不會被發送或讀取。
 
 ## 網頁搜尋與URL讀取
 <!-- anchor: web-search--url-reading -->

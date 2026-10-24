@@ -11,7 +11,15 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **42**. Runnable slash commands: **89**.
+Top-level command groups: **43**. Runnable slash commands: **90**.
+
+## `/booru`
+
+Find existing anime art
+
+| Command | Summary |
+|---|---|
+| `/booru search` | Post 4 random well-rated Danbooru images for one or two tags |
 
 ## `/comment`
 

@@ -31,6 +31,7 @@ import memory from "./commands/memory";
 import teach from "./commands/teach";
 import forget from "./commands/forget";
 import generate from "./commands/generate";
+import booru from "./commands/booru";
 import model from "./commands/model";
 import mcps from "./commands/mcps";
 import capabilities from "./commands/capabilities";
@@ -98,6 +99,7 @@ export default {
     ...teach,
     ...forget,
     ...generate,
+    ...booru,
     ...model,
     ...mcps,
     ...capabilities,
