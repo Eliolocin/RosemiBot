@@ -29,7 +29,11 @@ import {
 } from "@/modules/supporter-billing/discord/sponsorship";
 import { createPatreonOAuthUrlForDiscordUser } from "@/modules/supporter-billing/patreon/oauth";
 import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
-import { validateSupporterModelRegistration } from "@/modules/supporter-billing/runtime/managedProvider";
+import {
+  resolveSupporterCapabilityCredentials,
+  validateSupporterModelRegistration,
+} from "@/modules/supporter-billing/runtime/managedProvider";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { buildSubscriptionRouteId } from "@/modules/supporter-billing/subscribe/catalog";
 import {
   refreshSubscriptionMembership,
@@ -83,12 +87,24 @@ const FUNDED_MARKERS: Partial<Record<ProviderOptionCapability, SubscriptionCapab
   image: "image",
   video: "video",
   reviewer: "reviewer",
+  decision: "decision",
+  "nudge-planner": "nudge_planner",
+  "nudge-checker": "nudge_checker",
   "speech-design": "speech_design",
   "speech-clone": "speech_clone",
 };
 
 // Text and speech writes store their payer in the same statement as the model, so only these need a marker write.
-const SEPARATELY_MARKED = new Set<ProviderOptionCapability>(["vision", "embedding", "image", "video", "reviewer"]);
+const SEPARATELY_MARKED = new Set<ProviderOptionCapability>([
+  "vision",
+  "embedding",
+  "image",
+  "video",
+  "reviewer",
+  "decision",
+  "nudge-planner",
+  "nudge-checker",
+]);
 
 const PANEL_FUNDING_CAPABILITIES: Partial<Record<ProviderPanelCapability, SupporterCapability>> = {
   text: "text",
@@ -387,6 +403,8 @@ export const supporterProviderOption: ProviderOptionDefinition = {
     "video",
     "decision",
     "reviewer",
+    "nudge-planner",
+    "nudge-checker",
     "speech-design",
     "speech-clone",
   ],
@@ -424,6 +442,19 @@ export const supporterProviderOption: ProviderOptionDefinition = {
     remove: removeSelection,
     owns: ownsCapability,
     validateModel,
+    resolveServerCredentials: async ({ scope, capability, modelId }) => {
+      if (scope.kind !== "server" || !billingAvailable()) return null;
+      const credentials = await resolveSupporterCapabilityCredentials({
+        scope: { kind: "server", serverId: scope.ownerId },
+        capability: capability === "decision" ? "decision" : "text",
+        modelId,
+      });
+      return {
+        apiKey: credentials.apiKey,
+        usageContext: getSupporterUsageContext(credentials.funding),
+        savedProvider: SUPPORTER_PROVIDER_VALUE,
+      };
+    },
   },
   panel: {
     entryComponents,

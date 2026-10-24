@@ -48,13 +48,18 @@ import {
   findSupporterRequestDeniedError,
   SupporterRequestDeniedError,
 } from "@/modules/supporter-billing/runtime/funding";
-import { getSupporterUsageContext, type SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
-import { supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
+import {
+  getSupporterFundingFromUsageContext,
+  getSupporterUsageContext,
+  type SupporterFundingContext,
+} from "@/modules/supporter-billing/runtime/types";
+import type { ProviderOptionServerCredentials } from "@/utils/provider/providerOptionRegistry";
 
 export interface DecisionExecutionRequest extends DecisionInput {
   scope: OpenRouterModelScope;
   reference: DecisionModelReference | null;
   supporterFunding?: SupporterFundingContext;
+  credentials?: ProviderOptionServerCredentials;
 }
 
 export async function loadDecisionModelsForScope(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
@@ -76,11 +81,9 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
     return { status: "invalid-input", correlationId, errorLogged: false };
   }
   const reference = request.reference;
-  if (
-    reference.provider === "openrouter" &&
-    request.supporterFunding &&
-    !isSupporterBillingEnabled(resolveEnvironment())
-  )
+  const requestedFunding =
+    request.supporterFunding ?? getSupporterFundingFromUsageContext(request.credentials?.usageContext);
+  if (reference.provider === "openrouter" && requestedFunding && !isSupporterBillingEnabled(resolveEnvironment()))
     return {
       status: "denied",
       error: new SupporterRequestDeniedError("unsupported_capability", undefined, "decision", request.scope.kind),
@@ -88,9 +91,10 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
       errorLogged: false,
     };
   if (
-    request.supporterFunding &&
-    (request.supporterFunding.fundingScope !== request.scope.kind ||
-      (request.scope.kind === "personal" && request.supporterFunding.personalUserId !== request.scope.ownerId))
+    requestedFunding &&
+    (requestedFunding.fundingScope !== request.scope.kind ||
+      (request.scope.kind === "personal" && requestedFunding.personalUserId !== request.scope.ownerId) ||
+      (request.scope.kind === "server" && requestedFunding.serverId !== request.scope.ownerId))
   )
     return { status: "unavailable", reason: "not-owned", correlationId, errorLogged: false };
   let apiStyle: DecisionApiStyle = reference.provider === "openrouter" ? "openrouter-decisions" : "system-one";
@@ -140,14 +144,13 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
         elapsedMs: Date.now() - startedAt,
       },
     };
-    let apiKey: string | null = null;
-    let memberFunding: SupporterFundingContext | null = null;
+    let apiKey: string | null = request.credentials?.apiKey ?? null;
+    let memberFunding: SupporterFundingContext | null = requestedFunding ?? null;
     if (
       reference.provider === "openrouter" &&
       isSupporterBillingEnabled(resolveEnvironment()) &&
-      (request.supporterFunding ||
-        (request.scope.kind === "server" &&
-          (await supporterSponsorshipRepository.loadActiveSponsorshipForServer(request.scope.ownerId))))
+      requestedFunding &&
+      !request.credentials
     ) {
       const managed = await resolveSupporterCapabilityCredentials({
         scope:
@@ -156,14 +159,9 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
             : { kind: "personal", userId: request.scope.ownerId },
         capability: "decision",
         modelId: selected.model.decision_model_id,
-      }).catch((error: unknown) => {
-        if (error instanceof SupporterRequestDeniedError && error.reason === "model_not_allowed") return null;
-        throw error;
       });
-      if (managed) {
-        apiKey = managed.apiKey;
-        memberFunding = managed.funding;
-      }
+      apiKey = managed.apiKey;
+      memberFunding = managed.funding;
     }
     try {
       if (connection) apiKey = await loadCustomConnectionCredential(connection, failureContext);
@@ -187,7 +185,7 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
     const capability = await resolveDecisionsCapability(custom ? "custom" : reference.provider);
     if (!capability) return { status: "unavailable", reason: "unsupported", correlationId, errorLogged: false };
     const result = await withProviderUsageContext(
-      memberFunding ? getSupporterUsageContext(memberFunding) : undefined,
+      request.credentials?.usageContext ?? (memberFunding ? getSupporterUsageContext(memberFunding) : undefined),
       async () =>
         capability.callDecisions({
           ...request,

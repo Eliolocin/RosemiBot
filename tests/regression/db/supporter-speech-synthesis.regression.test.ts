@@ -273,7 +273,11 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech synthesis lifecycle and fall
           ).toBe(true);
           if (serverId) {
             await testSql`UPDATE server_chat_configs SET response_reviewer_llm_id = ${text.llm_id} WHERE server_id = ${serverId}`;
-            await testSql`UPDATE server_model_configs SET decision_model_id = ${decision.decision_model_id} WHERE server_id = ${serverId}`;
+            await testSql`UPDATE server_model_configs SET decision_model_id = ${decision.decision_model_id},
+              subscription_capabilities = CASE WHEN ${remaining === "supporter"}
+                THEN array_append(array_remove(subscription_capabilities, 'decision'), 'decision')
+                ELSE array_remove(subscription_capabilities, 'decision') END
+              WHERE server_id = ${serverId}`;
           }
           if (serverId) {
             const fallbackRefs = JSON.stringify([{ type: "llm", id: text.llm_id, credentialProvider: "supporter" }]);

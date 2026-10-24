@@ -145,7 +145,7 @@ implementation at startup, and the registration returns a disposer like the usag
 `src/utils/provider/providerOptionRegistry.ts` owns the optional extra entries the provider panels,
 setup wizard, and model views can offer beside the built-in providers. Built-in providers keep their
 existing code paths: every surface asks the registry first and falls through unchanged when nothing
-is registered. Registration returns a disposer, and no option is registered in-tree on main.
+is registered. Registration returns a disposer; deployments register their options during startup.
 
 An option declares its stored provider value, the provider catalog its models come from, the
 capabilities it serves, and the copy keys every surface renders. Its `availability` decides whether

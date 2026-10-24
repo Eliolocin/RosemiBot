@@ -216,11 +216,23 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
               WHERE user_id = ${userId} AND server_id IS NULL AND decision_model_id = ${decisionModelId}
             `;
         if (result.count === 0) return false;
-        if (serverId !== null)
+        if (serverId !== null) {
+          await tx`UPDATE server_model_configs config SET subscription_capabilities = ARRAY(
+            SELECT marker FROM unnest(config.subscription_capabilities) marker
+            WHERE NOT (marker = 'decision' AND config.decision_model_id = ${decisionModelId})
+              AND NOT (marker = 'nudge_checker' AND EXISTS (SELECT 1 FROM server_natural_nudge_configs nudges WHERE nudges.server_id = config.server_id AND nudges.checker_decision_model_id = ${decisionModelId}))
+          ) WHERE config.server_id = ${serverId}`;
           await tx`UPDATE server_model_configs SET decision_model_id = NULL WHERE server_id = ${serverId} AND decision_model_id = ${decisionModelId}`;
+          await tx`UPDATE server_natural_nudge_configs SET checker_decision_model_id = NULL
+            WHERE server_id = ${serverId} AND checker_decision_model_id = ${decisionModelId}`;
+        }
         return true;
       });
-      if (deleted && serverId !== null) this.invalidateWorkspace(serverId);
+      if (deleted && serverId !== null) {
+        this.invalidateWorkspace(serverId);
+        const { invalidateNaturalNudgeConfigCache } = await import("@/modules/natural-nudges/runtime/configCache");
+        invalidateNaturalNudgeConfigCache(serverId);
+      }
       return deleted;
     } catch (error) {
       const owner = serverId !== null ? `server ${serverId}` : `user ${userId}`;
@@ -1584,6 +1596,17 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
                 AND EXISTS (SELECT 1 FROM speech_models model WHERE model.speech_model_id = speech.speech_clone_model_id AND model.provider = 'openrouter')
                 THEN NULL ELSE speech.speech_clone_model_id END
             FROM server_model_configs config WHERE speech.server_id = ${serverId} AND config.server_id = speech.server_id`;
+          await tx`UPDATE server_natural_nudge_configs nudges SET
+              llm_id = CASE WHEN ('nudge_planner' = ANY(config.subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = nudges.llm_id AND model.llm_provider = 'openrouter')
+                THEN NULL ELSE nudges.llm_id END,
+              checker_llm_id = CASE WHEN ('nudge_checker' = ANY(config.subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = nudges.checker_llm_id AND model.llm_provider = 'openrouter')
+                THEN NULL ELSE nudges.checker_llm_id END,
+              checker_decision_model_id = CASE WHEN ('nudge_checker' = ANY(config.subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM decision_models model WHERE model.decision_model_id = nudges.checker_decision_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE nudges.checker_decision_model_id END
+            FROM server_model_configs config WHERE nudges.server_id = ${serverId} AND config.server_id = nudges.server_id`;
           await tx`UPDATE server_model_configs config SET
               llm_id = CASE WHEN ('text' = ANY(subscription_capabilities)) = ${subscription}
                 AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = config.llm_id AND model.llm_provider = 'openrouter')
@@ -1603,6 +1626,9 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
               vision_llm_id = CASE WHEN ('vision' = ANY(subscription_capabilities)) = ${subscription}
                 AND EXISTS (SELECT 1 FROM llms model WHERE model.llm_id = config.vision_llm_id AND model.llm_provider = 'openrouter')
                 THEN NULL ELSE vision_llm_id END,
+              decision_model_id = CASE WHEN ('decision' = ANY(subscription_capabilities)) = ${subscription}
+                AND EXISTS (SELECT 1 FROM decision_models model WHERE model.decision_model_id = config.decision_model_id AND model.provider = 'openrouter')
+                THEN NULL ELSE decision_model_id END,
               subscription_capabilities = CASE WHEN ${subscription} THEN '{}'::TEXT[] ELSE subscription_capabilities END
             WHERE server_id = ${serverId}`;
         }
@@ -1655,15 +1681,21 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         await tx`UPDATE server_chat_configs SET
           response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${modelProvider}) THEN NULL ELSE response_reviewer_llm_id END
           WHERE server_id = ${serverId}`;
-        await tx`UPDATE server_natural_nudge_configs SET llm_id = NULL
-          WHERE server_id = ${serverId}
-            AND llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider})`;
+        await tx`UPDATE server_natural_nudge_configs SET
+          llm_id = CASE WHEN llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${modelProvider}) THEN NULL ELSE llm_id END,
+          checker_llm_id = CASE WHEN checker_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${modelProvider}) THEN NULL ELSE checker_llm_id END,
+          checker_decision_model_id = CASE WHEN checker_decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${modelProvider}) THEN NULL ELSE checker_decision_model_id END
+          WHERE server_id = ${serverId}`;
         await tx`UPDATE server_model_configs SET decision_model_id = NULL
           WHERE server_id = ${serverId}
             AND decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${modelProvider})`;
         return true;
       });
-      if (deleted) this.invalidateWorkspace(serverId);
+      if (deleted) {
+        this.invalidateWorkspace(serverId);
+        const { invalidateNaturalNudgeConfigCache } = await import("@/modules/natural-nudges/runtime/configCache");
+        invalidateNaturalNudgeConfigCache(serverId);
+      }
       return deleted;
     } catch (error) {
       log.error(`Error deleting server provider registration ${provider}:`, error);
@@ -2888,12 +2920,25 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
             `;
         if (result.count === 0) return false;
         if (serverId !== null) {
+          await tx`UPDATE server_model_configs config SET subscription_capabilities = ARRAY(
+            SELECT marker FROM unnest(config.subscription_capabilities) marker
+            WHERE NOT (marker = 'reviewer' AND EXISTS (SELECT 1 FROM server_chat_configs chat WHERE chat.server_id = config.server_id AND chat.response_reviewer_llm_id = ${llmId}))
+              AND NOT (marker = 'nudge_planner' AND EXISTS (SELECT 1 FROM server_natural_nudge_configs nudges WHERE nudges.server_id = config.server_id AND nudges.llm_id = ${llmId}))
+              AND NOT (marker = 'nudge_checker' AND EXISTS (SELECT 1 FROM server_natural_nudge_configs nudges WHERE nudges.server_id = config.server_id AND nudges.checker_llm_id = ${llmId}))
+          ) WHERE config.server_id = ${serverId}`;
           await tx`UPDATE server_chat_configs SET response_reviewer_llm_id = NULL WHERE server_id = ${serverId} AND response_reviewer_llm_id = ${llmId}`;
-          await tx`UPDATE server_natural_nudge_configs SET llm_id = NULL WHERE server_id = ${serverId} AND llm_id = ${llmId}`;
+          await tx`UPDATE server_natural_nudge_configs SET
+            llm_id = CASE WHEN llm_id = ${llmId} THEN NULL ELSE llm_id END,
+            checker_llm_id = CASE WHEN checker_llm_id = ${llmId} THEN NULL ELSE checker_llm_id END
+            WHERE server_id = ${serverId}`;
         }
         return true;
       });
-      if (deleted && serverId !== null) this.invalidateWorkspace(serverId);
+      if (deleted && serverId !== null) {
+        this.invalidateWorkspace(serverId);
+        const { invalidateNaturalNudgeConfigCache } = await import("@/modules/natural-nudges/runtime/configCache");
+        invalidateNaturalNudgeConfigCache(serverId);
+      }
       return deleted;
     } catch (error) {
       const owner = serverId !== null ? `server ${serverId}` : `user ${userId}`;

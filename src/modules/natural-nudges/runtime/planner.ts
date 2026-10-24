@@ -15,6 +15,7 @@ import { PLAY_SCENE_MAX_TURNS, PLAY_SCENE_MIN_TURNS } from "@/modules/natural-nu
 import { formatStructuredRetryNote } from "@/utils/provider/serverStructuredOutput";
 import { log } from "@/utils/misc/logger";
 import type { TokenUsage } from "@/utils/text/tokenEstimate";
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 
 /** A planner that hangs past this would plan for a moment that has already passed. */
 const PLANNER_TIMEOUT_MS = 90_000;
@@ -245,25 +246,27 @@ export async function planIdleNudge(input: PlannerInput): Promise<PlannerOutcome
   const abortSignal = AbortSignal.timeout(PLANNER_TIMEOUT_MS);
   let usage: TokenUsage | null = null;
   const ask = (prompt: string, thinkingLevel: string | undefined) =>
-    resolved.capability.callStructuredJSON<PlannerResult>(
-      {
-        apiKey: resolved.apiKey,
-        model,
-        endpointUrl,
-        systemPrompt,
-        userPrompt: prompt,
-        temperature: resolved.state.config.llm_temperature,
-        maxOutputTokens,
-        thinkingLevel,
-        schemaName: "natural_nudge_plan",
-        privateOutput: true,
-        abortSignal,
-        onUsage: (reported) => {
-          usage = recordNudgeUsage(resolved, model, usage, reported);
+    withProviderUsageContext(resolved.usageContext, () =>
+      resolved.capability.callStructuredJSON<PlannerResult>(
+        {
+          apiKey: resolved.apiKey,
+          model,
+          endpointUrl,
+          systemPrompt,
+          userPrompt: prompt,
+          temperature: resolved.state.config.llm_temperature,
+          maxOutputTokens,
+          thinkingLevel,
+          schemaName: "natural_nudge_plan",
+          privateOutput: true,
+          abortSignal,
+          onUsage: (reported) => {
+            usage = recordNudgeUsage(resolved, model, usage, reported);
+          },
         },
-      },
-      jsonSchema,
-      buildAcceptedResult(input.partners.length),
+        jsonSchema,
+        buildAcceptedResult(input.partners.length),
+      ),
     );
 
   let result = await ask(userPrompt, resolved.state.config.thinking_level);

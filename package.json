@@ -105,7 +105,7 @@
   },
   "overrides": {
     "@aws-sdk/xml-builder>fast-xml-parser": "5.7.0",
-    "body-parser": ">=2.3.0",
+    "body-parser": ">=2.4.0",
     "body-parser>qs": "6.16.0",
     "express-rate-limit": "^8.6.1",
     "express>qs": "6.16.0",
@@ -116,7 +116,7 @@
     "qs": "6.16.0",
     "hono": ">=4.13.7",
     "@hono/node-server": ">=2.0.5",
-    "undici": "^6.29.0",
+    "undici": "^6.29.1",
     "js-yaml": "^4.3.2",
     "brace-expansion": ">=5.0.12",
     "fast-xml-parser": ">=5.7.0",
@@ -148,7 +148,8 @@
     "postcss-selector-parser": "^6.1.3",
     "esbuild": ">=0.28.1",
     "request": "npm:@cypress/request@^3.0.0",
-    "ws": ">=8.20.1"
+    "ws": ">=8.20.1",
+    "zod": ">=4.6.6 <5"
   },
   "patchedDependencies": {
     "@matrix-org/matrix-sdk-crypto-nodejs@0.4.0": "patches/@matrix-org%2Fmatrix-sdk-crypto-nodejs@0.4.0.patch",

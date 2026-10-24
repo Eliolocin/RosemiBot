@@ -8,6 +8,7 @@ import { SUPPORTER_CAPABILITIES } from "@/modules/supporter-billing/config";
 import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
 import { expectForEveryLocale, localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { commandRegistry } from "@/utils/discord/commandRegistry";
 
 describe("subscription request failures", () => {
   beforeAll(async () => initializeLocalizer());
@@ -42,7 +43,10 @@ describe("subscription request failures", () => {
           expect(copy.description).toBe(
             localizedCopy(copyLocale, `commands.subscribe.request.${key}`, {
               model: "`example/image-model`",
-              config: scope === "personal" ? "`/personal config`" : "`/config`",
+              config:
+                scope === "personal"
+                  ? commandRegistry.getCommandMention("personal", "config", undefined, true)
+                  : commandRegistry.getCommandMention("config", undefined, undefined, true),
               fallback: localizedCopy(locale, "commands.subscribe.request.fallback_failed"),
             }),
           );

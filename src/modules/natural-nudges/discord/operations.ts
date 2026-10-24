@@ -17,6 +17,7 @@ import {
   heatWindowStart,
 } from "@/modules/natural-nudges/runtime/meters";
 import {
+  loadConfigModelProviders,
   loadStructuredOutputModelGroups,
   type ConfigModelChoice,
   type StructuredOutputModelGroup,
@@ -38,7 +39,11 @@ import {
   type PlannerModelStatus,
 } from "@/modules/natural-nudges/runtime/model";
 import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
-import { claimProviderModelSelection, clearProviderModelSelection } from "@/utils/provider/providerOptionRegistry";
+import {
+  claimProviderModelSelection,
+  clearProviderModelSelection,
+  findProviderOption,
+} from "@/utils/provider/providerOptionRegistry";
 
 export type NudgeWriteResult =
   | "success"
@@ -120,17 +125,21 @@ async function loadSettingsStatus(
 }
 
 async function loadCheckerDecisionModels(serverId: number, locale: string): Promise<CheckerDecisionModelGroup[]> {
-  const options = await loadDecisionModelsForScope({ kind: "server", ownerId: serverId });
+  const [options, providers] = await Promise.all([
+    loadDecisionModelsForScope({ kind: "server", ownerId: serverId }),
+    loadConfigModelProviders(serverId, "decision"),
+  ]);
   const groups = new Map<string, ConfigModelChoice[]>();
-  for (const { model } of options) {
-    if (!supportsCheckerChoice(model)) continue;
-    const models = groups.get(model.provider) ?? [];
-    models.push({
-      id: model.decision_model_id,
-      name: model.codename,
-      description: resolveDescription(model.descriptions, locale),
-    });
-    groups.set(model.provider, models);
+  for (const provider of providers) {
+    const catalogProvider = findProviderOption(provider)?.catalogProvider ?? provider;
+    const models = options
+      .filter(({ model }) => model.provider === catalogProvider && supportsCheckerChoice(model))
+      .map(({ model }) => ({
+        id: model.decision_model_id,
+        name: model.codename,
+        description: resolveDescription(model.descriptions, locale),
+      }));
+    if (models.length > 0) groups.set(provider, models);
   }
   return [...groups].map(([provider, models]) => ({ provider, models }));
 }
@@ -247,7 +256,7 @@ const naturalNudgeOperations = {
           : { checker_llm_id: null, checker_decision_model_id: choice.id },
     );
     if (written !== "success") return written;
-    return settleSlotOwner(state, "nudge-checker", choice?.kind === "llm" ? choice.provider : null);
+    return settleSlotOwner(state, "nudge-checker", choice?.provider ?? null);
   },
 
   setFrequency(serverId: number, level: IdleNudgeFrequencyLevel): Promise<NudgeWriteResult> {

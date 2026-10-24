@@ -8,6 +8,7 @@ import { normalizeChatInvocation } from "@/utils/chat/admission";
 import { planChatTurns } from "@/utils/chat/turnPlanner";
 import type { LockedChatTurn } from "@/utils/chat/types";
 import * as credentialResolver from "@/utils/provider/credentialResolver";
+import * as textModelSelection from "@/utils/provider/textModelSelection";
 import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
 import { createPersona, createUserRow } from "../../helpers/fixtures";
 
@@ -85,6 +86,10 @@ async function planInterruption(content: string, personalDtm: "off" | "on" = "of
     spyOn(admissionGuards, "enforceServerTriggerCooldownForAdmission").mockResolvedValue(true),
     spyOn(admissionGuards, "checkTextQuotaForAdmission").mockResolvedValue({ allowed: true, state: null } as never),
     spyOn(errorVisibility, "shouldSurfaceChatUserErrors").mockReturnValue(false),
+    spyOn(credentialResolver, "resolvePersonalCapabilityCredentials").mockResolvedValue(null),
+    spyOn(textModelSelection, "resolveServerTextModel").mockImplementation(
+      async (state) => state.persona_llm ?? state.llm,
+    ),
     spyOn(admissionGuards, "validateDirectChatTrigger").mockResolvedValue({
       shouldContinue: true,
       isUserImpersonation: false,
@@ -101,7 +106,10 @@ async function planInterruption(content: string, personalDtm: "off" | "on" = "of
     spyOn(credentialResolver, "resolveCapabilityCredentials").mockResolvedValue({
       source: "server",
       provider: "google",
-    } as never),
+      apiKey: "fixture",
+      keyVersion: 1,
+      savedConfig: null,
+    }),
   );
   const plan = await planChatTurns(lockedTurn);
   return plan.turns.map((turn) => turn.persona.persona_id as number);

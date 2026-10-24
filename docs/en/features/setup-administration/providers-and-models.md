@@ -13,8 +13,8 @@ self-hosted endpoints. You need at least one provider to start chatting.
 
 On hosted TomoriBot installations with Subscription enabled, use `/subscribe` to link your Patreon
 membership and view your remaining allowance. A member with Manage Server can choose
-`Sponsor this server` in its overview, select `+ Sponsor Current Server` under `Sponsored Servers`
-in `/subscription`, or start sponsorship through `/providers`.
+`Sponsor this server` in its overview or `+ Sponsor Current Server` under `Sponsored Servers`.
+`/providers` also offers sponsorship.
 Each server has one active sponsor. `Server already sponsored` is disabled until that sponsorship
 is removed. You can sponsor multiple servers; they share your allowance with your personal usage.
 

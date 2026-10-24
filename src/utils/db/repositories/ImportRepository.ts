@@ -291,16 +291,24 @@ const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
 
 const JSONB_CONFIG_COLUMNS = new Set(["response_rule_checker_ref", "llm_logit_biases", "deliberate_tool_triggers"]);
 
-type ImportedSelectionCapability = Extract<SubscriptionCapability, "reviewer" | "speech_design" | "speech_clone">;
+type ImportedSelectionCapability = Extract<
+  SubscriptionCapability,
+  "reviewer" | "speech_design" | "speech_clone" | "nudge_planner" | "nudge_checker"
+>;
+interface ImportedSelection {
+  id: number | null;
+  kind: "llm" | "speech" | "decision";
+}
 
 const IMPORTED_SELECTION_COLUMNS: ReadonlyArray<{
   capability: ImportedSelectionCapability;
   tableName: string;
   column: string;
+  kind: ImportedSelection["kind"];
 }> = [
-  { capability: "reviewer", tableName: "server_chat_configs", column: "response_reviewer_llm_id" },
-  { capability: "speech_design", tableName: "server_speech_configs", column: "speech_design_model_id" },
-  { capability: "speech_clone", tableName: "server_speech_configs", column: "speech_clone_model_id" },
+  { capability: "reviewer", tableName: "server_chat_configs", column: "response_reviewer_llm_id", kind: "llm" },
+  { capability: "speech_design", tableName: "server_speech_configs", column: "speech_design_model_id", kind: "speech" },
+  { capability: "speech_clone", tableName: "server_speech_configs", column: "speech_clone_model_id", kind: "speech" },
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -609,17 +617,24 @@ class ImportRepository {
 
   private getImportedSelectionIds(
     tablePatches: readonly ConfigTablePatch[],
-  ): Map<ImportedSelectionCapability, number | null> {
-    const imported = new Map<ImportedSelectionCapability, number | null>();
+    nudges?: WorkspaceConfigExportData["nudges"],
+  ): Map<ImportedSelectionCapability, ImportedSelection> {
+    const imported = new Map<ImportedSelectionCapability, ImportedSelection>();
     for (const definition of IMPORTED_SELECTION_COLUMNS) {
       for (const tablePatch of tablePatches) {
         if (tablePatch.tableName !== definition.tableName || !Object.hasOwn(tablePatch.patch, definition.column)) {
           continue;
         }
         const value = tablePatch.patch[definition.column];
-        if (value !== undefined) imported.set(definition.capability, value as number | null);
+        if (value !== undefined)
+          imported.set(definition.capability, { id: value as number | null, kind: definition.kind });
       }
     }
+    if (nudges?.llm_id !== undefined) imported.set("nudge_planner", { id: nudges.llm_id, kind: "llm" });
+    if (nudges?.checker_llm_id != null) imported.set("nudge_checker", { id: nudges.checker_llm_id, kind: "llm" });
+    else if (nudges?.checker_decision_model_id !== undefined)
+      imported.set("nudge_checker", { id: nudges.checker_decision_model_id, kind: "decision" });
+    else if (nudges?.checker_llm_id !== undefined) imported.set("nudge_checker", { id: null, kind: "llm" });
     return imported;
   }
 
@@ -627,7 +642,7 @@ class ImportRepository {
     tx: SQL,
     serverId: number,
     capabilities: readonly ImportedSelectionCapability[],
-    imported: ReadonlyMap<ImportedSelectionCapability, number | null>,
+    imported: ReadonlyMap<ImportedSelectionCapability, ImportedSelection>,
   ): Promise<Set<ImportedSelectionCapability>> {
     const [saved] = await tx<Array<{ has_subscription: boolean | null; has_byok_openrouter: boolean | null }>>`
       SELECT
@@ -638,22 +653,36 @@ class ImportRepository {
     `;
     if (!saved?.has_subscription || saved.has_byok_openrouter) return new Set();
 
-    const reviewerIds = capabilities
-      .filter((capability) => capability === "reviewer")
+    const llmIds = capabilities
       .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "llm")
+      .map((selection) => selection?.id)
       .filter((id): id is number => typeof id === "number");
     const speechIds = capabilities
-      .filter((capability) => capability !== "reviewer")
       .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "speech")
+      .map((selection) => selection?.id)
+      .filter((id): id is number => typeof id === "number");
+    const decisionIds = capabilities
+      .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "decision")
+      .map((selection) => selection?.id)
       .filter((id): id is number => typeof id === "number");
 
     const openRouterReviewers =
-      reviewerIds.length === 0
+      llmIds.length === 0
         ? []
         : await tx<Array<{ llm_id: number }>>`
             SELECT llm_id FROM llms
-            WHERE llm_provider = 'openrouter' AND llm_id = ANY(${sql.array(reviewerIds, "int4")})
+            WHERE llm_provider = 'openrouter' AND llm_id = ANY(${sql.array(llmIds, "int4")})
           `;
+    const openRouterDecisions =
+      decisionIds.length === 0
+        ? []
+        : await tx<Array<{ decision_model_id: number }>>`
+      SELECT decision_model_id FROM decision_models
+      WHERE provider = 'openrouter' AND decision_model_id = ANY(${sql.array(decisionIds, "int4")})
+    `;
     const openRouterSpeech =
       speechIds.length === 0
         ? []
@@ -663,12 +692,19 @@ class ImportRepository {
           `;
     const openRouterReviewerIds = new Set(openRouterReviewers.map((row) => row.llm_id));
     const openRouterSpeechIds = new Set(openRouterSpeech.map((row) => row.speech_model_id));
+    const openRouterDecisionIds = new Set(openRouterDecisions.map((row) => row.decision_model_id));
 
     return new Set(
       capabilities.filter((capability) => {
-        const id = imported.get(capability);
-        if (typeof id !== "number") return false;
-        return capability === "reviewer" ? openRouterReviewerIds.has(id) : openRouterSpeechIds.has(id);
+        const selection = imported.get(capability);
+        if (!selection || selection.id === null) return false;
+        const ids =
+          selection.kind === "llm"
+            ? openRouterReviewerIds
+            : selection.kind === "speech"
+              ? openRouterSpeechIds
+              : openRouterDecisionIds;
+        return ids.has(selection.id);
       }),
     );
   }
@@ -677,14 +713,18 @@ class ImportRepository {
     tx: SQL,
     serverId: number,
     tablePatches: readonly ConfigTablePatch[],
+    nudges?: WorkspaceConfigExportData["nudges"],
   ): Promise<void> {
-    const imported = this.getImportedSelectionIds(tablePatches);
+    const imported = this.getImportedSelectionIds(tablePatches, nudges);
     if (imported.size === 0) return;
 
     const [current] = await tx<Array<{ subscription_capabilities: string[] }>>`
       SELECT subscription_capabilities FROM server_model_configs WHERE server_id = ${serverId} FOR UPDATE
     `;
-    if (!current) throw new Error("Missing model config for imported capability ownership");
+    if (!current) {
+      if ([...imported.values()].every((selection) => selection.id === null)) return;
+      throw new Error("Missing model config for imported capability ownership");
+    }
 
     const [chat] = imported.has("reviewer")
       ? await tx<Array<{ response_reviewer_llm_id: number | null }>>`
@@ -698,13 +738,30 @@ class ImportRepository {
             WHERE server_id = ${serverId} FOR UPDATE
           `
         : [];
-    const currentIds = new Map<ImportedSelectionCapability, number | null>([
-      ["reviewer", chat?.response_reviewer_llm_id ?? null],
-      ["speech_design", speech?.speech_design_model_id ?? null],
-      ["speech_clone", speech?.speech_clone_model_id ?? null],
+    const [currentNudges] =
+      imported.has("nudge_planner") || imported.has("nudge_checker")
+        ? await tx<
+            Array<{ llm_id: number | null; checker_llm_id: number | null; checker_decision_model_id: number | null }>
+          >`
+          SELECT llm_id, checker_llm_id, checker_decision_model_id FROM server_natural_nudge_configs WHERE server_id = ${serverId} FOR UPDATE
+        `
+        : [];
+    const currentIds = new Map<ImportedSelectionCapability, ImportedSelection>([
+      ["reviewer", { id: chat?.response_reviewer_llm_id ?? null, kind: "llm" }],
+      ["speech_design", { id: speech?.speech_design_model_id ?? null, kind: "speech" }],
+      ["speech_clone", { id: speech?.speech_clone_model_id ?? null, kind: "speech" }],
+      ["nudge_planner", { id: currentNudges?.llm_id ?? null, kind: "llm" }],
+      [
+        "nudge_checker",
+        currentNudges?.checker_llm_id != null
+          ? { id: currentNudges.checker_llm_id, kind: "llm" }
+          : { id: currentNudges?.checker_decision_model_id ?? null, kind: "decision" },
+      ],
     ]);
     const changed = [...imported.keys()].filter(
-      (capability) => imported.get(capability) !== currentIds.get(capability),
+      (capability) =>
+        imported.get(capability)?.id !== currentIds.get(capability)?.id ||
+        imported.get(capability)?.kind !== currentIds.get(capability)?.kind,
     );
     if (changed.length === 0) return;
 
@@ -757,7 +814,7 @@ class ImportRepository {
       }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
-        await this.writeImportedSelectionPayers(tx, serverId, tablePatches);
+        await this.writeImportedSelectionPayers(tx, serverId, tablePatches, prepared.nudges);
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
         if (prepared.stmCategories !== undefined) await this.updateStmCategories(tx, serverId, prepared.stmCategories);
         if (prepared.nudges) await importNudgesSection(tx, serverId, prepared.nudges);

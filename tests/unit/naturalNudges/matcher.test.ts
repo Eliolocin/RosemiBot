@@ -10,7 +10,8 @@ import {
 import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import * as model from "@/modules/natural-nudges/runtime/model";
 import type { DecisionModelOption, DecisionResult, StructuredOutputResult } from "@/types/provider/featureInterfaces";
-import { llmModelRepo } from "@/utils/db/repositories";
+import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
+import { savedProviderConfigSchema } from "@/types/db/schema";
 import * as serverStructuredOutput from "@/utils/provider/serverStructuredOutput";
 import { createPersona } from "../../helpers/fixtures";
 
@@ -151,6 +152,22 @@ describe("Active Nudge Checker resolution", () => {
   /** Text models in `usable` resolve against the server's keys under their codename; every other ID cannot. */
   function stubCatalog(decisionOptions: DecisionModelOption[], usable: Record<number, string>) {
     spies.push(
+      spyOn(llmProviderRepo, "loadSavedProviderConfig").mockResolvedValue(
+        savedProviderConfigSchema.parse({
+          server_id: state.server_id,
+          provider: "openrouter",
+          api_key: Buffer.from("fixture"),
+          llm_id: null,
+          diffusion_model_id: null,
+          embedding_model_id: null,
+          nai_diffusion_model_id: null,
+          nai_preset_name: null,
+          llm_disabled_params: [],
+          llm_logit_biases: [],
+          fallback_model_refs: [],
+          thinking_level: "auto",
+        }),
+      ),
       spyOn(llmModelRepo, "loadDecisionModelOptions").mockResolvedValue(decisionOptions),
       spyOn(llmModelRepo, "loadByProviderAndCodename").mockResolvedValue({ llm_id: GEMMA_ID } as never),
       spyOn(serverStructuredOutput, "resolveServerStructuredModel").mockImplementation(async (_state, llmId) =>

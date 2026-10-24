@@ -9,6 +9,7 @@ import {
   type ProviderOptionDefinition,
 } from "@/utils/provider/providerOptionRegistry";
 import { createPersona } from "../../helpers/fixtures";
+import { decisionModelSchema } from "@/types/db/schema";
 
 const OPTION_VALUE = "test-option";
 const MODEL_ID = 5;
@@ -91,5 +92,35 @@ describe("Natural Nudges model slots", () => {
     stubPanel();
     registerOwner(false);
     expect(await ops.setPlannerModel(state, OPTION_VALUE, MODEL_ID)).toBe("write-failed");
+  });
+
+  it("keeps the selected provider alias when a Decision checker shares the OpenRouter catalog", async () => {
+    stubPanel();
+    const record = registerOwner();
+    const providers = spyOn(configModelOperations, "loadConfigModelProviders").mockResolvedValue([
+      "openrouter",
+      OPTION_VALUE,
+    ]);
+    const decisions = spyOn(executors, "loadDecisionModelsForScope").mockResolvedValue([
+      {
+        model: decisionModelSchema.parse({
+          decision_model_id: 8,
+          provider: "openrouter",
+          codename: "fixture/decision",
+          input_token_limit: 32000,
+          supported_primitives: ["predicate", "choice"],
+        }),
+        reference: { provider: "openrouter", modelId: 8, registrationId: null, customEndpointId: null },
+      },
+    ]);
+    try {
+      expect(await ops.setCheckerModel(state, { kind: "decision", provider: OPTION_VALUE, id: 8 })).toBe("success");
+      expect(record.claimed).toEqual(["nudge-checker"]);
+      expect(await ops.setCheckerModel(state, { kind: "decision", provider: "openrouter", id: 8 })).toBe("success");
+      expect(record.released).toEqual(["nudge-checker"]);
+    } finally {
+      decisions.mockRestore();
+      providers.mockRestore();
+    }
   });
 });

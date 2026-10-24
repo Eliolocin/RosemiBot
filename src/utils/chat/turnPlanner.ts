@@ -624,14 +624,6 @@ export interface TextCredentialPolicyDependencies {
   sendStandardEmbed: typeof sendStandardEmbed;
 }
 
-const defaultTextCredentialPolicyDependencies: TextCredentialPolicyDependencies = {
-  resolvePersonalCapabilityCredentials,
-  resolveCapabilityCredentials,
-  resolveServerTextModel,
-  resolveSupporterFunding,
-  sendStandardEmbed,
-};
-
 export async function resolveTextCredentialPolicy(params: {
   tomoriState: TomoriState;
   isSelfMessage: boolean;
@@ -653,7 +645,14 @@ export async function resolveTextCredentialPolicy(params: {
   personalTextProvider: string | null;
   supporterFunding: SupporterFundingContext | null;
 } | null> {
-  const dependencies = { ...defaultTextCredentialPolicyDependencies, ...params.dependencies };
+  const dependencies: TextCredentialPolicyDependencies = {
+    resolvePersonalCapabilityCredentials,
+    resolveCapabilityCredentials,
+    resolveServerTextModel,
+    resolveSupporterFunding,
+    sendStandardEmbed,
+    ...params.dependencies,
+  };
   // A borrowed trigger's author is whoever spoke last, so a personal key there would bill a bystander.
   const personalRoutingUserId =
     params.borrowsTriggerMessage ||

@@ -104,7 +104,15 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   `text`. Pinning or clearing a model claims or releases its slot, so a provider option that owns the
   slot pays and reports usage through the call's usage context (see
   [Provider options](/architecture/pipelines/provider/#provider-options)). Checker Decision models
-  come from `loadDecisionModelsForScope`, the same list `callDecisionsForProvider` accepts. A
+  come from `loadDecisionModelsForScope`, the same list `callDecisionsForProvider` accepts. A pinned
+  Decision checker uses `nudge-checker`; a selected or default Decision checker uses `decision`.
+  The picker keeps Subscription and OpenRouter BYOK separate even when they share a catalog model.
+  Subscription ownership is stored in `server_model_configs.subscription_capabilities` as
+  `nudge_planner`, `nudge_checker`, or `decision`; having a sponsor alone does not select that payer.
+  Imports preserve an unchanged pin's payer and infer a changed pin's Subscription payer only when
+  no OpenRouter BYOK key makes the destination ambiguous. Removing a provider clears its pins while
+  preserving pins owned by the other payer. Every actual call, including a format retry, binds the
+  resolved usage context. A
   refusal from the paying option is an abort with reason `denied`, logged as a warning; on the checker
   it also pauses the server's checks like an HTTP 429.
 - **The borrowed trigger lends no identity.** Phase C passes the channel's newest message to

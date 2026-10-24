@@ -802,12 +802,17 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
           capability: "decision",
         }),
       ).toMatchObject({ status: "success" });
+      const serverDecisionFunding = await resolveSupporterFunding({
+        scope: { kind: "server", serverId: refs.serverId },
+        capability: "decision",
+      });
+      if (!serverDecisionFunding.ok) throw new Error("Expected explicit server Decision funding");
       expect(
         await callDecisionsForProvider({
           ...decisionRequest,
           scope: serverScope,
           reference: serverDecision.reference,
-          supporterFunding: undefined,
+          supporterFunding: serverDecisionFunding.context,
         }),
       ).toMatchObject({ status: "completed" });
       expect(await callDecisionsForProvider({ ...decisionRequest, supporterFunding: undefined })).toMatchObject({
@@ -821,7 +826,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
       ]);
       delete config.tiers.test_tier.defaultModelByCapability.decision;
       process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify(config);
-      expect(await callDecisionsForProvider(decisionRequest)).toMatchObject({ status: "completed" });
+      expect(await callDecisionsForProvider(decisionRequest)).toMatchObject({
+        status: "denied",
+        error: { reason: "model_not_allowed" },
+      });
+      expect(decisionCredentials).toHaveLength(4);
+      expect(await callDecisionsForProvider({ ...decisionRequest, supporterFunding: undefined })).toMatchObject({
+        status: "completed",
+      });
       expect(decisionCredentials[4]).toBe("Bearer test-personal-openrouter-key");
       process.env.TOMORI_SUPPORTER_CONFIG_JSON = JSON.stringify({
         ...config,

@@ -786,6 +786,9 @@ export const subscriptionCapabilitySchema = z.enum([
   "speech_design",
   "speech_clone",
   "reviewer",
+  "decision",
+  "nudge_planner",
+  "nudge_checker",
 ]);
 export type SubscriptionCapability = z.infer<typeof subscriptionCapabilitySchema>;
 

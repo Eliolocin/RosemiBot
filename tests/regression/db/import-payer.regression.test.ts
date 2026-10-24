@@ -23,8 +23,14 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("config import payer resolution", () => {
   let designB: number;
   let cloneA: number;
   let cloneB: number;
+  let decisionId: number;
 
-  const SERVER_CONFIG_ROWS = ["server_model_configs", "server_chat_configs", "server_speech_configs"] as const;
+  const SERVER_CONFIG_ROWS = [
+    "server_model_configs",
+    "server_chat_configs",
+    "server_speech_configs",
+    "server_natural_nudge_configs",
+  ] as const;
 
   async function createServer(discId: string): Promise<number> {
     const [server] = await testSql`INSERT INTO servers (server_disc_id) VALUES (${discId}) RETURNING server_id`;
@@ -113,6 +119,13 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("config import payer resolution", () => {
     designB = await insertSpeakerModel("_rt_import_design_b", "design");
     cloneA = await insertSpeakerModel("_rt_import_clone_a", "clone");
     cloneB = await insertSpeakerModel("_rt_import_clone_b", "clone");
+    const [decision] = await testSql`INSERT INTO decision_models
+      (provider, codename, input_token_limit, supported_primitives)
+      VALUES ('openrouter', '_rt_import_decision', 32000, '["predicate", "choice"]'::jsonb)
+      RETURNING decision_model_id`;
+    decisionId = decision.decision_model_id;
+    await testSql`INSERT INTO scoped_model_registrations (server_id, decision_model_id)
+      VALUES (${byokServerId}, ${decisionId})`;
 
     const [user] = await testSql`
       INSERT INTO users (user_disc_id) VALUES (${personalUserDiscId}) RETURNING user_id
@@ -129,6 +142,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("config import payer resolution", () => {
     await testSql`DELETE FROM users WHERE user_disc_id = ${personalUserDiscId}`;
     await testSql`DELETE FROM llms WHERE llm_codename IN ('_rt_import_reviewer_a', '_rt_import_reviewer_b')`;
     await testSql`DELETE FROM speech_models WHERE codename LIKE '_rt_import_%'`;
+    await testSql`DELETE FROM decision_models WHERE codename = '_rt_import_decision'`;
   });
 
   it("funds imported reviewer and speech selections from a Subscription-only destination", async () => {
@@ -215,5 +229,90 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("config import payer resolution", () => {
     );
     expect(result.success).toBe(true);
     expect(await subscriptionCapabilities(subscriptionServerId)).toEqual(before);
+  });
+
+  it("preserves unchanged nudge payers and resolves changed pins from destination credentials", async () => {
+    for (const [discId, serverId] of [
+      [subscriptionDiscId, subscriptionServerId],
+      [byokDiscId, byokServerId],
+    ] as const) {
+      await testSql`UPDATE server_model_configs SET subscription_capabilities = ARRAY['nudge_planner', 'nudge_checker'] WHERE server_id = ${serverId}`;
+      await testSql`UPDATE server_natural_nudge_configs SET llm_id = ${reviewerA}, checker_llm_id = ${reviewerA}, checker_decision_model_id = NULL WHERE server_id = ${serverId}`;
+      expect(
+        (
+          await importRepository.importWorkspaceConfig(
+            discId,
+            { nudges: { llm_id: reviewerA, checker_llm_id: reviewerA } },
+            ["nudges"],
+          )
+        ).success,
+      ).toBe(true);
+      expect(await subscriptionCapabilities(serverId)).toEqual(
+        expect.arrayContaining(["nudge_planner", "nudge_checker"]),
+      );
+      expect(
+        (
+          await importRepository.importWorkspaceConfig(
+            discId,
+            { nudges: { llm_id: reviewerB, checker_llm_id: reviewerB } },
+            ["nudges"],
+          )
+        ).success,
+      ).toBe(true);
+      for (const marker of ["nudge_planner", "nudge_checker"]) {
+        expect((await subscriptionCapabilities(serverId)).includes(marker)).toBe(serverId === subscriptionServerId);
+      }
+    }
+    expect(
+      (
+        await importRepository.importWorkspaceConfig(
+          byokDiscId,
+          { nudges: { checker_decision_model_id: decisionId } },
+          ["nudges"],
+        )
+      ).success,
+    ).toBe(true);
+    expect(await subscriptionCapabilities(byokServerId)).not.toContain("nudge_checker");
+    const [checker] =
+      await testSql`SELECT checker_llm_id, checker_decision_model_id FROM server_natural_nudge_configs WHERE server_id = ${byokServerId}`;
+    expect(checker).toMatchObject({ checker_llm_id: null, checker_decision_model_id: decisionId });
+  });
+
+  it("removes only the deleted provider's nudge pins and clears owned markers when a model is removed", async () => {
+    for (const provider of ["supporter", "openrouter"] as const) {
+      await testSql`INSERT INTO saved_provider_configs (server_id, provider, api_key, key_version)
+        VALUES (${byokServerId}, 'supporter', NULL, 1), (${byokServerId}, 'openrouter', ${Buffer.from("fixture")}, 1)
+        ON CONFLICT (server_id, provider) DO NOTHING`;
+      await testSql`UPDATE server_model_configs SET subscription_capabilities = ARRAY['nudge_planner', 'decision'], decision_model_id = ${decisionId} WHERE server_id = ${byokServerId}`;
+      await testSql`UPDATE server_natural_nudge_configs SET llm_id = ${reviewerA}, checker_llm_id = NULL, checker_decision_model_id = ${decisionId} WHERE server_id = ${byokServerId}`;
+      expect(await llmProviderRepo.deleteServerProviderRegistration(byokServerId, provider)).toBe(true);
+      const [pins] =
+        await testSql`SELECT llm_id, checker_decision_model_id FROM server_natural_nudge_configs WHERE server_id = ${byokServerId}`;
+      expect(pins).toMatchObject({
+        llm_id: provider === "supporter" ? null : reviewerA,
+        checker_decision_model_id: provider === "openrouter" ? null : decisionId,
+      });
+      const [core] =
+        await testSql`SELECT decision_model_id FROM server_model_configs WHERE server_id = ${byokServerId}`;
+      expect(core.decision_model_id).toBe(provider === "supporter" ? null : decisionId);
+    }
+    await testSql`UPDATE server_model_configs SET subscription_capabilities = ARRAY['nudge_planner', 'nudge_checker', 'text'] WHERE server_id = ${byokServerId}`;
+    await testSql`UPDATE server_natural_nudge_configs SET llm_id = ${reviewerA}, checker_llm_id = ${reviewerA}, checker_decision_model_id = NULL WHERE server_id = ${byokServerId}`;
+    expect(await llmProviderRepo.deleteOpenRouterModelRegistration({ serverId: byokServerId, llmId: reviewerA })).toBe(
+      true,
+    );
+    expect(await subscriptionCapabilities(byokServerId)).toEqual(["text"]);
+    const [pins] =
+      await testSql`SELECT llm_id, checker_llm_id FROM server_natural_nudge_configs WHERE server_id = ${byokServerId}`;
+    expect(pins).toMatchObject({ llm_id: null, checker_llm_id: null });
+    await testSql`UPDATE server_model_configs SET decision_model_id = ${decisionId}, subscription_capabilities = ARRAY['decision', 'nudge_checker', 'text'] WHERE server_id = ${byokServerId}`;
+    await testSql`UPDATE server_natural_nudge_configs SET checker_decision_model_id = ${decisionId} WHERE server_id = ${byokServerId}`;
+    expect(
+      await llmProviderRepo.deleteDecisionModelRegistration({ serverId: byokServerId, decisionModelId: decisionId }),
+    ).toBe(true);
+    expect(await subscriptionCapabilities(byokServerId)).toEqual(["text"]);
+    const [decisionPins] = await testSql`SELECT config.decision_model_id, nudges.checker_decision_model_id
+      FROM server_model_configs config JOIN server_natural_nudge_configs nudges USING (server_id) WHERE config.server_id = ${byokServerId}`;
+    expect(decisionPins).toMatchObject({ decision_model_id: null, checker_decision_model_id: null });
   });
 });

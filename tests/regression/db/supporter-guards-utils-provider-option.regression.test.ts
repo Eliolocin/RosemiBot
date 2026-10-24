@@ -21,6 +21,7 @@ import { initializeLocalizer } from "@/utils/text/localizer";
 import { useEnvSandbox } from "../../helpers/env";
 import { localizedCopy } from "../../helpers/localeCases";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
+import { naturalNudgePanelDependencies } from "@/modules/natural-nudges/discord/operations";
 import { cleanupFixtures, FIXTURE_IDS, insertFixtures, type FixtureRefs } from "./setup/fixtures";
 import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
 
@@ -232,6 +233,29 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("supporter provider option: stored rows", (
       Array<{ subscription_capabilities: string[] }>
     >`SELECT subscription_capabilities FROM server_model_configs WHERE server_id = ${refs.serverId}`;
     expect(unchanged?.subscription_capabilities).toContain("embedding");
+  });
+
+  it("stores and releases the real Subscription nudge slot payers", async () => {
+    process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+    const state = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
+    if (!state || !textModel.llm_id) throw new Error("Expected a configured fixture workspace");
+    const operations = naturalNudgePanelDependencies.operations;
+    expect(await operations.setPlannerModel(state, "supporter", textModel.llm_id)).toBe("success");
+    expect(await operations.setCheckerModel(state, { kind: "llm", provider: "supporter", id: textModel.llm_id })).toBe(
+      "success",
+    );
+    const reload = async () => {
+      const reloaded = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
+      if (!reloaded) throw new Error("Expected the saved workspace");
+      return reloaded;
+    };
+    const funded = await reload();
+    expect(funded.config.subscription_capabilities).toEqual(expect.arrayContaining(["nudge_planner", "nudge_checker"]));
+    expect(await operations.setPlannerModel(funded, "", null)).toBe("success");
+    expect(await operations.setCheckerModel(funded, null)).toBe("success");
+    const cleared = await reload();
+    expect(cleared.config.subscription_capabilities).not.toContain("nudge_planner");
+    expect(cleared.config.subscription_capabilities).not.toContain("nudge_checker");
   });
 
   it("shows the subscription entry only while the stored sponsorship stays active", async () => {
