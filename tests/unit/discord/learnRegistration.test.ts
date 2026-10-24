@@ -32,16 +32,15 @@ describe("/learn registration", () => {
     expect(historySubcommand.name).toBe("history");
     expect(historySubcommand.type).toBe(ApplicationCommandOptionType.Subcommand);
 
-    // The seven options are the command's whole input surface, so a relocation that dropped
+    // The six options are the command's whole input surface, so a relocation that dropped
     // one would still register and still pass every other check here.
     const options = historySubcommand.options ?? [];
-    expect(options.length).toBe(7);
+    expect(options.length).toBe(6);
     const optionNames = options.map((opt: RegistrationPayload) => opt.name);
     expect(optionNames).toContain("name");
     expect(optionNames).toContain("scope");
     expect(optionNames).toContain("start_message_id");
     expect(optionNames).toContain("end_message_id");
-    expect(optionNames).toContain("channels");
     expect(optionNames).toContain("prompt");
     expect(optionNames).toContain("limit");
 

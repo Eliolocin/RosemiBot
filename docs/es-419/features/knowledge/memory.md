@@ -207,8 +207,8 @@ STM.
   existe, el elemento permanece activo en todos los canales y `/memories` lo indicará; edítalo
   y elige canales para limitarlo de nuevo.
 - Si usas la base de conocimiento de documentos (RAG), los documentos y los historiales extraídos
-  pueden limitarse a canales de la misma manera. La opción `channels` en `/learn history` acepta
-  nombres de canales o menciones.
+  pueden limitarse a canales de la misma manera. Con `/learn history`, elige los canales en la
+  ventana que se abre antes de que empiece la extracción.
 
 En `/help`, elige `Memoria` y luego `Etiquetado de memoria`, para ver el mismo resumen en
 Discord.

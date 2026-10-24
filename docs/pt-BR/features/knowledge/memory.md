@@ -186,7 +186,8 @@ uma palavra-chave ou apenas em um canal. Ative com `/config` > Engine > Memory &
   automaticamente. Se uma tag antiga indicava um canal que não existe mais, o item permanece ativo em
   todos os canais e `/memories` informa isso; edite-o e escolha os canais para limitá-lo novamente.
 - Se você usa a base de conhecimento de documentos (RAG), documentos e históricos extraídos podem ser
-  limitados a canais da mesma forma. A opção `channels` em `/learn history` aceita nomes de canais ou menções.
+  limitados a canais da mesma forma. Com `/learn history`, escolha os canais na janela que abre
+  antes de a extração começar.
 
 Em `/help`, escolha `Memória`, depois `Marcação de Memória`, para o mesmo resumo no Discord.
 

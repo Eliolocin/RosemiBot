@@ -129,7 +129,7 @@ Phạm vi sẽ thu hẹp thông tin trước tiên: bộ nhớ máy chủ chỉ 
 - Bộ nhớ cá nhân sử dụng thẻ `#channel` thay thế, chỉ kích hoạt bộ nhớ trong kênh đó.
 - Giới hạn kênh có thể kết hợp với thẻ từ khóa. Đối với bộ nhớ máy chủ, thẻ bắt đầu bằng `#` là một từ khóa thông thường.
 - Các bộ nhớ máy chủ và tài liệu từng dùng thẻ `#channel` cũ đã được tự động chuyển đổi sang giới hạn kênh. Nếu một thẻ cũ chỉ đến kênh không còn tồn tại, mục đó sẽ vẫn hoạt động trong mọi kênh và `/memories` sẽ thông báo điều này; hãy chỉnh sửa và chọn lại kênh để giới hạn lại.
-- Nếu bạn sử dụng cơ sở tri thức tài liệu (RAG), tài liệu và lịch sử đã trích xuất cũng có thể được giới hạn vào các kênh theo cách tương tự. Tùy chọn `channels` trong `/learn history` nhận tên kênh hoặc đề cập.
+- Nếu bạn sử dụng cơ sở tri thức tài liệu (RAG), tài liệu và lịch sử đã trích xuất cũng có thể được giới hạn vào các kênh theo cách tương tự. Với `/learn history`, hãy chọn kênh trong cửa sổ mở ra trước khi bắt đầu trích xuất.
 
 Trong `/help`, chọn `Bộ nhớ`, rồi chọn `Gắn thẻ bộ nhớ`, để xem bản tóm tắt tương tự trong Discord.
 

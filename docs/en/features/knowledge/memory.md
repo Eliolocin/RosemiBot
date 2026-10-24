@@ -194,8 +194,8 @@ a keyword or only in one channel. Turn it on with `/config` > Engine > Memory & 
   automatically. If an old tag named a channel that no longer exists, the item stays active in
   every channel and `/memories` says so; edit it and pick channels to limit it again.
 - If you use the document knowledge base (RAG), documents and extracted histories can be
-  limited to channels the same way. The `channels` option on `/learn history` takes channel
-  names or mentions.
+  limited to channels the same way. With `/learn history`, pick the channels in the window that
+  opens before extraction starts.
 
 In `/help`, choose `Memory`, then `Memory Tagging`, for the same summary in Discord.
 

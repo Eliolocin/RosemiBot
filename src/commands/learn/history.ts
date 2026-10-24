@@ -25,7 +25,6 @@ import type {
   ButtonInteraction,
   ModalSubmitInteraction,
   Client,
-  Guild,
   Message,
   SlashCommandSubcommandBuilder,
   TextBasedChannel,
@@ -37,6 +36,8 @@ import { localizer } from "@/utils/text/localizer";
 import { log, ColorCode } from "@/utils/misc/logger";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { promptWithRawModal } from "@/utils/discord/ui/modals";
+import { DISCORD_SELECT_VALUES_MAX } from "@/utils/discord/ui/componentsV2Limits";
+import type { ModalChannelSelectField, ModalOptions } from "@/types/discord/modal";
 import {
   buildPersonaWorkflowNotice,
   completePersonaWorkflow,
@@ -220,34 +221,6 @@ async function retrieveInCharacterChunks(params: {
   });
 }
 
-/**
- * Resolves the `channels` option to channel IDs: a `<#id>` mention must name a channel in this
- * server, and a name matches every text or announcement channel that carries it.
- *
- * @returns The first entry that resolves to nothing when any does, so the command can reject it
- */
-export function resolveHistoryChannelScope(
-  guild: Pick<Guild, "channels"> | null,
-  input: string | null,
-): { status: "resolved"; channelIds: string[] } | { status: "unresolved"; entry: string } {
-  const scopeableChannels = [...(guild?.channels.cache.values() ?? [])].filter(
-    (channel) => channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement,
-  );
-  const channelIds = new Set<string>();
-  for (const rawEntry of (input ?? "").split(",")) {
-    const entry = rawEntry.trim();
-    if (!entry) continue;
-    const mentionedId = entry.match(/^<#(\d{17,20})>$/)?.[1];
-    const name = entry.replace(/^#+/, "").toLowerCase();
-    const matches = scopeableChannels.filter((channel) =>
-      mentionedId ? channel.id === mentionedId : channel.name.toLowerCase() === name,
-    );
-    if (matches.length === 0) return { status: "unresolved", entry };
-    for (const channel of matches) channelIds.add(channel.id);
-  }
-  return { status: "resolved", channelIds: [...channelIds] };
-}
-
 /** Shows the "no facts extracted from this batch" embed with the pagination footer. */
 async function showNoFactsExtractedEmbed(
   statusTarget: HistoryImportStatusTarget,
@@ -367,13 +340,6 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     )
     .addStringOption((option) =>
       option
-        .setName("channels")
-        .setDescription(localizer("en-US", "commands.learn.history.channels_description"))
-        .setRequired(false)
-        .setMaxLength(200),
-    )
-    .addStringOption((option) =>
-      option
         .setName("prompt")
         .setDescription(localizer("en-US", "commands.learn.history.prompt_description"))
         .setRequired(false)
@@ -402,7 +368,49 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
     );
 
 const EXTRACTION_PROMPT_MODAL_ID = "memory_history_import_prompt_modal";
+const EXTRACTION_CHANNELS_FIELD_ID = "channels";
 const EXTRACTION_PROMPT_FIELD_ID = "system_prompt";
+const DISCORD_SNOWFLAKE_PATTERN = /^\d{17,20}$/;
+
+/**
+ * The extraction prompt modal shared by every scope, with the document's channel limit above the prompt.
+ *
+ * @param inServer - False in a DM, where the channel field is omitted because there are no channels to pick
+ */
+export function buildExtractionPromptModal(defaultPrompt: string, inServer: boolean): ModalOptions {
+  const channelField: ModalChannelSelectField = {
+    kind: "channelSelect",
+    customId: EXTRACTION_CHANNELS_FIELD_ID,
+    labelKey: "commands.learn.history.prompt_modal_channels_label",
+    descriptionKey: "commands.learn.history.prompt_modal_channels_description",
+    channelTypes: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+    minValues: 0,
+    maxValues: DISCORD_SELECT_VALUES_MAX,
+    required: false,
+  };
+  return {
+    modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
+    modalTitleKey: "commands.learn.history.prompt_modal_title",
+    components: [
+      ...(inServer ? [channelField] : []),
+      {
+        customId: EXTRACTION_PROMPT_FIELD_ID,
+        style: TextInputStyle.Paragraph,
+        labelKey: "commands.learn.history.prompt_modal_label",
+        placeholder: "commands.learn.history.prompt_modal_placeholder",
+        required: false,
+        maxLength: 4000,
+        value: defaultPrompt,
+      },
+    ],
+  };
+}
+
+/** @returns The channels picked in the extraction prompt modal; empty means every channel. */
+export function readExtractionChannelIds(multiValues: Readonly<Record<string, string[]>> | undefined): string[] {
+  const picked = multiValues?.[EXTRACTION_CHANNELS_FIELD_ID] ?? [];
+  return [...new Set(picked.filter((id) => DISCORD_SNOWFLAKE_PATTERN.test(id)))];
+}
 
 /**
  * Shows a modal pre-filled with the chosen system prompt template, lets the user edit it,
@@ -416,7 +424,7 @@ async function promptForExtractionSystem(
   locale: string,
   mode: ExtractionPromptMode,
   personaForInCharacter?: TomoriState | null,
-): Promise<{ submitInteraction: ModalSubmitInteraction; systemPrompt: string } | null> {
+): Promise<{ submitInteraction: ModalSubmitInteraction; systemPrompt: string; channelDiscIds: string[] } | null> {
   let defaultPrompt: string;
   if (mode === "in_character") {
     defaultPrompt = substituteInCharacterFraming(
@@ -429,25 +437,19 @@ async function promptForExtractionSystem(
     defaultPrompt = EXTRACTION_CONVERSATION_SYSTEM_PROMPT;
   }
 
-  const modalResult = await promptWithRawModal(host, locale, {
-    modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
-    modalTitleKey: "commands.learn.history.prompt_modal_title",
-    components: [
-      {
-        customId: EXTRACTION_PROMPT_FIELD_ID,
-        style: TextInputStyle.Paragraph,
-        labelKey: "commands.learn.history.prompt_modal_label",
-        placeholder: "commands.learn.history.prompt_modal_placeholder",
-        required: false,
-        maxLength: 4000,
-        value: defaultPrompt,
-      },
-    ],
-  });
+  const modalResult = await promptWithRawModal(
+    host,
+    locale,
+    buildExtractionPromptModal(defaultPrompt, host.guildId !== null),
+  );
 
   if (modalResult.outcome !== "submit" || !modalResult.interaction) return null;
   const systemPrompt = modalResult.values?.[EXTRACTION_PROMPT_FIELD_ID]?.trim() || defaultPrompt;
-  return { submitInteraction: modalResult.interaction, systemPrompt };
+  return {
+    submitInteraction: modalResult.interaction,
+    systemPrompt,
+    channelDiscIds: readExtractionChannelIds(modalResult.multiValues),
+  };
 }
 
 /**
@@ -1187,7 +1189,6 @@ export async function execute(
     const nameInput = interaction.options.getString("name", true).trim();
     const startMessageId = interaction.options.getString("start_message_id", true).trim();
     const endMessageId = interaction.options.getString("end_message_id")?.trim() || null;
-    const channelsInput = interaction.options.getString("channels");
     const promptModeInput = interaction.options.getString("prompt");
     const promptMode: ExtractionPromptMode =
       promptModeInput === "roleplay"
@@ -1208,19 +1209,6 @@ export async function execute(
       });
       return;
     }
-
-    const channelScope = resolveHistoryChannelScope(interaction.guild, channelsInput);
-    if (channelScope.status === "unresolved") {
-      await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.learn.history.channels_unresolved_title",
-        descriptionKey: "commands.learn.history.channels_unresolved_description",
-        descriptionVars: { entry: channelScope.entry },
-        color: ColorCode.ERROR,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const channelDiscIds = channelScope.channelIds;
 
     const allPersonas = await personaRepository.loadAllForServer(guildId);
 
@@ -1264,25 +1252,14 @@ export async function execute(
               : promptMode === "roleplay"
                 ? EXTRACTION_ROLEPLAY_SYSTEM_PROMPT
                 : EXTRACTION_CONVERSATION_SYSTEM_PROMPT;
-          const promptModalResult = await selection.openModal({
-            modalCustomId: EXTRACTION_PROMPT_MODAL_ID,
-            modalTitleKey: "commands.learn.history.prompt_modal_title",
-            components: [
-              {
-                customId: EXTRACTION_PROMPT_FIELD_ID,
-                style: TextInputStyle.Paragraph,
-                labelKey: "commands.learn.history.prompt_modal_label",
-                placeholder: "commands.learn.history.prompt_modal_placeholder",
-                required: false,
-                maxLength: 4000,
-                value: defaultPrompt,
-              },
-            ],
-          });
+          const promptModalResult = await selection.openModal(
+            buildExtractionPromptModal(defaultPrompt, interaction.guildId !== null),
+          );
           if (promptModalResult.outcome !== "submitted") {
             log.info(`History import prompt modal ${promptModalResult.outcome} for user ${interaction.user.id}`);
             return completePersonaWorkflow();
           }
+          const channelDiscIds = readExtractionChannelIds(promptModalResult.phase.multiValues);
 
           const work = await promptModalResult.phase.beginInPlaceWork();
           await replaceHistoryImportStatus(work.message, locale, {
@@ -1451,6 +1428,7 @@ export async function execute(
       if (!promptModalResult) return;
       modalSubmitInteraction = promptModalResult.submitInteraction;
       const globalSystemPrompt = promptModalResult.systemPrompt;
+      const channelDiscIds = promptModalResult.channelDiscIds;
 
       await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
@@ -1572,6 +1550,7 @@ export async function execute(
     if (!autoPromptModalResult) return;
     modalSubmitInteraction = autoPromptModalResult.submitInteraction;
     const autoSystemPrompt = autoPromptModalResult.systemPrompt;
+    const channelDiscIds = autoPromptModalResult.channelDiscIds;
 
     await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
