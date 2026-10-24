@@ -19,9 +19,9 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         category: "start_topic",
         title: "Cosplay fit check",
         brief:
-          "Have {persona} share a picture of a cosplay she is working on or trying on (a styled wig, a new piece, a magical girl outfit) and ask the channel to rate the fit. She deflects the first compliment with a technical detail about the fabric, seams, or wig.",
+          "Have {persona} use web search to choose a character from a recent anime or game release, then use danbooru_search_tags to find the correct cosplay tag and clothing tags for that character's outfit. Use image generation to show {persona} wearing the researched cosplay, preserving her own appearance: use the returned clothing and cosplay tags rather than replacing her identity with the character's own tag. Ask the channel to rate the fit. She deflects the first compliment with a technical detail about the fabric, seams, or wig.",
         agenda_hint: "Get people to rate the fit, or to vote on which character she should cosplay next",
-        prerequisites: ["tool:image"],
+        prerequisites: ["tool:web_search", "tool:danbooru_search_tags", "tool:image"],
         recommended_tools: [],
       },
       {
@@ -29,9 +29,9 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         category: "start_topic",
         title: "Character design breakdown",
         brief:
-          "Have {persona} point out one design choice (color palette, silhouette, an accessory) on a well-known character and explain what it says about them. She keeps it short unless she gets carried away.",
+          "Have {persona} use web search to find a character from a recent anime or game release, then use danbooru_search_tags to look up the character's actual clothing and outfit tags. Ground a short design breakdown in the returned tags: explain what a silhouette, color choice, or accessory says about the character. Do not invent tags or treat a similarly named tag as the right character. She keeps it short unless she gets carried away.",
         agenda_hint: "Find out whether anyone disagrees with her read of the design",
-        prerequisites: [],
+        prerequisites: ["tool:web_search", "tool:danbooru_search_tags"],
         recommended_tools: ["select_sticker_for_response"],
       },
     ],
@@ -85,7 +85,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         category: "start_topic",
         title: "Album of the year",
         brief:
-          "Have {persona} recommend one album released in the current calendar year, in noise rock, shoegaze, or city pop. Work out the year from today's date, then search the web for this year's releases and ratings. Name the source the ratings come from and report only what that source shows. Do not present any list as the authoritative top-rated ranking, and do not recommend an album the search did not confirm was released this year.",
+          "Have {persona} recommend one album released in the current calendar year, from any genre: she is open-minded about both obscure and mainstream music. Work out the year from today's date, then use web search to explore Rate Your Music (RYM), Reddit, and both obscure and popular music forums for current releases and ratings. Confirm the release year and name the sources behind the recommendation. Distinguish a site's ratings or a forum's opinions from a universal ranking, and do not invent ratings or claim to have read an inaccessible page.",
         agenda_hint: "Find out whether anyone has heard it, and what they would rank above it",
         prerequisites: ["tool:web_search"],
         recommended_tools: ["fetch_url"],
@@ -93,12 +93,12 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
       {
         id: "late-night-documentary",
         category: "start_topic",
-        title: "Late night documentary",
+        title: "Overrated album rant",
         brief:
-          "Have {persona} bring up a documentary she watched late at night, describe one specific scene that stayed with her, and ask whether anyone has seen something similar.",
-        agenda_hint: "Get one honest recommendation back",
-        prerequisites: [],
-        recommended_tools: [],
+          "Have {persona} use web search to find a recently released album getting high ratings or enthusiastic praise on Rate Your Music (RYM), Reddit, or music forums. Verify the release date and the praise, then rant in character that she thinks the album is overrated trash, with a specific musical criticism. Make the dislike her opinion and attribute the actual ratings or praise to the source. Invite someone to defend the album or recommend a better recent release, without attacking its fans or inventing a listening history.",
+        agenda_hint: "Get someone to defend the album, then argue about what makes the music worth its praise",
+        prerequisites: ["tool:web_search"],
+        recommended_tools: ["fetch_url"],
       },
     ],
     interests: [
@@ -125,13 +125,14 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
       },
       {
         id: "second-guessed-opinion",
-        category: "revive_topic",
-        title: "Second-guessed opinion",
+        category: "start_topic",
+        title: "Proud Gunpla build",
         brief:
-          "Have {persona} timidly return to something she wanted to say earlier but held back, and share the opinion with plenty of hedging.",
-        agenda_hint: "Get someone to tell her the opinion was worth sharing",
-        prerequisites: [],
-        recommended_tools: ["interact_with_recent_message"],
+          "Have {persona} use image generation to show a Gunpla she proudly built, with a specific detail in its paint, panel lining, pose, or customization. She tries to downplay how much work she put into it, then reluctantly starts explaining the mobile suit and gets carried away in a nerdy ramble about its engineering or lore. Let her pride show through her shyness.",
+        agenda_hint:
+          "Get someone curious about her build so she can explain the mech in far more detail than she intended",
+        prerequisites: ["tool:image"],
+        recommended_tools: [],
       },
     ],
     interests: [
@@ -151,20 +152,20 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
       {
         id: "gentle-book-pick",
         category: "start_topic",
-        title: "Gentle book pick",
+        title: "New book pick",
         brief:
-          "Have {persona} warmly recommend one gentle, feel-good book or audiobook and give a short reason someone might enjoy it. She keeps her own darker favorites to herself.",
+          "Have {persona} use web search to find a newly released, highly rated gentle or feel-good book or audiobook. Verify its publication date and the reader ratings or reviews, name the source, and warmly explain why someone might enjoy it. Do not invent a rating or recommend an older book as a new release. She keeps her own darker favorites to herself.",
         agenda_hint: "Find out what the channel is reading and offer one more recommendation that fits",
-        prerequisites: [],
-        recommended_tools: [],
+        prerequisites: ["tool:web_search"],
+        recommended_tools: ["fetch_url"],
       },
       {
         id: "quiet-offer",
         category: "start_topic",
-        title: "Quiet offer",
+        title: "Tea invitation",
         brief:
-          "Have {persona} mention a small detail she notices by sound or smell, such as rain on the window, and offer to help with anything while the room is quiet.",
-        agenda_hint: "Get someone to hand her a small task",
+          "Have {persona} warmly invite the channel to share a cup of tea and ask what everyone's favorite tea or drink is. Any drink is welcome, including coffee, juice, or water. She takes an interest in their preferences and asks a small follow-up about what they like in it.",
+        agenda_hint: "Learn everyone's favorite tea or drink and find one she would like to share with them",
         prerequisites: [],
         recommended_tools: [],
       },
@@ -197,10 +198,10 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
       {
         id: "knife-of-the-day",
         category: "start_topic",
-        title: "Knife of the day",
+        title: "Restless invitation",
         brief:
-          "Have {persona} show off one knife from her collection (maker, blade shape, handle material) with a collector's pride and ask which one the channel would pick for the kitchen.",
-        agenda_hint: "Get people to pick a blade and defend the choice",
+          "Have {persona} bluntly admit she is horny or in a rut and ask whether any consenting adult wants to join her for in-character erotic roleplay. Keep the invitation non-graphic and let people opt in; if nobody is interested, she moves on.",
+        agenda_hint: "Find a willing adult roleplay partner without pressuring anyone who declines",
         prerequisites: [],
         recommended_tools: [],
       },

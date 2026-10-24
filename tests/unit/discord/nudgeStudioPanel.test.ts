@@ -9,7 +9,7 @@ import {
   PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
   type NaturalNudgeCategory,
 } from "@/modules/natural-nudges/db/types";
-import { nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
+import { buildNudgeStudioRouteId, nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
 import type { NudgeStudioView, StudioEntry } from "@/modules/natural-nudges/discord/studioOperations";
 import {
   availabilityOptions,
@@ -392,6 +392,44 @@ describe("Nudge Studio modals", () => {
         expect(modalSelect(modal, nudgeStudioFieldId(field, NONCE))?.max_values).toBe(CUSTOM_IDLE_NUDGE_LIST_MAX);
       }
     }
+  });
+
+  it("keeps Danbooru tag lookup selectable and prefilled in the shared form", () => {
+    const modal = buildIdleNudgeFormModal(
+      "en-US",
+      "start_topic",
+      NONCE,
+      {
+        category: "start_topic",
+        title: "Outfit lookup",
+        brief: "Look up the character's clothing tags.",
+        agenda_hint: null,
+        prerequisites: ["tool:danbooru_search_tags"],
+        recommended_tools: [],
+      },
+      {
+        customId: buildNudgeStudioRouteId({
+          action: "edit-submit",
+          locale: "en-US",
+          category: "start_topic",
+          id: 1,
+          nonce: NONCE,
+        }),
+      },
+    );
+    const needs = modalSelect(modal, nudgeStudioFieldId("needs", NONCE));
+    const option = needs?.options?.find((option) => option.value === "tool:danbooru_search_tags");
+    expect(option?.default).toBe(true);
+    expect(option?.label).toBe(
+      localizedCopy("en-US", "commands.nudge-studio.prerequisite_tool", {
+        tool: localizedCopy("en-US", "commands.nudge-studio.tool_danbooru_search_tags"),
+      }),
+    );
+    expect(
+      modalSelect(modal, nudgeStudioFieldId("tools", NONCE))?.options?.some(
+        (option) => option.value === "danbooru_search_tags",
+      ),
+    ).toBe(true);
   });
 
   it("presents removal for the visible server and persona entries, all checked", () => {

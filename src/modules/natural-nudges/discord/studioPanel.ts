@@ -155,6 +155,7 @@ const PREREQUISITE_KEYS: Record<string, string> = {
 const TOOL_KEYS: Record<NudgeToolName, string> = {
   web_search: "commands.nudge-studio.tool_web_search",
   fetch_url: "commands.nudge-studio.tool_fetch_url",
+  danbooru_search_tags: "commands.nudge-studio.tool_danbooru_search_tags",
   image: "commands.nudge-studio.tool_image",
   generate_voice_message: "commands.nudge-studio.tool_generate_voice_message",
   generate_video: "commands.nudge-studio.tool_generate_video",
