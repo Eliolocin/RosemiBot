@@ -102,6 +102,7 @@ export default {
     prerequisite_tool: `{tool} tool is available`,
     tool_web_search: `Web search`,
     tool_fetch_url: `Read a link`,
+    tool_danbooru_search_tags: `Danbooru tag lookup`,
     tool_image: `Image generation`,
     tool_generate_voice_message: `Voice message`,
     tool_generate_video: `Video generation`,

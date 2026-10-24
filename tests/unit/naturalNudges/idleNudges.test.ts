@@ -373,6 +373,34 @@ describe("tool names", () => {
 describe("official persona nudge defaults", () => {
   const offeredLineages = [...new Set(personaSections.flatMap((section) => section.rows).map((row) => row.lineageId))];
 
+  it.each([
+    [4, "cosplay-fit-check", ["web_search", "danbooru_search_tags", "generate_image_nai"]],
+    [4, "design-breakdown", ["web_search", "danbooru_search_tags"]],
+    [1770, "album-of-the-year", ["web_search"]],
+    [1770, "late-night-documentary", ["web_search"]],
+    [3585, "second-guessed-opinion", ["generate_image_nai"]],
+    [50, "gentle-book-pick", ["web_search"]],
+  ] as const)("requires each tool used by preset %s nudge %s", (lineage, id, requiredTools) => {
+    const config = personaConfig(OWNER_ID, { idle_nudges: PRESET_NATURAL_NUDGE_DEFAULTS[lineage].idleNudges });
+    const entry = listPersonaIdleNudges(OWNER_ID, config).find(
+      (entry) => entry.definition.key === `persona:${OWNER_ID}:${id}`,
+    );
+    if (!entry) throw new Error(`Missing seeded nudge: ${lineage}/${id}`);
+    const facts = {
+      hasHangingConversation: false,
+      hasScenePartner: false,
+      availableTools: new Set<string>(requiredTools),
+      target: null,
+    };
+    expect(isIdleNudgeEligible(entry.definition, facts)).toBe(true);
+    for (const tool of requiredTools) {
+      const availableTools = new Set<string>(requiredTools);
+      availableTools.delete(tool);
+      expect(isIdleNudgeEligible(entry.definition, { ...facts, availableTools })).toBe(false);
+      expect(findMissingIdleNudgeTool(entry.definition, availableTools)).not.toBeNull();
+    }
+  });
+
   it("gives every offered persona lineage valid authored defaults", () => {
     const missing = offeredLineages.filter((lineage) => {
       const defaults = PRESET_NATURAL_NUDGE_DEFAULTS[lineage]?.idleNudges ?? [];

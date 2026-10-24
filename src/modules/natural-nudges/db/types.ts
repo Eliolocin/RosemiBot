@@ -9,6 +9,7 @@ export type NaturalNudgeCategory = (typeof NATURAL_NUDGE_CATEGORIES)[number];
 export const NUDGE_TOOL_NAMES = [
   "web_search",
   "fetch_url",
+  "danbooru_search_tags",
   "image",
   "generate_voice_message",
   "generate_video",
