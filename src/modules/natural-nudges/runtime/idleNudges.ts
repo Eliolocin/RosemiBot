@@ -6,6 +6,7 @@ import {
   isNudgeToolName,
   NUDGE_PREREQUISITE_IDS,
   NUDGE_TOOL_NAMES,
+  personaAuthoredIdleNudgeKey,
   PRESENCE_ACTIVITY_PREREQUISITE,
   prerequisiteTool,
   RECENT_MEMORY_PREREQUISITE,
@@ -15,6 +16,7 @@ import {
   type IdleNudgePersonaScopes,
   type NaturalNudgeCategory,
   type NudgeToolName,
+  type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 
 export {
@@ -41,6 +43,8 @@ export interface IdleNudgeDefinition {
   prerequisites: readonly string[];
   recommendedTools: readonly string[];
   builtIn: boolean;
+  /** Present only on persona-authored definitions: the local persona instance that owns and may run this entry. */
+  ownerPersonaId?: number;
 }
 
 /** Briefs are planner instructions, so they stay in English like every other model-facing prompt. */
@@ -353,6 +357,43 @@ export function customIdleNudgeDefinition(row: CustomIdleNudgeRow): IdleNudgeDef
   };
 }
 
+/** Built-in, server-created, or persona-authored. */
+export type IdleNudgeSource = "builtin" | "server" | "persona";
+
+export function idleNudgeSource(idleNudge: IdleNudgeDefinition): IdleNudgeSource {
+  if (idleNudge.builtIn) return "builtin";
+  return idleNudge.ownerPersonaId === undefined ? "server" : "persona";
+}
+
+/** A persona-authored definition and its local availability, for surfaces that list disabled entries too. */
+export interface PersonaIdleNudgeEntry {
+  definition: IdleNudgeDefinition;
+  enabled: boolean;
+}
+
+/** Owner definitions stay with their own persona; a missing or unreadable config never opens them to others. */
+export function listPersonaIdleNudges(
+  personaId: number,
+  config: PersonaNaturalNudgeConfig | undefined,
+): PersonaIdleNudgeEntry[] {
+  if (!config || config.persona_id !== personaId) return [];
+  const disabled = new Set(config.disabled_idle_nudge_ids);
+  return config.idle_nudges.map((authored) => ({
+    definition: {
+      key: personaAuthoredIdleNudgeKey(personaId, authored.id),
+      category: authored.category,
+      title: authored.title,
+      brief: authored.brief,
+      agendaHint: authored.agenda_hint,
+      prerequisites: authored.prerequisites,
+      recommendedTools: authored.recommended_tools,
+      builtIn: false,
+      ownerPersonaId: personaId,
+    },
+    enabled: !disabled.has(authored.id),
+  }));
+}
+
 export function isInPersonaScope(key: string, personaId: number, scopes: IdleNudgePersonaScopes): boolean {
   return scopes.get(key)?.includes(personaId) ?? true;
 }
@@ -366,6 +407,55 @@ export function listRunnableIdleNudges(
     ...BUILTIN_IDLE_NUDGES.filter((idleNudge) => !disabledBuiltIns.includes(idleNudge.key)),
     ...customIdleNudges.filter((idleNudge) => idleNudge.enabled).map(customIdleNudgeDefinition),
   ];
+}
+
+/** Loaded server and owner state that idle nudge selection reads for one drawn persona. */
+export interface IdleNudgeSelectionSources {
+  personaId: number;
+  disabledBuiltIns: readonly string[];
+  customIdleNudges: readonly CustomIdleNudgeRow[];
+  scopes: IdleNudgePersonaScopes;
+  personaConfig: PersonaNaturalNudgeConfig | undefined;
+}
+
+/** Everything the drawn persona may run: enabled built-ins, scoped server customs, and its own available entries. */
+export function listPersonaRunnableIdleNudges(sources: IdleNudgeSelectionSources): IdleNudgeDefinition[] {
+  const serverDefinitions = listRunnableIdleNudges(sources.disabledBuiltIns, sources.customIdleNudges).filter(
+    (idleNudge) => isInPersonaScope(idleNudge.key, sources.personaId, sources.scopes),
+  );
+  const ownerDefinitions = listPersonaIdleNudges(sources.personaId, sources.personaConfig)
+    .filter((entry) => entry.enabled)
+    .map((entry) => entry.definition);
+  return [...serverDefinitions, ...ownerDefinitions];
+}
+
+/** Fresh lookup of the planned entry; null when it was deleted, disabled, or no longer belongs to this persona. */
+export function findPersonaRunnableIdleNudge(
+  key: string,
+  sources: IdleNudgeSelectionSources,
+): IdleNudgeDefinition | null {
+  return listPersonaRunnableIdleNudges(sources).find((idleNudge) => idleNudge.key === key) ?? null;
+}
+
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const values = new Set(left);
+  return right.every((value) => values.has(value));
+}
+
+/** The authored content the planner saw must still match the stored definition right before delivery. */
+export function sameIdleNudgeDefinition(left: IdleNudgeDefinition, right: IdleNudgeDefinition): boolean {
+  return (
+    left.category === right.category &&
+    left.titleKey === right.titleKey &&
+    left.title === right.title &&
+    left.brief === right.brief &&
+    left.agendaHint === right.agendaHint &&
+    left.builtIn === right.builtIn &&
+    left.ownerPersonaId === right.ownerPersonaId &&
+    sameStringList(left.prerequisites, right.prerequisites) &&
+    sameStringList(left.recommendedTools, right.recommendedTools)
+  );
 }
 
 /** What the prerequisite checks know about one persona at one moment. */
@@ -424,6 +514,18 @@ export function canIdleNudgeBeBlocked(idleNudge: IdleNudgeDefinition): boolean {
 
 function hasNudgeTool(tool: NudgeToolName, availableTools: ReadonlySet<string>): boolean {
   return tool === "image" ? IMAGE_TOOL_NAMES.some((name) => availableTools.has(name)) : availableTools.has(tool);
+}
+
+/** The first prerequisite tool the persona no longer holds; the before-send recheck aborts instead of offering it. */
+export function findMissingIdleNudgeTool(
+  idleNudge: IdleNudgeDefinition,
+  availableTools: ReadonlySet<string>,
+): NudgeToolName | null {
+  for (const id of idleNudge.prerequisites) {
+    const tool = prerequisiteTool(id);
+    if (tool !== null && !hasNudgeTool(tool, availableTools)) return tool;
+  }
+  return null;
 }
 
 /** What keeps an enabled idle nudge from ever running on a server, judged only on facts that hold for days. */
