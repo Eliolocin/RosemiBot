@@ -27,8 +27,3 @@ Start running your own TomoriBot instance through any of these install paths:
 Optional modules (local LLMs, ComfyUI, SearXNG, Crawl4AI, local TTS/STT, ChatMock,
 local MCP servers) each have their own page, see
 [`local-endpoints`](./local-endpoints) for the full directory.
-
-Once she's up and running, [`maintenance`](./maintenance) covers the host-side scripts, updating,
-and backing up/restoring your database.
-
-To verify PluralBuddy webhook reposts, follow [PluralBuddy OAuth Setup](./pluralbuddy-oauth).

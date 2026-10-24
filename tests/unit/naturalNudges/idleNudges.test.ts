@@ -377,9 +377,9 @@ describe("official persona nudge defaults", () => {
     [4, "cosplay-fit-check", ["web_search", "danbooru_search_tags", "generate_image_nai"]],
     [4, "design-breakdown", ["web_search", "danbooru_search_tags"]],
     [1770, "album-of-the-year", ["web_search"]],
-    [1770, "late-night-documentary", ["web_search"]],
-    [3585, "second-guessed-opinion", ["generate_image_nai"]],
-    [50, "gentle-book-pick", ["web_search"]],
+    [1770, "album-rant", ["web_search"]],
+    [3585, "gunpla-building", ["generate_image_nai"]],
+    [50, "book-pick", ["web_search"]],
   ] as const)("requires each tool used by preset %s nudge %s", (lineage, id, requiredTools) => {
     const config = personaConfig(OWNER_ID, { idle_nudges: PRESET_NATURAL_NUDGE_DEFAULTS[lineage].idleNudges });
     const entry = listPersonaIdleNudges(OWNER_ID, config).find(

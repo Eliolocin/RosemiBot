@@ -23,7 +23,6 @@ export default {
     description_play_scene:
       "[閒置搭話](https://docs.tomoribot.app/zh-TW/features/chatting-personality/natural-nudges/#idle-nudges)：兩個人格在大家面前上演一段簡短對白。",
     row_notes: "{title} ({notes})",
-    note_custom: "自訂",
     note_scope: "僅限 {personas}",
     note_scope_more: "還有 {count} 個",
     blocker_tool: "需要 {tool}",

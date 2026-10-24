@@ -23,7 +23,6 @@ export default {
     description_play_scene:
       "[Intervenciones espontáneas](https://docs.tomoribot.app/es-419/features/chatting-personality/natural-nudges/#idle-nudges) donde dos personas representan una breve escena frente a todos.",
     row_notes: "{title} ({notes})",
-    note_custom: "Personalizado",
     note_scope: "Solo {personas}",
     note_scope_more: "{count} más",
     blocker_tool: "necesita {tool}",

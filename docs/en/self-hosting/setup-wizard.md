@@ -83,76 +83,8 @@ bun run dev                          # bot only
 bun run launch --searxng --crawl4ai  # bot + local servers (see bun run launch --help)
 ```
 
-When the bot is online, run `/setup` in Discord to connect an AI provider. A server that holds no
-provider of its own cannot reply, unless it runs in User BYOK mode where each member's personal
-provider answers instead, so this is the last step of every install path.
-
-## Check a fresh install on each operating system
-
-The [Setup smoke test](https://github.com/Bredrumb/TomoriBot/actions/workflows/ci-setup-smoke.yml)
-runs only when you select **Run workflow** in GitHub Actions. It checks a fresh checkout on Ubuntu,
-macOS, and Windows. Each runner starts a temporary PostgreSQL server, supplies a dummy Discord token,
-runs `bun run setup --full --defaults` before installing dependencies separately, checks the generated
-secret and database connection, and builds the bot. The Full Install extras run and report their
-results; some need additional system packages or a Hugging Face token and can give manual instructions.
-
-The dummy token cannot log in to Discord, so this check cannot verify `bun run dev` or the in-Discord
-`/setup` flow. Finish one install with a real bot token and database to check those steps.
-
-## The `/setup` command
-<!-- anchor: the-setup-command -->
-
-`/setup` opens an ephemeral checklist panel that only the person who ran it can operate. In a server
-it requires `Manage Server`; in a DM it is available to that person. Every row on
-the panel is a draft value: `Finish Setup` is the only control that writes anything, so opening,
-editing, cancelling, or restarting leaves every database row untouched.
-
-| Step | Appears | What it collects |
-|---|---|---|
-| Policies | `RUN_ENV=production` only | Acceptance of the Terms of Service and Privacy Policy, both in one modal. |
-| AI Provider | Every environment | How replies reach a model. One of the three access modes below. |
-| Starting Settings | Every environment | Starting persona, reply style, timezone, and the server default system prompt. |
-
-Every other `RUN_ENV` value renders the two-step layout and no policy copy at all. A deployment
-running with `RUN_ENV=production` registers `/legal terms-of-service` and `/legal privacy-policy`
-beside `/legal license`; every other value registers only `/legal license`.
-
-### Provider access modes
-
-- **AI Provider (Recommended)**: pick a provider from the catalog and paste its API key. The key is
-  validated against the provider and encrypted into the draft; the panel shows only that a key is
-  stored, never the key itself. Run `/help`, then `Setup` > `Get an API Key` for the
-  per-provider walkthrough.
-- **Custom Endpoint**: a two-button sub-area for a self-hosted or proxy endpoint.
-  `Configure Connection` collects the API compatibility, a label, the URL, and an optional auth
-  token, and checks that the endpoint answers. `Configure Text Model` collects the model code, its
-  context size, and its capability declarations, and stays disabled until a connection validates.
-  Saving the connection again clears the model declaration, because the declarations depend on the
-  chosen API compatibility. This is the same registration `/providers` performs, done inside the
-  wizard, and it creates no rows before `Finish Setup`.
-- **User BYOK** (servers only, never in a DM): the server keeps no provider of its own and every
-  member-triggered reply resolves a personal provider instead. Confirm it in the modal, then have
-  members register theirs with `/personal providers`. See
-  [Server Moderation](/features/setup-administration/server-moderation/#user-byok-bring-your-own-key).
-
-### Starting settings
-
-One four-row modal collects the persona, the reply style, the timezone offset, and the default system
-prompt. The timezone is optional and defaults to UTC. The system prompt offers
-`Built-in Default (Recommended)` plus every preset in the server catalog: the built-in choice
-stores no prompt text at all, so it keeps tracking the shipped default, and a preset choice stores
-that preset's text as it reads at commit time. Deleting a stored persona or prompt from the catalog
-re-opens the step until another is chosen.
-
-### Finishing and cancelling
-
-`Finish Setup` stays disabled until every rendered step is complete. It revalidates the catalogs and
-the server state, commits the whole draft in one transaction, and replaces the panel with the
-receipt. `Cancel` discards the draft and expires every control on the panel.
-
-A draft lives in the bot process, so a restart discards it. Cancellation or completion also ends
-the draft. At most 200 drafts are held
-at once; the oldest is discarded at the cap. A control for a session that is no longer available writes nothing.
+When the bot is online, run `/setup` in Discord. It walks you through connecting an AI provider;
+see the [Quickstart](/introduction/quickstart/) for what each step asks.
 
 ## Updating
 

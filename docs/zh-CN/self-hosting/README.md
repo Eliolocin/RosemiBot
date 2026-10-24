@@ -26,5 +26,3 @@ aiGenerated: false
 可选模块（本地 LLM、ComfyUI、SearXNG、Crawl4AI、本地 TTS/STT、ChatMock、本地 MCP
 服务器）各自有独立页面，完整目录见
 [`local-endpoints`](./local-endpoints)。
-
-等她跑起来之后，[`maintenance`](./maintenance) 会介绍主机端脚本、更新，以及数据库的备份与还原。

@@ -27,6 +27,3 @@ Comienza a ejecutar tu propia instancia de TomoriBot mediante cualquiera de esta
 Los módulos opcionales (LLMs locales, ComfyUI, SearXNG, Crawl4AI, TTS/STT local, ChatMock,
 servidores MCP locales) tienen cada uno su propia página; consulta
 [`local-endpoints`](./local-endpoints) para ver el directorio completo.
-
-Una vez que esté en funcionamiento, [`maintenance`](./maintenance) cubre los scripts del lado del host, las
-actualizaciones y las copias de seguridad/restauración de tu base de datos.

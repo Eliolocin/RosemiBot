@@ -23,7 +23,6 @@ export default {
     description_play_scene:
       "[Gợi ý nhàn rỗi](https://docs.tomoribot.app/vi/features/chatting-personality/natural-nudges/#idle-nudges) khi hai persona cùng diễn một hoạt cảnh ngắn trước mọi người.",
     row_notes: "{title} ({notes})",
-    note_custom: "Tùy chỉnh",
     note_scope: "Chỉ {personas}",
     note_scope_more: "thêm {count} mục",
     blocker_tool: "cần {tool}",

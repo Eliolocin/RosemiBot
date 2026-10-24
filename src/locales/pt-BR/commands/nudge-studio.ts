@@ -23,7 +23,6 @@ export default {
     description_play_scene:
       "[Toques ociosos](https://docs.tomoribot.app/pt-BR/features/chatting-personality/natural-nudges/#idle-nudges) onde duas personas encenam uma breve conversa na frente de todos.",
     row_notes: "{title} ({notes})",
-    note_custom: "Personalizado",
     note_scope: "Apenas {personas}",
     note_scope_more: "mais {count}",
     blocker_tool: "precisa de {tool}",

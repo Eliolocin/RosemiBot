@@ -91,7 +91,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         recommended_tools: ["fetch_url"],
       },
       {
-        id: "late-night-documentary",
+        id: "album-rant",
         category: "start_topic",
         title: "Overrated album rant",
         brief:
@@ -124,7 +124,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         recommended_tools: [],
       },
       {
-        id: "second-guessed-opinion",
+        id: "gunpla-building",
         category: "start_topic",
         title: "Proud Gunpla build",
         brief:
@@ -150,7 +150,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
     talkativeness: 1,
     idleNudges: [
       {
-        id: "gentle-book-pick",
+        id: "book-pick",
         category: "start_topic",
         title: "New book pick",
         brief:
@@ -160,7 +160,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
         recommended_tools: ["fetch_url"],
       },
       {
-        id: "quiet-offer",
+        id: "tea-invitation",
         category: "start_topic",
         title: "Tea invitation",
         brief:
@@ -196,7 +196,7 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
     talkativeness: 2,
     idleNudges: [
       {
-        id: "knife-of-the-day",
+        id: "erp-invitation",
         category: "start_topic",
         title: "Restless invitation",
         brief:
