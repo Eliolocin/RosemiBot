@@ -31,7 +31,7 @@ export function toDanbooruTag(tag: string): string {
   return EMOTICON_TAGS.has(trimmed) ? trimmed : trimmed.replace(/\s+/g, "_");
 }
 
-export type DanbooruEndpoint = "autocomplete" | "related_tag" | "wiki_page" | "post" | "posts";
+type DanbooruEndpoint = "autocomplete" | "related_tag" | "wiki_page" | "post" | "posts";
 
 export type DanbooruFailureKind =
   | "refused"
