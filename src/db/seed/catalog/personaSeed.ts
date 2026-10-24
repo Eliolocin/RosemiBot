@@ -4,12 +4,16 @@ import { jsonb, str, textArray } from "./sql";
 import { PRESET_NATURAL_NUDGE_DEFAULTS, type PresetNaturalNudgeDefaults } from "./personas/naturalNudges";
 import type { PersonaInput } from "./types";
 import { personaNamingConfigSchema, validatePersonaNamingAuthoring } from "@/types/personaNaming";
-import { naturalNudgeInterestsSchema, naturalNudgeTalkativenessSchema } from "@/modules/natural-nudges/db/types";
+import {
+  naturalNudgeInterestsSchema,
+  naturalNudgeTalkativenessSchema,
+  personaAuthoredIdleNudgesSchema,
+} from "@/modules/natural-nudges/db/types";
 
 const OFFICIAL_LINEAGE_IDS = new Set<number>([4, 716, 1770, 3585, 50, 666]); // 1337 (Zaya) pending
 
 const PERSONA_COLUMNS =
-  "persona_preset_name, persona_preset_desc, preset_attribute_list, preset_sample_dialogues_in, preset_sample_dialogues_out, preset_language, preset_avatar_path, preset_trigger_words, preset_lineage_id, preset_naming_config, is_nsfw, natural_nudge_interests, natural_nudge_talkativeness";
+  "persona_preset_name, persona_preset_desc, preset_attribute_list, preset_sample_dialogues_in, preset_sample_dialogues_out, preset_language, preset_avatar_path, preset_trigger_words, preset_lineage_id, preset_naming_config, is_nsfw, natural_nudge_interests, natural_nudge_talkativeness, natural_nudge_idle_nudges";
 
 // Upsert identity is the stable (lineage, language) pair, NOT persona_preset_name.
 // The name is a mutable, human-facing catalog label, so keying on it would turn a
@@ -31,6 +35,7 @@ const PERSONA_ON_CONFLICT = `ON CONFLICT (preset_lineage_id, preset_language) WH
   is_nsfw = EXCLUDED.is_nsfw,
   natural_nudge_interests = EXCLUDED.natural_nudge_interests,
   natural_nudge_talkativeness = EXCLUDED.natural_nudge_talkativeness,
+  natural_nudge_idle_nudges = EXCLUDED.natural_nudge_idle_nudges,
   updated_at = CURRENT_TIMESTAMP`;
 
 const OFFICIAL_ATTRIBUTE_FLAGS_UPDATE = `WITH official_attribute_flags AS (
@@ -78,6 +83,7 @@ function renderPersonaTuple(preset: PersonaInput): string {
     String(preset.isNsfw === true),
     jsonb(naturalNudgeDefaults(preset).interests),
     String(naturalNudgeDefaults(preset).talkativeness),
+    jsonb(naturalNudgeDefaults(preset).idleNudges),
   ].join(", ");
 }
 
@@ -132,7 +138,8 @@ export function validatePersonas(): string[] {
     if (
       !nudgeDefaults ||
       !naturalNudgeInterestsSchema.safeParse(nudgeDefaults.interests).success ||
-      !naturalNudgeTalkativenessSchema.safeParse(nudgeDefaults.talkativeness).success
+      !naturalNudgeTalkativenessSchema.safeParse(nudgeDefaults.talkativeness).success ||
+      !personaAuthoredIdleNudgesSchema.safeParse(nudgeDefaults.idleNudges).success
     ) {
       errors.push(`persona_presets/${preset.name}: invalid Natural Nudges defaults`);
     }

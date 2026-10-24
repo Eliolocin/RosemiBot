@@ -758,6 +758,8 @@ CREATE TABLE IF NOT EXISTS persona_presets (
   preset_trigger_words TEXT[] DEFAULT '{}',
   preset_naming_config JSONB NOT NULL DEFAULT '{"prefixes":{},"suffixes":{},"addressTerms":{}}'::JSONB,
   is_nsfw BOOLEAN NOT NULL DEFAULT false,
+  natural_nudge_idle_nudges JSONB NOT NULL DEFAULT '[]'::JSONB
+    CHECK (jsonb_typeof(natural_nudge_idle_nudges) = 'array' AND jsonb_array_length(natural_nudge_idle_nudges) <= 20),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -780,6 +782,14 @@ SELECT add_column_if_not_exists('persona_presets', 'is_nsfw', 'BOOLEAN', 'false'
 -- Natural Nudges preset defaults (migration 110): pointer personas live-resolve these.
 SELECT add_column_if_not_exists('persona_presets', 'natural_nudge_interests', 'JSONB', '''[]''::JSONB', 'NOT NULL');
 SELECT add_column_if_not_exists('persona_presets', 'natural_nudge_talkativeness', 'SMALLINT', '2', 'NOT NULL');
+-- Authored persona idle nudges: the portable preset list a pointer persona reads until it snapshots its own.
+SELECT add_column_if_not_exists(
+  'persona_presets',
+  'natural_nudge_idle_nudges',
+  'JSONB',
+  '''[]''::JSONB',
+  'NOT NULL CHECK (jsonb_typeof(natural_nudge_idle_nudges) = ''array'' AND jsonb_array_length(natural_nudge_idle_nudges) <= 20)'
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_presets_lineage_language_unique
   ON persona_presets(preset_lineage_id, preset_language)
@@ -3476,8 +3486,28 @@ CREATE TABLE IF NOT EXISTS persona_natural_nudge_configs (
   talkativeness SMALLINT NOT NULL DEFAULT 2 CHECK (talkativeness BETWEEN 0 AND 4),
   interests     JSONB    NOT NULL DEFAULT '[]'::JSONB
                 CHECK (jsonb_typeof(interests) = 'array' AND jsonb_array_length(interests) <= 8),
+  authored_idle_nudges JSONB
+                CHECK (authored_idle_nudges IS NULL
+                  OR (jsonb_typeof(authored_idle_nudges) = 'array' AND jsonb_array_length(authored_idle_nudges) <= 20)),
+  disabled_idle_nudge_ids JSONB NOT NULL DEFAULT '[]'::JSONB
+                CHECK (jsonb_typeof(disabled_idle_nudge_ids) = 'array'),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+SELECT add_column_if_not_exists(
+  'persona_natural_nudge_configs',
+  'authored_idle_nudges',
+  'JSONB',
+  NULL,
+  'CHECK (authored_idle_nudges IS NULL OR (jsonb_typeof(authored_idle_nudges) = ''array'' AND jsonb_array_length(authored_idle_nudges) <= 20))'
+);
+SELECT add_column_if_not_exists(
+  'persona_natural_nudge_configs',
+  'disabled_idle_nudge_ids',
+  'JSONB',
+  '''[]''::JSONB',
+  'NOT NULL CHECK (jsonb_typeof(disabled_idle_nudge_ids) = ''array'')'
 );
 
 DROP TRIGGER IF EXISTS update_persona_natural_nudge_configs_timestamp ON persona_natural_nudge_configs;

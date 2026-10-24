@@ -2089,7 +2089,18 @@ describe("config preset resync panels", () => {
               selectedAttributeIndex: 0,
               naturalNudges:
                 state === "override"
-                  ? { personaConfig: { persona_id: 55, talkativeness: 2, interests: [], has_override: true } }
+                  ? {
+                      personaConfig: {
+                        persona_id: 55,
+                        talkativeness: 2,
+                        interests: [],
+                        has_override: true,
+                        idle_nudges: [],
+                        disabled_idle_nudge_ids: [],
+                        idle_nudges_override: false,
+                        idle_nudges_inherited: false,
+                      },
+                    }
                   : undefined,
               receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
             });

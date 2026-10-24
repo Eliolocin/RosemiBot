@@ -26,6 +26,7 @@ function makePreset(overrides: Partial<TomoriPresetRow> = {}): TomoriPresetRow {
     is_nsfw: false,
     natural_nudge_interests: [],
     natural_nudge_talkativeness: 2,
+    natural_nudge_idle_nudges: [],
     ...overrides,
   };
 }
