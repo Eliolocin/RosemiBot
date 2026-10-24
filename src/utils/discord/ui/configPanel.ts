@@ -154,6 +154,7 @@ export type ConfigPanelView =
   | { kind: "main" }
   | { kind: "promote-confirm"; personaId: number; nonce: string }
   | { kind: "resync-confirm"; personaId: number; nonce: string; presetName: string; diff: PersonaResyncDiff }
+  | { kind: "nudge-restore-confirm"; personaId: number; nonce: string }
   | { kind: "character-reference-clear-confirm"; personaId: number; nonce: string }
   | { kind: "sprite-remove-confirm"; personaId: number; index: number; fp: string; nonce: string }
   | { kind: "voice-sample-remove-confirm"; index: number; fp: string; nonce: string }
@@ -2183,6 +2184,52 @@ function buildResyncConfirmBody(
           type: ComponentType.Button,
           style: ButtonStyle.Secondary,
           customId: buildConfigRouteId({ action: "resync-cancel", locale, personaId: view.personaId }),
+          label: localizer(locale, "commands.config.panel.cancel_button"),
+        },
+      ],
+    },
+  ];
+}
+
+function buildNudgeRestoreConfirmBody(
+  input: ConfigPanelRenderInput,
+  view: Extract<ConfigPanelView, { kind: "nudge-restore-confirm" }>,
+): ComponentInContainerData[] {
+  const { locale } = input;
+  const persona = input.personas.find((candidate) => candidate.persona_id === view.personaId);
+  return [
+    {
+      type: ComponentType.TextDisplay,
+      content: `### ${localizer(locale, "commands.config.natural_nudges.idle_restore_confirm_title", {
+        persona: escapeDiscordMarkdown(persona?.persona_nickname ?? ""),
+      })}\n${localizer(locale, "commands.config.natural_nudges.idle_restore_confirm_description")}\n\n${localizer(
+        locale,
+        "commands.config.natural_nudges.idle_restore_kept_detail",
+      )}`,
+    },
+    {
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.Button,
+          style: ButtonStyle.Danger,
+          customId: buildConfigRouteId({
+            action: "nudge-persona-restore-confirm",
+            locale,
+            personaId: view.personaId,
+            nonce: view.nonce,
+          }),
+          label: localizer(locale, "commands.config.natural_nudges.idle_restore_button"),
+          disabled: input.readStatus !== "fresh",
+        },
+        {
+          type: ComponentType.Button,
+          style: ButtonStyle.Secondary,
+          customId: buildConfigRouteId({
+            action: "nudge-persona-restore-cancel",
+            locale,
+            personaId: view.personaId,
+          }),
           label: localizer(locale, "commands.config.panel.cancel_button"),
         },
       ],
@@ -4325,6 +4372,11 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
     return buildPayload(components, receipt);
   }
 
+  if (input.view && input.view.kind === "nudge-restore-confirm") {
+    components.push(...buildNudgeRestoreConfirmBody(input, input.view));
+    return buildPayload(components, receipt);
+  }
+
   if (input.view && input.view.kind === "character-reference-clear-confirm") {
     components.push(...buildPersonaCharacterReferenceClearBody(input, input.view));
     return buildPayload(components, receipt);
@@ -4400,6 +4452,8 @@ export function buildConfigPanelPayload(input: ConfigPanelRenderInput): ConfigPa
               persona,
               config: input.naturalNudges?.personaConfig ?? undefined,
               writesDisabled: writesDisabled || pageState !== "enabled",
+              personaNudges: input.naturalNudges?.personaNudges,
+              textBudget: getBasePageTextAllowance(input, true),
             })
           : [{ type: ComponentType.TextDisplay, content: localizer(locale, "commands.config.panel.no_personas") }]),
       );

@@ -17,7 +17,6 @@ import {
   CUSTOM_IDLE_NUDGE_LIST_MAX,
   CUSTOM_IDLE_NUDGE_TITLE_MAX,
   NATURAL_NUDGE_CATEGORIES,
-  type CustomIdleNudgeRow,
   type NaturalNudgeCategory,
 } from "@/modules/natural-nudges/db/types";
 import {
@@ -35,13 +34,18 @@ import {
   NUDGE_STUDIO_ROUTE_VERSION,
   nudgeStudioFieldId,
 } from "@/modules/natural-nudges/discord/studioCatalog";
-import type { NudgeStudioView, StudioEntry } from "@/modules/natural-nudges/discord/studioOperations";
+import type {
+  IdleNudgeFormContent,
+  NudgeStudioView,
+  StudioEntry,
+} from "@/modules/natural-nudges/discord/studioOperations";
+import { personaNudgeLocalId, computePersonaNudgeFingerprint } from "@/modules/natural-nudges/discord/studioOperations";
 import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
+import type { ResolvedRangeSelection } from "@/types/discord/panel";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import {
   DISCORD_CHECKBOX_GROUP_OPTIONS_MAX,
   DISCORD_MODAL_COMPONENTS_MAX,
-  DISCORD_SELECT_OPTIONS_MAX,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import {
@@ -67,6 +71,8 @@ const LIST_TITLE_MAX = 40;
 const LIST_TEXT_BUDGET = 2400;
 /** A row lists this many scoped personas before folding the rest into a count, so one row stays one line. */
 const SCOPE_NAMES_SHOWN = 3;
+/** Rows, Toggle Availability options, and editable entries one page shows; one slot stays free for Add. */
+export const NUDGE_STUDIO_PAGE_SIZE = 12;
 
 type CategoryKeys = Record<NaturalNudgeCategory, string>;
 
@@ -174,7 +180,11 @@ function prerequisiteLabel(locale: string, id: string): string {
   });
 }
 
-function blockerLabel(locale: string, blocker: IdleNudgeBlocker): string {
+export function nudgeCategoryLabel(locale: string, category: NaturalNudgeCategory): string {
+  return localizer(locale, CATEGORY_KEYS[category]);
+}
+
+export function nudgeBlockerLabel(locale: string, blocker: IdleNudgeBlocker): string {
   if (blocker.kind === "tool")
     return localizer(locale, "commands.nudge-studio.blocker_tool", {
       tool: localizer(locale, TOOL_KEYS[blocker.tool]),
@@ -187,8 +197,43 @@ function blockerLabel(locale: string, blocker: IdleNudgeBlocker): string {
   );
 }
 
-function studioEntryTitle(locale: string, entry: StudioEntry): string {
+export function studioEntryTitle(locale: string, entry: StudioEntry): string {
   return entry.definition.titleKey ? localizer(locale, entry.definition.titleKey) : (entry.definition.title ?? "");
+}
+
+export function studioEntrySource(entry: StudioEntry): "builtin" | "server" | "persona" {
+  if (entry.definition.builtIn) return "builtin";
+  return entry.definition.ownerPersonaId === undefined ? "server" : "persona";
+}
+
+export function studioEntrySelectionValue(entry: StudioEntry): string {
+  return entry.definition.key;
+}
+
+export function studioEntryOwnerName(entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string | null {
+  const ownerId = entry.definition.ownerPersonaId;
+  return ownerId === undefined ? null : (personaNames.get(ownerId) ?? String(ownerId));
+}
+
+/** The edit modal and its fingerprint; the owner comes from the selected persona, never from the client. */
+export function personaNudgeFormTarget(
+  entry: StudioEntry,
+): { ownerId: number; idleNudgeId: string; fp: string } | null {
+  const ownerId = entry.definition.ownerPersonaId;
+  const idleNudgeId = personaNudgeLocalId(entry.definition);
+  if (ownerId === undefined || idleNudgeId === null) return null;
+  return {
+    ownerId,
+    idleNudgeId,
+    fp: computePersonaNudgeFingerprint(ownerId, {
+      category: entry.definition.category,
+      title: entry.definition.title ?? "",
+      brief: entry.definition.brief,
+      agenda_hint: entry.definition.agendaHint,
+      prerequisites: entry.definition.prerequisites,
+      recommended_tools: entry.definition.recommendedTools,
+    }),
+  };
 }
 
 /** Deleted personas stay in a stored scope, so they are skipped here and a scope with none left reads as null. */
@@ -209,20 +254,32 @@ function statusCircle(entry: StudioEntry): string {
   return !entry.enabled ? "🔴" : entry.blocker ? "🟡" : "🟢";
 }
 
+function sourceNote(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string {
+  switch (studioEntrySource(entry)) {
+    case "builtin":
+      return localizer(locale, "commands.nudge-studio.note_source_builtin");
+    case "server":
+      return localizer(locale, "commands.nudge-studio.note_source_server");
+    case "persona":
+      return localizer(locale, "commands.nudge-studio.note_source_persona", {
+        persona: escapeDiscordMarkdown(studioEntryOwnerName(entry, personaNames) ?? ""),
+      });
+  }
+}
+
 function entryRow(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string {
   const circle = statusCircle(entry);
   const title = entry.custom
     ? `*${escapeDiscordMarkdown(truncateDiscordText(studioEntryTitle(locale, entry), LIST_TITLE_MAX))}*`
-    : escapeDiscordMarkdown(studioEntryTitle(locale, entry));
+    : escapeDiscordMarkdown(truncateDiscordText(studioEntryTitle(locale, entry), LIST_TITLE_MAX));
   const personas = scopeNames(locale, entry.scope, personaNames);
   const notes = [
-    entry.custom ? localizer(locale, "commands.nudge-studio.note_custom") : null,
+    sourceNote(locale, entry, personaNames),
     personas
       ? localizer(locale, "commands.nudge-studio.note_scope", { personas: escapeDiscordMarkdown(personas) })
       : null,
-    entry.blocker ? blockerLabel(locale, entry.blocker) : null,
+    entry.blocker ? nudgeBlockerLabel(locale, entry.blocker) : null,
   ].filter((note): note is string => note !== null);
-  if (notes.length === 0) return `${circle} ${title}`;
   const joined = new Intl.ListFormat(locale, { type: "unit", style: "short" }).format(notes);
   return `${circle} ${localizer(locale, "commands.nudge-studio.row_notes", { title, notes: joined })}`;
 }
@@ -239,13 +296,25 @@ export interface NudgeStudioRenderInput {
   receipt?: PanelReceipt;
 }
 
+function selectionFor(view: NudgeStudioView, requestedPage: number): ResolvedRangeSelection<StudioEntry> {
+  return resolveRangeSelection(view.entries, requestedPage, NUDGE_STUDIO_PAGE_SIZE);
+}
+
+function entryOptionLabel(locale: string, entry: StudioEntry, personaNames: ReadonlyMap<number, string>): string {
+  const title = studioEntryTitle(locale, entry);
+  const owner = studioEntryOwnerName(entry, personaNames);
+  return safeSelectOptionText(
+    owner ? localizer(locale, "commands.nudge-studio.option_owner", { title, persona: owner }) : title,
+    OPTION_TEXT_MAX,
+  );
+}
+
 function buildAvailabilityControls(
   locale: string,
   view: NudgeStudioView,
-  requestedPage: number,
+  selection: ResolvedRangeSelection<StudioEntry>,
 ): ComponentInContainerData[] {
   const { category } = view;
-  const selection = resolveRangeSelection(view.entries, requestedPage, DISCORD_SELECT_OPTIONS_MAX);
   const pagination = buildPaginationRow({
     locale,
     rangeIndex: selection.rangeIndex,
@@ -266,7 +335,7 @@ function buildAvailabilityControls(
             SELECT_PLACEHOLDER_MAX,
           ),
           options: selection.visibleItems.map((entry) => ({
-            label: safeSelectOptionText(studioEntryTitle(locale, entry), OPTION_TEXT_MAX),
+            label: entryOptionLabel(locale, entry, view.personaNames),
             description: safeSelectOptionText(entry.definition.brief, OPTION_TEXT_MAX),
             emoji: { name: statusCircle(entry) },
             value: entry.definition.key,
@@ -285,9 +354,12 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
   const { locale, view } = input;
   const { category } = view;
   const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
-  const customs = view.entries.flatMap((entry) => (entry.custom ? [entry.custom] : []));
+  const selection = selectionFor(view, input.page ?? 0);
+  const editable = selection.visibleItems.filter(
+    (entry) => entry.custom !== undefined || entry.definition.ownerPersonaId !== undefined,
+  );
   const list = buildTextPreview(
-    view.entries.map((entry) => entryRow(locale, entry, view.personaNames)).join("\n"),
+    selection.visibleItems.map((entry) => entryRow(locale, entry, view.personaNames)).join("\n"),
     LIST_TEXT_BUDGET,
   );
   const listFooter = textPreviewFooterKey(list);
@@ -306,7 +378,7 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
     text(
       `${withLinePrefix("> ", list.text)}${listFooter ? `\n-# ${t(listFooter, textPreviewFooterVars(list, locale))}` : ""}`,
     ),
-    ...buildAvailabilityControls(locale, view, input.page ?? 0),
+    ...buildAvailabilityControls(locale, view, selection),
     text(
       `### ${t(CUSTOM_TITLE_KEYS[category])}\n${t("commands.nudge-studio.custom_intro", {
         category: t(CATEGORY_KEYS[category]),
@@ -317,10 +389,10 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
   const canAdd = view.customCount < CUSTOM_IDLE_NUDGE_LIMIT;
   const options: SelectMenuComponentOptionData[] = [
     ...(canAdd ? [{ label: t("commands.nudge-studio.add_option"), value: NUDGE_STUDIO_ADD_VALUE }] : []),
-    ...customs.map((custom) => ({
-      label: safeSelectOptionText(custom.title, OPTION_TEXT_MAX),
-      description: safeSelectOptionText(custom.brief, OPTION_TEXT_MAX),
-      value: String(custom.custom_idle_nudge_id),
+    ...editable.map((entry) => ({
+      label: entryOptionLabel(locale, entry, view.personaNames),
+      description: safeSelectOptionText(entry.definition.brief, OPTION_TEXT_MAX),
+      value: studioEntrySelectionValue(entry),
     })),
   ];
   if (options.length > 0) {
@@ -329,7 +401,12 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
       components: [
         {
           type: ComponentType.StringSelect,
-          customId: buildNudgeStudioRouteId({ action: "select", locale, category }),
+          customId: buildNudgeStudioRouteId({
+            action: "select",
+            locale,
+            category,
+            page: selection.rangeIndex,
+          }),
           placeholder: safeSelectOptionText(t("commands.nudge-studio.select_placeholder"), SELECT_PLACEHOLDER_MAX),
           options,
         },
@@ -345,8 +422,13 @@ export function buildNudgeStudioPayload(input: NudgeStudioRenderInput): {
           type: ComponentType.Button,
           style: ButtonStyle.Danger,
           label: t("commands.nudge-studio.remove_button"),
-          customId: buildNudgeStudioRouteId({ action: "remove-open", locale, category }),
-          disabled: customs.length === 0,
+          customId: buildNudgeStudioRouteId({
+            action: "remove-open",
+            locale,
+            category,
+            page: selection.rangeIndex,
+          }),
+          disabled: editable.length === 0,
         },
       ],
     },
@@ -384,22 +466,29 @@ function label(
   };
 }
 
+export interface IdleNudgeFormModalOptions {
+  /** The submit route this surface owns; omitted uses the Nudge Studio route. */
+  customId?: string;
+  /** Overrides the add or edit title, for the surface's own copy. */
+  titleKey?: string;
+}
+
 /** Opens prefilled from `current` when editing, so the modal itself is where a custom idle nudge is read. */
 export function buildIdleNudgeFormModal(
   locale: string,
   category: NaturalNudgeCategory,
   nonce: string,
-  current?: CustomIdleNudgeRow,
+  current?: IdleNudgeFormContent,
+  options: IdleNudgeFormModalOptions = {},
 ): RawModalPayload {
   const t = (key: string) => localizer(locale, key);
   const implied = CATEGORY_IMPLIED_PREREQUISITES[category];
   const placeholder = (key: string, max: number) => safeSelectOptionText(t(key), max);
+  if (current && !options.customId) throw new Error("An edit modal needs its submit route");
   return {
-    custom_id: current
-      ? buildNudgeStudioRouteId({ action: "edit-submit", locale, category, id: current.custom_idle_nudge_id, nonce })
-      : buildNudgeStudioRouteId({ action: "add-submit", locale, category, nonce }),
+    custom_id: options.customId ?? buildNudgeStudioRouteId({ action: "add-submit", locale, category, nonce }),
     title: safeSelectOptionText(
-      t(current ? "commands.nudge-studio.modal_edit_title" : MODAL_ADD_TITLE_KEYS[category]),
+      t(options.titleKey ?? (current ? "commands.nudge-studio.modal_edit_title" : MODAL_ADD_TITLE_KEYS[category])),
       MODAL_TITLE_MAX,
     ),
     components: [
@@ -498,7 +587,7 @@ export function checklistGroupCount(count: number): number {
   return Math.ceil(count / DISCORD_CHECKBOX_GROUP_OPTIONS_MAX);
 }
 
-function buildChecklistModal(
+export function buildNudgeChecklistModal(
   locale: string,
   customId: string,
   titleKey: string,
@@ -568,7 +657,7 @@ export function buildAvailabilityModal(
   nonce: string,
   options: readonly ChecklistOption[],
 ): RawModalPayload {
-  return buildChecklistModal(
+  return buildNudgeChecklistModal(
     locale,
     buildNudgeStudioRouteId({ action: "toggle-submit", locale, category, key: entry.definition.key, page, nonce }),
     "commands.nudge-studio.toggle_modal_title",
@@ -579,20 +668,84 @@ export function buildAvailabilityModal(
   );
 }
 
-/** Checkbox options for removal: every custom idle nudge in the category, all checked. */
-export function removalOptions(view: NudgeStudioView): ChecklistOption[] {
-  return view.entries.flatMap((entry) =>
-    entry.custom
-      ? [
-          {
-            value: String(entry.custom.custom_idle_nudge_id),
-            label: entry.custom.title,
-            description: entry.custom.brief,
-            checked: true,
-          },
-        ]
-      : [],
+/** A persona-owned row may only enable or disable its own owner, so its checklist holds one option. */
+export function personaAvailabilityOptions(locale: string, entry: StudioEntry, ownerName: string): ChecklistOption[] {
+  return [
+    {
+      value: "available",
+      label: localizer(locale, "commands.nudge-studio.persona_toggle_option", { persona: ownerName }),
+      checked: entry.enabled,
+    },
+  ];
+}
+
+export function buildPersonaAvailabilityModal(
+  locale: string,
+  category: NaturalNudgeCategory,
+  entry: StudioEntry,
+  page: number,
+  nonce: string,
+  ownerName: string,
+): RawModalPayload {
+  const target = personaNudgeFormTarget(entry);
+  if (!target) throw new Error("Persona availability requires a persona-owned nudge");
+  return buildNudgeChecklistModal(
+    locale,
+    buildNudgeStudioRouteId({
+      action: "persona-toggle-submit",
+      locale,
+      category,
+      page,
+      ownerId: target.ownerId,
+      idleNudgeId: target.idleNudgeId,
+      nonce,
+    }),
+    "commands.nudge-studio.toggle_modal_title",
+    studioEntryTitle(locale, entry),
+    "commands.nudge-studio.persona_toggle_group_description",
+    nonce,
+    personaAvailabilityOptions(locale, entry, ownerName),
   );
+}
+
+/** Removal keys tag their source, so one checklist can present server and persona entries without mixing them up. */
+export function studioRemovalKey(entry: StudioEntry): string | null {
+  if (entry.custom) return `c:${entry.custom.custom_idle_nudge_id}`;
+  const ownerId = entry.definition.ownerPersonaId;
+  const idleNudgeId = personaNudgeLocalId(entry.definition);
+  return ownerId === undefined || idleNudgeId === null ? null : `p:${ownerId}:${idleNudgeId}`;
+}
+
+export function parseStudioRemovalKey(
+  value: string,
+): { kind: "custom"; id: number } | { kind: "persona"; ownerPersonaId: number; idleNudgeId: string } | null {
+  const custom = /^c:(\d+)$/.exec(value);
+  if (custom) {
+    const id = Number(custom[1]);
+    return Number.isSafeInteger(id) && id > 0 ? { kind: "custom", id } : null;
+  }
+  const persona = /^p:(\d+):([A-Za-z0-9_-]{1,24})$/.exec(value);
+  if (!persona) return null;
+  const ownerPersonaId = Number(persona[1]);
+  return Number.isSafeInteger(ownerPersonaId) && ownerPersonaId > 0
+    ? { kind: "persona", ownerPersonaId, idleNudgeId: persona[2] as string }
+    : null;
+}
+
+/** Checkbox options for removal: the editable entries on the visible page, all checked. */
+export function removalOptions(entries: readonly StudioEntry[]): ChecklistOption[] {
+  return entries.flatMap((entry) => {
+    const value = studioRemovalKey(entry);
+    if (!value) return [];
+    return [
+      {
+        value,
+        label: entry.custom?.title ?? entry.definition.title ?? "",
+        description: entry.definition.brief,
+        checked: true,
+      },
+    ];
+  });
 }
 
 export function buildRemovalModal(
@@ -600,10 +753,11 @@ export function buildRemovalModal(
   category: NaturalNudgeCategory,
   nonce: string,
   options: readonly ChecklistOption[],
+  page = 0,
 ): RawModalPayload {
-  return buildChecklistModal(
+  return buildNudgeChecklistModal(
     locale,
-    buildNudgeStudioRouteId({ action: "remove-submit", locale, category, nonce }),
+    buildNudgeStudioRouteId({ action: "remove-submit", locale, category, nonce, page }),
     "commands.nudge-studio.remove_modal_title",
     localizer(locale, CUSTOM_TITLE_KEYS[category]),
     "commands.nudge-studio.remove_group_description",
