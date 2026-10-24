@@ -1,7 +1,11 @@
 import { describe, expect, it, mock } from "bun:test";
 import { assembleToolsForContext } from "@/tools/assembly";
 import { getAvailableToolsForContext } from "@/tools/availability";
-import { DanbooruSearchTagsTool } from "@/tools/functionCalls/danbooruTools";
+import {
+  DanbooruGetPostTool,
+  DanbooruSearchPostsTool,
+  DanbooruSearchTagsTool,
+} from "@/tools/functionCalls/danbooruTools";
 import { buildGenerateImageToolVariant, GenerateImageTool } from "@/tools/functionCalls/generateImageTool";
 import type { ImageToolCapabilities } from "@/tools/functionCalls/generateImageToolCapabilities";
 import { buildVoiceMessageToolVariant, GenerateVoiceMessageTool } from "@/tools/functionCalls/generateVoiceMessageTool";
@@ -265,7 +269,11 @@ describe("tool schema assembly", () => {
 });
 
 describe("Danbooru Search toggle", () => {
-  const danbooruTools = (): Tool[] => [new DanbooruSearchTagsTool()];
+  const danbooruTools = (): Tool[] => [
+    new DanbooruSearchTagsTool(),
+    new DanbooruGetPostTool(),
+    new DanbooruSearchPostsTool(),
+  ];
 
   it("withholds every Danbooru tool from the assembled list when the toggle is off", () => {
     const names = (enabled: boolean) => {

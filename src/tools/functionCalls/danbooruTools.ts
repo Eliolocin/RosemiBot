@@ -1,5 +1,24 @@
+import type { Message } from "discord.js";
 import { z } from "zod";
-import { DANBOORU_FAILURE_MESSAGES, reportDanbooruFailure } from "@/tools/restAPIs/danbooru/danbooruService";
+import {
+  DANBOORU_FAILURE_MESSAGES,
+  type DanbooruRating,
+  fetchPost,
+  reportDanbooruFailure,
+  toDanbooruTag,
+  toNaiTag,
+} from "@/tools/restAPIs/danbooru/danbooruService";
+import {
+  allowedRatingsFor,
+  DANBOORU_PUBLIC_RATINGS,
+  danbooruPostUrl,
+  hasBlockedTag,
+  isAgeRestrictedChannel,
+  MAX_POST_SEARCH_TAGS,
+  MAX_POSTED_IMAGES,
+  parseDanbooruPostReference,
+  searchDanbooruPosts,
+} from "@/tools/restAPIs/danbooru/posts";
 import {
   type CharacterDescription,
   lookupDanbooruTags,
@@ -9,7 +28,10 @@ import {
   type TagResolution,
 } from "@/tools/restAPIs/danbooru/tagLookup";
 import { BaseTool, type ToolContext, type ToolParameterSchema, type ToolResult } from "@/types/tool/interfaces";
+import { buildDanbooruGalleryPayload, type DanbooruGalleryPayload } from "@/utils/discord/danbooruGalleryMessage";
 import { sendToolNoticeContainer } from "@/utils/discord/expandableEmbedNotice";
+import { sendToolProgressNotice } from "@/utils/discord/toolProgressNotice";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
 
@@ -120,7 +142,7 @@ async function sendTagCard(context: ToolContext, lookup: TagLookupResult): Promi
 export class DanbooruSearchTagsTool extends BaseTool {
   name = "danbooru_search_tags";
   description =
-    "Look up exact Danbooru tags. Turns names, nicknames, typos, and tag guesses into real tags with post counts. For a character or outfit tag it also returns signature tags, named outfits, and a short summary. Call it before an image tool whenever you are unsure of a tag or of how a character looks. Put every name in one call. A corrected or partial match may be a different thing than you meant, so check it against alternatives. A not_found query has no exact tag, but plain descriptive words for it still work in image prompts. A low post_count means the image model knows that tag poorly.";
+    "Look up exact Danbooru tags. Turns names, nicknames, typos, and tag guesses into real tags with post counts. For a character or outfit tag it also returns signature tags, named outfits, and a short summary. Call it before an image tool or danbooru_search_posts whenever you are unsure of a tag or of how a character looks. Put every name in one call. A corrected or partial match may be a different thing than you meant, so check it against alternatives. A not_found query has no exact tag, but plain descriptive words for it still work in image prompts. A low post_count means the image model knows that tag poorly.";
   category = "utility" as const;
   requiresFeatureFlag = "danbooru";
   requiresFollowUp = true;
@@ -156,5 +178,220 @@ export class DanbooruSearchTagsTool extends BaseTool {
     await sendTagCard(context, lookup.data);
     const message = JSON.stringify(lookup.data);
     return { success: true, message, data: { status: "tags_resolved", summary: message } };
+  }
+}
+
+type RatingName = "general" | "sensitive" | "questionable" | "explicit";
+
+const RATING_NAMES: Readonly<Record<DanbooruRating, RatingName>> = {
+  g: "general",
+  s: "sensitive",
+  q: "questionable",
+  e: "explicit",
+};
+
+const RATING_LETTERS: Readonly<Record<RatingName, DanbooruRating>> = {
+  general: "g",
+  sensitive: "s",
+  questionable: "q",
+  explicit: "e",
+};
+
+const INVALID_POST_REFERENCE_ERROR = "That is not a Danbooru post ID or danbooru.donmai.us/posts/ link.";
+const INVALID_POST_SEARCH_ERROR = "Pass tags as a list of 1 or 2 Danbooru tags.";
+const RESTRICTED_RATING_ERROR =
+  "questionable and explicit results are only allowed in age-restricted channels. Retry with general or sensitive, or tell the user to use an age-restricted channel.";
+const GALLERY_SEND_ERROR = "The Danbooru images could not be posted to the chat.";
+
+const ratingNameSchema = z.enum(["general", "sensitive", "questionable", "explicit"]);
+const searchPostsInputSchema = z.object({
+  tags: z.array(z.string()).min(1),
+  rating: z.union([z.array(ratingNameSchema), ratingNameSchema.transform((rating) => [rating])]).optional(),
+  count: z.number().optional(),
+});
+const getPostInputSchema = z.object({ post: z.union([z.string(), z.number().transform(String)]) });
+
+function splitTags(tagString: string | undefined): string[] {
+  return tagString ? tagString.split(" ").filter(Boolean).map(toNaiTag) : [];
+}
+
+function toolResult(shape: { status: string } & Record<string, unknown>): ToolResult {
+  const message = JSON.stringify(shape);
+  return { success: true, message, data: { status: shape.status, summary: message } };
+}
+
+async function sendGallery(context: ToolContext, payload: DanbooruGalleryPayload): Promise<Message> {
+  const threadId =
+    "isThread" in context.channel && typeof context.channel.isThread === "function" && context.channel.isThread()
+      ? context.channel.id
+      : undefined;
+  if (context.webhook && context.personaUsername) {
+    return await sendPersonaPostViaWebhook(
+      context.webhook,
+      { ...payload, withComponents: true, ...(threadId ? { threadId } : {}) },
+      {
+        username: context.personaUsername,
+        avatarUrl: context.personaAvatarUrl,
+        personaId: context.tomoriState.persona_id,
+      },
+      context.channel,
+    );
+  }
+  return await context.channel.send(payload);
+}
+
+export class DanbooruGetPostTool extends BaseTool {
+  name = "danbooru_get_post";
+  description =
+    "Read the tags of one Danbooru post, grouped into character, copyright, artist, meta, and general. Use it when someone shares a Danbooru post link or asks what a post is tagged with. Returns text only.";
+  category = "utility" as const;
+  requiresFeatureFlag = "danbooru";
+  requiresFollowUp = true;
+
+  parameters: ToolParameterSchema = {
+    type: "object",
+    properties: {
+      post: {
+        type: "string",
+        description: "A post ID such as '11218685', or a danbooru.donmai.us/posts/ link.",
+      },
+    },
+    required: ["post"],
+  };
+
+  async execute(args: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    const parsed = getPostInputSchema.safeParse(args);
+    const id = parsed.success ? parseDanbooruPostReference(parsed.data.post) : null;
+    if (id === null) return { success: false, error: INVALID_POST_REFERENCE_ERROR };
+
+    await sendToolProgressNotice(
+      context,
+      "web_fetch",
+      {
+        titleKey: "tools.danbooru.post_title",
+        titleVars: { id: String(id) },
+        description: localizer(context.locale, "tools.danbooru.post_description", { url: danbooruPostUrl(id) }),
+        color: ColorCode.INFO,
+      },
+      "DanbooruGetPostTool",
+    );
+
+    const result = await fetchPost(id, context.abortSignal);
+    if (!result.ok) {
+      await reportDanbooruFailure(result.failure, {
+        operation: "get_post",
+        serverId: context.tomoriState.server_id,
+        userId: context.internalUserId ?? null,
+      });
+      return { success: false, error: DANBOORU_FAILURE_MESSAGES[result.failure.kind] };
+    }
+
+    const post = result.data;
+    const rating = RATING_NAMES[post.rating];
+    if (!allowedRatingsFor(isAgeRestrictedChannel(context.channel)).includes(post.rating)) {
+      return toolResult({ status: "rating_restricted", rating });
+    }
+    if (hasBlockedTag(post)) return toolResult({ status: "blocked" });
+
+    return toolResult({
+      status: "read",
+      id: post.id,
+      rating,
+      score: post.score,
+      ...(post.source ? { source: post.source } : {}),
+      tags: {
+        character: splitTags(post.tag_string_character),
+        copyright: splitTags(post.tag_string_copyright),
+        artist: splitTags(post.tag_string_artist),
+        meta: splitTags(post.tag_string_meta),
+        general: splitTags(post.tag_string_general),
+      },
+    });
+  }
+}
+
+export class DanbooruSearchPostsTool extends BaseTool {
+  name = "danbooru_search_posts";
+  description =
+    "Post up to 4 existing images from Danbooru into the chat as you. Use it when someone wants to see existing art rather than new art. Danbooru allows only 2 tags per search, so pass the 1 or 2 most specific tags (usually the character or series), checked with danbooru_search_tags if unsure. Results are random picks among well-rated posts.";
+  category = "utility" as const;
+  requiresFeatureFlag = "danbooru";
+  requiresFollowUp = true;
+
+  parameters: ToolParameterSchema = {
+    type: "object",
+    properties: {
+      tags: {
+        type: "array",
+        items: { type: "string" },
+        description: "1 or 2 Danbooru tags, e.g. ['reisalin stout'] or ['hatsune miku', 'beach'].",
+      },
+      rating: {
+        type: "array",
+        items: { type: "string", enum: ["general", "sensitive", "questionable", "explicit"] },
+        description:
+          "Ratings to include. Default ['general', 'sensitive']. questionable and explicit work only in age-restricted channels.",
+      },
+      count: {
+        type: "number",
+        description: "How many images to post, 1-4. Default 4.",
+      },
+    },
+    required: ["tags"],
+  };
+
+  async execute(args: Record<string, unknown>, context: ToolContext): Promise<ToolResult> {
+    const parsed = searchPostsInputSchema.safeParse(args);
+    if (!parsed.success) return { success: false, error: INVALID_POST_SEARCH_ERROR };
+    const tags = [...new Set(parsed.data.tags.map(toDanbooruTag).filter((tag) => tag.length > 0))];
+    if (tags.length === 0) return { success: false, error: INVALID_POST_SEARCH_ERROR };
+    if (tags.length > MAX_POST_SEARCH_TAGS) return { success: false, error: DANBOORU_FAILURE_MESSAGES.tag_limit };
+
+    const ratings = parsed.data.rating
+      ? [...new Set(parsed.data.rating.map((name) => RATING_LETTERS[name]))]
+      : DANBOORU_PUBLIC_RATINGS;
+    const channelRatings = allowedRatingsFor(isAgeRestrictedChannel(context.channel));
+    if (ratings.some((rating) => !channelRatings.includes(rating))) {
+      return { success: false, error: RESTRICTED_RATING_ERROR };
+    }
+    const count = Math.min(MAX_POSTED_IMAGES, Math.max(1, Math.trunc(parsed.data.count ?? MAX_POSTED_IMAGES)));
+
+    const search = await searchDanbooruPosts(tags, ratings, count, context.abortSignal);
+    if (!search.ok) {
+      await reportDanbooruFailure(search.failure, {
+        operation: "search_posts",
+        serverId: context.tomoriState.server_id,
+        userId: context.internalUserId ?? null,
+      });
+      return { success: false, error: DANBOORU_FAILURE_MESSAGES[search.failure.kind] };
+    }
+
+    const { query, totalSeen, images } = search.data;
+    if (images.length === 0) return toolResult({ status: "no_results", query });
+    if (context.abortSignal?.aborted) return { success: false, error: DANBOORU_FAILURE_MESSAGES.cancelled };
+
+    try {
+      await sendGallery(context, buildDanbooruGalleryPayload(context.locale, tags.map(toNaiTag), images));
+    } catch (error) {
+      log.error("Failed to post the Danbooru gallery", error as Error, {
+        serverId: context.tomoriState.server_id,
+        metadata: { imageCount: images.length },
+      });
+      return { success: false, error: GALLERY_SEND_ERROR };
+    }
+
+    return toolResult({
+      status: "posted",
+      query,
+      total_seen: totalSeen,
+      posted: images.map(({ post }) => ({
+        id: post.id,
+        rating: RATING_NAMES[post.rating],
+        score: post.score,
+        characters: splitTags(post.tag_string_character),
+        copyright: splitTags(post.tag_string_copyright),
+        artist: splitTags(post.tag_string_artist),
+      })),
+    });
   }
 }

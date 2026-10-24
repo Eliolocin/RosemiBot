@@ -31,7 +31,7 @@ export function toDanbooruTag(tag: string): string {
   return EMOTICON_TAGS.has(trimmed) ? trimmed : trimmed.replace(/\s+/g, "_");
 }
 
-export type DanbooruEndpoint = "autocomplete" | "related_tag" | "wiki_page";
+export type DanbooruEndpoint = "autocomplete" | "related_tag" | "wiki_page" | "post" | "posts";
 
 export type DanbooruFailureKind =
   | "refused"
@@ -57,12 +57,17 @@ export const DANBOORU_FAILURE_MESSAGES: Record<DanbooruFailureKind, string> = {
   rate_limited: "Danbooru rate-limited the request. Tell the user to try again in a minute.",
   unavailable: "Danbooru did not respond. Tell the user to try again later.",
   tag_limit: "Danbooru searches allow at most 2 tags. Retry with the 1 or 2 most specific tags.",
-  not_found: "Danbooru has no page for that tag.",
+  not_found: "Danbooru has no such post or page.",
   malformed: "Danbooru returned a response TomoriBot could not read.",
   cancelled: "The Danbooru lookup was cancelled.",
 };
 
-const EXPECTED_FAILURE_KINDS: ReadonlySet<DanbooruFailureKind> = new Set(["rate_limited", "tag_limit", "cancelled"]);
+const EXPECTED_FAILURE_KINDS: ReadonlySet<DanbooruFailureKind> = new Set([
+  "rate_limited",
+  "tag_limit",
+  "not_found",
+  "cancelled",
+]);
 
 const autocompleteEntrySchema = z.object({
   type: z.string(),
@@ -102,6 +107,8 @@ export const danbooruPostSchema = z.object({
 export type DanbooruPost = z.infer<typeof danbooruPostSchema>;
 
 export const danbooruPostListSchema = z.array(danbooruPostSchema);
+
+export type DanbooruRating = DanbooruPost["rating"];
 
 const tagLimitErrorSchema = z.object({ error: z.literal("PostQuery::TagLimitError") });
 
@@ -225,9 +232,34 @@ export async function fetchWikiBody(tag: string, signal?: AbortSignal): Promise<
   return result.ok ? { ok: true, data: result.data.body } : result;
 }
 
+const POST_READ_FIELDS =
+  "id,rating,source,score,tag_string_character,tag_string_copyright,tag_string_artist,tag_string_meta,tag_string_general";
+const POST_SEARCH_FIELDS =
+  "id,rating,score,source,file_url,large_file_url,file_ext,is_banned,tag_string_character,tag_string_copyright,tag_string_artist,tag_string_general";
+
+/** One post's tags; a missing post fails with `not_found`. */
+export function fetchPost(id: number, signal?: AbortSignal): Promise<DanbooruResult<DanbooruPost>> {
+  return danbooruGet("post", `/posts/${id}.json`, { only: POST_READ_FIELDS }, danbooruPostSchema, signal);
+}
+
+/** One page of posts matching a full Danbooru tag query, metatags included. */
+export function fetchPosts(
+  query: string,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<DanbooruResult<DanbooruPost[]>> {
+  return danbooruGet(
+    "posts",
+    "/posts.json",
+    { tags: query, limit: String(limit), only: POST_SEARCH_FIELDS },
+    danbooruPostListSchema,
+    signal,
+  );
+}
+
 /**
  * Logs a Danbooru failure at the point a caller turns it into a tool error or reply.
- * Rate limits, the 2-tag limit, and cancellation are expected refusals.
+ * Rate limits, the 2-tag limit, a missing post, and cancellation are expected refusals.
  */
 export async function reportDanbooruFailure(
   failure: DanbooruFailure,

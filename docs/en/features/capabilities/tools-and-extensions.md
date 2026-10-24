@@ -55,6 +55,8 @@ optional API key.
 | Analyze image | `{image_analysis_tool}` | configured `vision_llm` | Delegate image understanding to a separate vision model. |
 | Generate image / anime image | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + capable provider | Generate or edit images (see [Media Generation](/features/capabilities/media-generation/)). |
 | Danbooru tag lookup | `{tag_search_tool}` | `danbooru_enabled` | Turn character names, nicknames, and tag guesses into exact Danbooru tags (see [Danbooru Tag Lookup](#danbooru-tag-lookup)). |
+| Danbooru art search | `{booru_post_search_tool}` | `danbooru_enabled` | Post up to 4 existing Danbooru images for 1 or 2 tags (see [Art Search and Post Reading](#art-search-and-post-reading)). |
+| Danbooru post read | - | `danbooru_enabled` | Read the grouped tags of one Danbooru post from its ID or link. |
 | Generate voice message | `{voice_message_tool}` | ElevenLabs key + persona voice + `voice_message_enabled` | Send a spoken Discord voice reply. |
 
 :::note[For prompt authors]
@@ -115,6 +117,22 @@ Each lookup posts a **Danbooru Tag Lookup** card listing what was found, with th
 tags in a block you can paste into a manual `/generate image` prompt. The card stays visible at
 every notice verbosity, and later replies can reuse its tags without searching again. Hide it
 under `/config` > Behavior > Notices like any other notice.
+
+### Art Search and Post Reading
+
+The same toggle lets her share existing art and read a post's tags:
+
+- Asked to show art of something, she posts up to 4 random well-rated Danbooru images in one
+  message, with a link to each post. Every image rated above general is spoilered. Danbooru allows
+  only 2 tags per search, so she picks the most specific ones, usually the character or series.
+- Given a Danbooru post ID or `danbooru.donmai.us/posts/` link, she reads its tags grouped into
+  character, series, artist, meta, and general. Under Deliberate Tool Mode, a post link in the
+  message is enough to offer her this tool.
+
+Ratings follow the channel. General and sensitive posts work everywhere; questionable and explicit
+posts only in age-restricted channels. A thread follows its parent channel, and DMs count as not
+age-restricted. A post rated above general that is tagged `loli`, `shota`, or `toddlercon` is never
+posted or read, in any channel.
 
 ## Web Search & URL Reading
 <!-- anchor: web-search--url-reading -->

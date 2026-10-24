@@ -39,6 +39,8 @@ const DEFAULT_TOOL_CONTEXT_TURNS = 4;
 const MAX_TOOL_CONTEXT_TURNS = 10;
 
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
+/** The host must open the link or follow whitespace, so a lookalike subdomain does not match. */
+const DANBOORU_POST_LINK_PATTERN = /(?:https?:\/\/|^|\s)danbooru\.donmai\.us\/posts\/\d+/i;
 
 const RELATIVE_TIME_PATTERN =
   /\b(?:in|for|after)\s+(?:about\s+|around\s+|like\s+|another\s+|a\s+)?\d+\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)\b/i;
@@ -561,6 +563,10 @@ export function getDeliberateToolIntentResult(
       ),
       "built-in",
     );
+  }
+
+  if (DANBOORU_POST_LINK_PATTERN.test(text)) {
+    addToolMatches(allowedToolNames, matches, ["danbooru_get_post"], "Danbooru post link", "built-in");
   }
 
   if (

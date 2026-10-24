@@ -27,7 +27,7 @@ export default {
       userblocking_desc: `Allow personas to mute/block users`,
       timeawareness_desc: `Notice reunions and calendar-day gaps in recent messages`,
       imagegen_desc: `Generate images on request`,
-      danbooru_desc: `Look up anime characters and tags on Danbooru`,
+      danbooru_desc: `Look up anime tags and share art from Danbooru`,
       videogen_desc: `Generate short videos on request`,
       voicemessage_desc: `Send ElevenLabs TTS voice messages`,
     },

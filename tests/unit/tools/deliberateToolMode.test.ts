@@ -97,6 +97,21 @@ describe("deliberate tool mode", () => {
     expect(failures).toEqual([]);
   });
 
+  it("admits the Danbooru post reader for a Danbooru post link only", () => {
+    const cases: Array<[string, boolean]> = [
+      ["what are the tags on https://danbooru.donmai.us/posts/11218685?q=ryza", true],
+      ["danbooru.donmai.us/posts/11218685", true],
+      ["https://safebooru.donmai.us/posts/11218685", false],
+      ["https://danbooru.donmai.us.evil.com/posts/1", false],
+      ["https://danbooru.donmai.us/wiki_pages/ryza", false],
+    ];
+
+    const failures = cases.flatMap(([prompt, expected]) =>
+      getDeliberateToolAllowedNames(prompt).includes("danbooru_get_post") === expected ? [] : [prompt],
+    );
+    expect(failures).toEqual([]);
+  });
+
   it("ignores obsolete stored sticker triggers", () => {
     expect(getDeliberateToolAllowedNames("hello", { sticker: ["^"] })).not.toContain("select_sticker_for_response");
   });

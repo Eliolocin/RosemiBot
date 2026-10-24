@@ -1,15 +1,29 @@
 import { afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test";
-import { buildDanbooruTagCard, DanbooruSearchTagsTool, MAX_TAG_CARD_CHARS } from "@/tools/functionCalls/danbooruTools";
+import { ComponentType } from "discord.js";
+import {
+  buildDanbooruTagCard,
+  DanbooruGetPostTool,
+  DanbooruSearchPostsTool,
+  DanbooruSearchTagsTool,
+  MAX_TAG_CARD_CHARS,
+} from "@/tools/functionCalls/danbooruTools";
 import {
   DANBOORU_FAILURE_MESSAGES,
   DANBOORU_ORIGIN,
   type DanbooruAutocompleteEntry,
+  type DanbooruPost,
   danbooruPostListSchema,
   danbooruPostSchema,
   fetchTagAutocomplete,
   toDanbooruTag,
   toNaiTag,
 } from "@/tools/restAPIs/danbooru/danbooruService";
+import {
+  isAgeRestrictedChannel,
+  MAX_POSTED_IMAGES,
+  parseDanbooruPostReference,
+  selectPostableImages,
+} from "@/tools/restAPIs/danbooru/posts";
 import {
   findCosplayTag,
   lookupDanbooruTags,
@@ -23,6 +37,7 @@ import {
 } from "@/tools/restAPIs/danbooru/tagLookup";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { processEmbedsFromMessage } from "@/utils/chat/contextEmbeds";
+import { buildDanbooruGalleryPayload } from "@/utils/discord/danbooruGalleryMessage";
 import { buildNoticeContainer } from "@/utils/discord/ui/statusComponents";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { initializeLocalizer } from "@/utils/text/localizer";
@@ -328,5 +343,242 @@ describe("danbooru_tags card", () => {
     });
 
     expect(card).not.toContain("`@everyone`");
+  });
+});
+
+const posts = () => fixture<DanbooruPost[]>("posts_reisalin_stout");
+
+const guildChannel = (nsfw: boolean, sent: unknown[] = []) => ({
+  id: "channel",
+  nsfw,
+  isDMBased: () => false,
+  isThread: () => false,
+  send: async (payload: unknown) => {
+    sent.push(payload);
+    return { id: "message" };
+  },
+});
+const threadUnder = (parentNsfw: boolean) => ({
+  id: "thread",
+  isDMBased: () => false,
+  isThread: () => true,
+  parent: { nsfw: parentNsfw },
+});
+const dmChannel = { id: "dm", isDMBased: () => true, isThread: () => false };
+
+function contextIn(channel: unknown): ToolContext {
+  return {
+    tomoriState: createPersona(),
+    locale: "en-US",
+    provider: "google",
+    channel,
+    client: {},
+    suppressProgressNotices: true,
+  } as unknown as ToolContext;
+}
+
+describe("Danbooru post references", () => {
+  it.each([
+    ["11218685", 11218685],
+    ["https://danbooru.donmai.us/posts/11218685", 11218685],
+    ["https://danbooru.donmai.us/posts/11218685?q=reisalin_stout#comments", 11218685],
+    ["<https://danbooru.donmai.us/posts/11218685>", 11218685],
+    ["danbooru.donmai.us/posts/11218685", 11218685],
+    ["https://safebooru.donmai.us/posts/11218685", null],
+    ["https://evil.com/posts/1", null],
+    ["https://danbooru.donmai.us.evil.com/posts/1", null],
+    ["https://danbooru.donmai.us:8443/posts/1", null],
+    ["https://danbooru.donmai.us/posts/1/edit", null],
+    ["0", null],
+  ])("parses %s as %p", (input, expected) => {
+    expect(parseDanbooruPostReference(input)).toBe(expected);
+  });
+
+  it("refuses a non-Danbooru link before any request", async () => {
+    const requests: RecordedRequest[] = [];
+    fetchSpy = stubDanbooru(requests);
+
+    const result = await new DanbooruGetPostTool().execute(
+      { post: "https://safebooru.donmai.us/posts/11218685" },
+      contextIn(guildChannel(false)),
+    );
+
+    expect(result.success).toBe(false);
+    expect(requests).toHaveLength(0);
+  });
+});
+
+describe("Danbooru age-restricted channels", () => {
+  it("reads a guild channel's flag, a thread's parent flag, and treats DMs as not age-restricted", () => {
+    const failures = [
+      ["normal channel", guildChannel(false), false],
+      ["age-restricted channel", guildChannel(true), true],
+      ["thread under a normal channel", threadUnder(false), false],
+      ["thread under an age-restricted channel", threadUnder(true), true],
+      ["DM", dmChannel, false],
+    ].flatMap(([label, channel, expected]) =>
+      isAgeRestrictedChannel(channel as unknown as Parameters<typeof isAgeRestrictedChannel>[0]) === expected
+        ? []
+        : [label],
+    );
+
+    expect(failures).toEqual([]);
+  });
+});
+
+describe("Danbooru post filtering", () => {
+  it("drops posts outside the rating set, with a blocked tag, a non-CDN URL, or an unpostable file", async () => {
+    const [base] = await posts();
+    const candidates: DanbooruPost[] = [
+      { ...base, id: 1, rating: "s" },
+      { ...base, id: 2, rating: "q" },
+      { ...base, id: 3, rating: "s", tag_string_general: `${base.tag_string_general} loli` },
+      { ...base, id: 4, large_file_url: "https://evil.example/sample.jpg" },
+      { ...base, id: 5, file_url: undefined, large_file_url: undefined },
+      { ...base, id: 6, file_ext: "mp4" },
+      { ...base, id: 7, is_banned: true },
+    ];
+
+    const picked = selectPostableImages(candidates, ["g", "s"], MAX_POSTED_IMAGES).map(({ post }) => post.id);
+
+    expect(picked).toEqual([1]);
+  });
+
+  it("never selects a post with a blocked tag at s, q, or e, even where every rating is allowed", async () => {
+    const [base] = await posts();
+    const blocked = (["s", "q", "e"] as const).map((rating, index) => ({
+      ...base,
+      id: index + 1,
+      rating,
+      tag_string_general: `${base.tag_string_general} shota`,
+    }));
+
+    expect(selectPostableImages(blocked, ["g", "s", "q", "e"], MAX_POSTED_IMAGES)).toEqual([]);
+  });
+
+  it("picks at most the requested count from what survives", async () => {
+    const picked = selectPostableImages(await posts(), ["g", "s"], 3);
+
+    expect(picked).toHaveLength(3);
+    expect(new Set(picked.map(({ post }) => post.id)).size).toBe(3);
+  });
+});
+
+describe("Danbooru gallery", () => {
+  it("spoilers every image rated above general and leaves general images open", async () => {
+    const [base] = await posts();
+    const images = (["g", "s", "q", "e"] as const).map((rating, index) => ({
+      post: { ...base, id: index + 1, rating },
+      imageUrl: base.large_file_url ?? "",
+    }));
+
+    const gallery = buildDanbooruGalleryPayload("en-US", ["reisalin stout"], images).components.find(
+      (component) => "type" in component && component.type === ComponentType.MediaGallery,
+    ) as { items: Array<{ spoiler?: boolean }> } | undefined;
+
+    expect(gallery?.items.map((item) => item.spoiler)).toEqual([false, true, true, true]);
+  });
+});
+
+describe("danbooru_search_posts tool", () => {
+  it("refuses more than 2 tags and a restricted rating in a normal channel before any request", async () => {
+    const requests: RecordedRequest[] = [];
+    fetchSpy = stubDanbooru(requests);
+    const tool = new DanbooruSearchPostsTool();
+    const context = contextIn(guildChannel(false));
+
+    const tooMany = await tool.execute({ tags: ["reisalin stout", "beach", "hat"] }, context);
+    const restricted = await tool.execute({ tags: ["reisalin stout"], rating: ["explicit"] }, context);
+    const restrictedInDm = await tool.execute(
+      { tags: ["reisalin stout"], rating: ["questionable"] },
+      contextIn(dmChannel),
+    );
+
+    expect(tooMany).toEqual({ success: false, error: DANBOORU_FAILURE_MESSAGES.tag_limit });
+    expect(restricted.success).toBe(false);
+    expect(restrictedInDm.success).toBe(false);
+    expect(requests).toHaveLength(0);
+  });
+
+  it("sends the encoded query and posts one gallery of CDN images from the persona's channel", async () => {
+    const requests: RecordedRequest[] = [];
+    const rawUrls: string[] = [];
+    fetchSpy = stubGlobalFetch(async (input, init) => {
+      rawUrls.push(String(input));
+      requests.push({ url: new URL(String(input)), init });
+      return Response.json(await posts());
+    });
+    const sent: Array<{ components: Array<{ type: ComponentType; items?: Array<{ media: { url: string } }> }> }> = [];
+
+    const result = await new DanbooruSearchPostsTool().execute(
+      { tags: ["Reisalin Stout"] },
+      contextIn(guildChannel(false, sent)),
+    );
+
+    expect(result.success).toBe(true);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url.searchParams.get("tags")).toBe("reisalin_stout rating:g,s score:>=3 -status:deleted");
+    expect(rawUrls[0]).toContain("score%3A%3E%3D3");
+    expect(requests[0]?.init?.redirect).toBe("error");
+
+    expect(sent).toHaveLength(1);
+    const gallery = sent[0]?.components.find((component) => component.type === ComponentType.MediaGallery);
+    expect(gallery?.items).toHaveLength(MAX_POSTED_IMAGES);
+    expect(gallery?.items?.every((item) => item.media.url.startsWith("https://cdn.donmai.us/"))).toBe(true);
+    const shape = JSON.parse(result.message ?? "{}") as { status: string; posted: Array<{ characters: string[] }> };
+    expect(shape.status).toBe("posted");
+    expect(shape.posted.every((post) => post.characters.includes("reisalin stout"))).toBe(true);
+  });
+
+  it("posts nothing when no post survives the filters", async () => {
+    const [base] = await posts();
+    fetchSpy = stubGlobalFetch(() => Response.json([{ ...base, rating: "q" }]));
+    const sent: unknown[] = [];
+
+    const result = await new DanbooruSearchPostsTool().execute(
+      { tags: ["reisalin stout"] },
+      contextIn(guildChannel(false, sent)),
+    );
+
+    expect(JSON.parse(result.message ?? "{}").status).toBe("no_results");
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("danbooru_get_post tool", () => {
+  const readPost = async (rating: DanbooruPost["rating"], channel: unknown, extraGeneral = "") => {
+    const post = await fixture<DanbooruPost>("post_11218685");
+    fetchSpy = stubGlobalFetch(() =>
+      Response.json({ ...post, rating, tag_string_general: `${post.tag_string_general}${extraGeneral}` }),
+    );
+    const result = await new DanbooruGetPostTool().execute({ post: "11218685" }, contextIn(channel));
+    fetchSpy.mockRestore();
+    fetchSpy = null;
+    return JSON.parse(result.message ?? "{}") as { status: string; rating?: string; tags?: Record<string, string[]> };
+  };
+
+  it("returns grouped NovelAI-form tags for g and s posts in a normal channel", async () => {
+    for (const rating of ["g", "s"] as const) {
+      const shape = await readPost(rating, guildChannel(false));
+
+      expect(shape.status).toBe("read");
+      expect(shape.tags?.character).toEqual(["miyagi shiori", "sendai hazuki"]);
+      expect(shape.tags?.general).toContain("half up braid");
+    }
+  });
+
+  it("withholds tags of q and e posts outside age-restricted channels and shows them inside", async () => {
+    for (const rating of ["q", "e"] as const) {
+      expect(await readPost(rating, guildChannel(false))).toEqual({
+        status: "rating_restricted",
+        rating: rating === "q" ? "questionable" : "explicit",
+      });
+      expect((await readPost(rating, threadUnder(true))).status).toBe("read");
+    }
+  });
+
+  it("withholds tags of a non-g post with a blocked tag in every channel", async () => {
+    expect(await readPost("e", guildChannel(true), " loli")).toEqual({ status: "blocked" });
+    expect(await readPost("s", guildChannel(false), " toddlercon")).toEqual({ status: "blocked" });
   });
 });
