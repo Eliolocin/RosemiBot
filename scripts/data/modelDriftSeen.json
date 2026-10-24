@@ -761,5 +761,103 @@
     "codename": "~typesafe/jev-latest",
     "releaseDate": null,
     "offeredAt": "2026-10-13"
+  },
+  {
+    "provider": "vertex",
+    "table": "imageSections",
+    "codename": "gemini-3.1-flash-lite-image",
+    "releaseDate": "2026-06-30",
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "deepseek/deepseek-v4.1-flash-1017",
+    "releaseDate": "2026-10-17",
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "~unbiased/pareto-latest",
+    "releaseDate": "2026-10-13",
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-super-vl",
+    "releaseDate": "2026-10-15",
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "nvidia",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    "releaseDate": "2026-10-15",
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "perplexity/pplx-decider-flash-v1.2",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "perplexity/pplx-decider-v1.2",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "~perplexity/pplx-decider-flash-latest",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "respan/span-02",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "liquid/d1-ultra",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "typesafe/jev-1.14",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "~perplexity/pplx-decider-latest",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "decisionSections",
+    "codename": "scaledown/classify-1",
+    "releaseDate": null,
+    "offeredAt": "2026-10-19"
+  },
+  {
+    "provider": "openrouter",
+    "table": "llmSections",
+    "codename": "nvidia/nemotron-3.5-super-vl:free",
+    "releaseDate": "2026-10-15",
+    "offeredAt": "2026-10-19"
   }
 ]

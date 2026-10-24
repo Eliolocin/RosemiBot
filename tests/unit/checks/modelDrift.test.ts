@@ -101,15 +101,17 @@ describe("model drift", () => {
     const declinedKeys = new Set(seen.filter((entry) => entry.table === "decisionSections").map(seenKey));
     for (const row of uncarried) expect(declinedKeys.has(seenKey(row))).toBe(true);
     expect(findCandidates(source, seen).candidates.some((row) => row.table === "decisionSections")).toBe(false);
-    source["openrouter-decisions"].models["typesafe/jev-1.14"] = {
+    // Use a synthetic model ID: Jev 1.14 is now in the curated catalog.
+    const freshModel = "typesafe/jev-fixture-new";
+    source["openrouter-decisions"].models[freshModel] = {
       ...source["openrouter-decisions"].models["typesafe/jev-1.13"],
-      id: "typesafe/jev-1.14",
+      id: freshModel,
     };
     expect(
       findCandidates(source, seen)
         .candidates.filter((row) => row.table === "decisionSections")
         .map((row) => row.codename),
-    ).toEqual(["typesafe/jev-1.14"]);
+    ).toEqual([freshModel]);
     expect(() => decisionSource({ error: "unavailable" })).toThrow();
   });
 
