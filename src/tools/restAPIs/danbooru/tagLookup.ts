@@ -12,8 +12,8 @@ import {
 } from "@/tools/restAPIs/danbooru/danbooruService";
 import { log } from "@/utils/misc/logger";
 
-export const MAX_TAG_QUERIES = 20;
-export const MAX_DESCRIBED_TAGS = 3;
+const MAX_TAG_QUERIES = 20;
+const MAX_DESCRIBED_TAGS = 3;
 export const MAX_SIGNATURE_TAGS = 25;
 export const MAX_SUMMARY_CHARS = 300;
 const MAX_ALTERNATIVES = 3;
@@ -25,7 +25,7 @@ const SUGGESTION_LIMIT = 20;
 const SUGGESTION_CACHE_TTL_MS = 10 * 60_000;
 const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 500;
 
-export type TagStatus = "exact" | "alias" | "corrected" | "partial" | "not_found";
+type TagStatus = "exact" | "alias" | "corrected" | "partial" | "not_found";
 export type TagCategory = "general" | "artist" | "copyright" | "character" | "meta";
 
 const TAG_CATEGORIES: Readonly<Record<number, TagCategory>> = {
