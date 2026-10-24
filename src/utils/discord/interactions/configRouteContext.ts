@@ -358,7 +358,10 @@ export interface ConfigRouteDependencies {
   takeAvatarUpload(interactionId: string, nonce: string): APIAttachment | undefined;
   takeCheckboxValues(interactionId: string, fieldId: string): string[] | undefined;
   takeSelectValue(interactionId: string, fieldId: string): string | undefined;
+  takeSelectValues(interactionId: string, fieldId: string): string[] | undefined;
   takeChannelSelectValues(interactionId: string, fieldId: string): string[] | undefined;
+  storeSnapshot(nonce: string, values: readonly string[]): void;
+  takeSnapshot(nonce: string): string[] | undefined;
 }
 
 export function asEphemeralComponentsV2FollowUp(
@@ -638,6 +641,20 @@ export async function repaint(
       ...naturalNudges,
       // A failed read on the landing page only leaves Resync off instead of failing the whole panel.
       personaConfig: page === "general" ? await loading.catch(() => null) : await loading,
+    };
+  }
+  if (
+    category === "persona" &&
+    page === "nudges" &&
+    naturalNudges?.personaNudges === undefined &&
+    nudgePersona?.persona_id !== undefined &&
+    naturalNudges?.personaConfig
+  ) {
+    naturalNudges = {
+      ...naturalNudges,
+      personaNudges: await dependencies.naturalNudges
+        .loadPersonaNudges(nudgePersona, scope.personas, naturalNudges.personaConfig)
+        .catch(() => undefined),
     };
   }
   if (category === "plugins" && page === "natural-nudges" && !naturalNudges?.settings && nudgeServerId) {

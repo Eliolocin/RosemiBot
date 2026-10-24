@@ -1,14 +1,22 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { IDLE_NUDGE_FREQUENCY_LEVELS, defaultServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+import {
+  IDLE_NUDGE_FREQUENCY_LEVELS,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
+  defaultServerNaturalNudgeConfig,
+  type PersonaNaturalNudgeConfig,
+} from "@/modules/natural-nudges/db/types";
 import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
 import {
   buildNaturalNudgesSettingsBody,
+  buildPersonaNudgesBody,
   NUDGE_CLEAR_MODEL_VALUE,
   NUDGE_DECISION_PROVIDER_PREFIX,
 } from "@/modules/natural-nudges/discord/panel";
 import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
-import { initializeLocalizer } from "@/utils/text/localizer";
-import { localizedCopy } from "../../helpers/localeCases";
+import { collectTextDisplays } from "../../helpers/panelLimits";
+import { createPersona } from "../../helpers/fixtures";
+import { expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
+import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 
 const LOCALE = "en-US";
 const CHANNEL_ID = "111111111111111111";
@@ -110,6 +118,139 @@ const modelSectionText = (): string =>
 
 beforeAll(async () => {
   await initializeLocalizer();
+});
+
+function makePersonaNudgeConfig(overrides: Partial<PersonaNaturalNudgeConfig> = {}): PersonaNaturalNudgeConfig {
+  return {
+    persona_id: 55,
+    talkativeness: 2,
+    interests: [{ label: "tea", description: "Tea, cafés, and quiet mornings" }],
+    idle_nudges: [
+      {
+        id: "quiet-hour",
+        category: "start_topic",
+        title: "Quiet hour",
+        brief: "Have {persona} share what it is listening to.",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      },
+      {
+        id: "tea-check",
+        category: "ping_user",
+        title: "Tea check",
+        brief: "Have {persona} ask {target} about tea.",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      },
+      {
+        id: "morning-song",
+        category: "start_topic",
+        title: "Morning song",
+        brief: "Have {persona} share a morning song.",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      },
+    ],
+    disabled_idle_nudge_ids: ["tea-check"],
+    has_override: true,
+    idle_nudges_override: true,
+    idle_nudges_inherited: false,
+    ...overrides,
+  };
+}
+
+const NUDGE_PERSONA = createPersona({ server_id: 9, persona_id: 55, persona_nickname: "Mirri", is_pointer: true });
+
+function routeIds(components: unknown): string[] {
+  return [...JSON.stringify(components).matchAll(/"customId":"([^"]+)"/g)].flatMap((match) =>
+    match[1] ? [match[1]] : [],
+  );
+}
+
+describe("Persona authored idle nudges panel", () => {
+  it("lists own entries with status and ownership controls below Interests", () => {
+    const body = buildPersonaNudgesBody({
+      locale: LOCALE,
+      persona: NUDGE_PERSONA,
+      config: makePersonaNudgeConfig(),
+      writesDisabled: false,
+      personaNudges: {
+        blockers: new Map([["persona:55:quiet-hour", { kind: "tool" as const, tool: "web_search" as const }]]),
+      },
+    });
+    const text = collectTextDisplays(body).join("\n");
+    expect(text).toContain(t("commands.config.natural_nudges.idle_title"));
+    expect(text).toContain(t("commands.config.natural_nudges.idle_entry_available"));
+    expect(text).toContain(t("commands.config.natural_nudges.idle_entry_off"));
+    expect(text).toContain(
+      t("commands.config.natural_nudges.idle_entry_blocked", {
+        reason: t("commands.nudge-studio.blocker_tool", {
+          tool: t("commands.nudge-studio.tool_web_search"),
+        }),
+      }),
+    );
+    const ids = routeIds(body);
+    expect(ids).toContain(buildConfigRouteId({ action: "nudge-persona-select", locale: LOCALE, personaId: 55 }));
+    expect(ids).toContain(
+      buildConfigRouteId({ action: "nudge-persona-availability-select", locale: LOCALE, personaId: 55 }),
+    );
+    expect(ids).toContain(buildConfigRouteId({ action: "nudge-persona-remove-open", locale: LOCALE, personaId: 55 }));
+    expect(ids).toContain(buildConfigRouteId({ action: "nudge-persona-restore-view", locale: LOCALE, personaId: 55 }));
+  });
+
+  it("omits add actions at the authored limit and keeps every entry selectable", () => {
+    const config = makePersonaNudgeConfig({
+      idle_nudges: Array.from({ length: PERSONA_AUTHORED_IDLE_NUDGE_LIMIT }, (_, index) => ({
+        id: `n${index}`,
+        category: "start_topic" as const,
+        title: `Nudge ${index}`,
+        brief: "Brief",
+        agenda_hint: null,
+        prerequisites: [],
+        recommended_tools: [],
+      })),
+      disabled_idle_nudge_ids: [],
+    });
+    const body = buildPersonaNudgesBody({
+      locale: LOCALE,
+      persona: NUDGE_PERSONA,
+      config,
+      writesDisabled: false,
+    });
+    const serialized = JSON.stringify(body);
+    expect(serialized).not.toContain('"value":"add:ping_user"');
+    expect(serialized).toContain(
+      t("commands.config.natural_nudges.idle_limit_note", {
+        max: PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
+      }),
+    );
+    for (let index = 0; index < PERSONA_AUTHORED_IDLE_NUDGE_LIMIT; index++) {
+      expect(serialized).toContain(`"value":"n${index}"`);
+    }
+  });
+
+  it("renders the compact section in every locale", () => {
+    expectForEveryLocale((locale) => {
+      const body = buildPersonaNudgesBody({
+        locale,
+        persona: NUDGE_PERSONA,
+        config: makePersonaNudgeConfig(),
+        writesDisabled: false,
+      });
+      const text = collectTextDisplays(body).join("\n");
+      const title = localizer(locale, "commands.config.natural_nudges.idle_title");
+      const addOption = localizer(locale, "commands.config.natural_nudges.idle_add_option", {
+        category: localizer(locale, "commands.nudge-studio.category_ping_user"),
+      });
+      expect(text).toContain(title);
+      expect(JSON.stringify(body)).toContain(addOption);
+      expect(title).not.toBe("commands.config.natural_nudges.idle_title");
+      expect(addOption).not.toBe("commands.config.natural_nudges.idle_add_option");
+    });
+  });
 });
 
 describe("Natural Nudges settings panel", () => {

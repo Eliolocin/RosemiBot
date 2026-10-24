@@ -2,7 +2,7 @@ import { MessageFlags, type ModalSubmitInteraction } from "discord.js";
 import type { PanelAction } from "@/constants/panelActions";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { ConfigPanelRoute } from "@/utils/discord/configPanelCatalog";
-import { CONFIG_MODEL_PAGE_SIZE } from "@/utils/discord/configPanelCatalog";
+import { buildConfigRouteId, CONFIG_MODEL_PAGE_SIZE } from "@/utils/discord/configPanelCatalog";
 import { decodeConfigProviderPageValue } from "@/utils/discord/interactions/configModelLoaders";
 import { isConfigRouteAuthorized, type ConfigActor } from "@/utils/discord/interactions/configPermissionPolicy";
 import {
@@ -12,6 +12,7 @@ import {
   type ConfigScope,
 } from "@/utils/discord/interactions/configRouteContext";
 import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
+import type { ConfigPanelView } from "@/utils/discord/ui/configPanel";
 import { buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { CONFIG_MODEL_SELECT_FIELD } from "@/utils/discord/ui/configModelModals";
 import { localizer } from "@/utils/text/localizer";
@@ -25,6 +26,8 @@ import {
   buildCheckerModelModal,
   buildInterestModal,
   buildInterestRemovalModal,
+  buildPersonaNudgeAvailabilityModal,
+  buildPersonaNudgeRemovalModal,
   buildPlannerModelModal,
   NUDGE_ADD_VALUE,
   NUDGE_CLEAR_MODEL_VALUE,
@@ -33,12 +36,26 @@ import {
   NUDGE_INTEREST_DESCRIPTION_FIELD,
   NUDGE_INTEREST_LABEL_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
+import { buildIdleNudgeFormModal, checklistGroupCount } from "@/modules/natural-nudges/discord/studioPanel";
+import {
+  computePersonaNudgeFingerprint,
+  computePersonaNudgeListFingerprint,
+  idleNudgeContentFromAuthored,
+} from "@/modules/natural-nudges/discord/studioOperations";
+import { nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
+import {
+  NATURAL_NUDGE_CATEGORIES,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
+  type NaturalNudgeCategory,
+} from "@/modules/natural-nudges/db/types";
 
 type ConfigAction = ConfigPanelRoute["action"];
 
 export const NUDGE_STRING_SELECT_ACTIONS: ReadonlySet<ConfigAction> = new Set<ConfigAction>([
   "nudge-talk-select",
   "nudge-interest-select",
+  "nudge-persona-select",
+  "nudge-persona-availability-select",
   "nudge-provider",
   "nudge-checker-provider",
   "nudge-idle-nudges-frequency-select",
@@ -51,6 +68,10 @@ export const NUDGE_MODAL_SUBMIT_ACTIONS: ReadonlySet<ConfigAction> = new Set<Con
   "nudge-interest-add-submit",
   "nudge-interest-edit-submit",
   "nudge-interest-remove-submit",
+  "nudge-persona-add-submit",
+  "nudge-persona-edit-submit",
+  "nudge-persona-availability-submit",
+  "nudge-persona-remove-submit",
   "nudge-model-submit",
   "nudge-checker-model-submit",
   "nudge-checker-decision-submit",
@@ -78,6 +99,9 @@ export async function handleNudgeModalOpen(
   const opensModal =
     route.action === "nudge-interest-select" ||
     route.action === "nudge-interest-remove-open" ||
+    route.action === "nudge-persona-select" ||
+    route.action === "nudge-persona-availability-select" ||
+    route.action === "nudge-persona-remove-open" ||
     ((route.action === "nudge-provider" || route.action === "nudge-checker-provider") &&
       value !== undefined &&
       value !== NUDGE_CLEAR_MODEL_VALUE);
@@ -98,7 +122,111 @@ export async function handleNudgeModalOpen(
   }
   const nudges = dependencies.naturalNudges;
   const nonce = dependencies.createNonce();
+  const requirePersona = async (personaId: number): Promise<boolean> => {
+    if (scope.personas.some((persona) => persona.persona_id === personaId && persona.server_id === serverId))
+      return true;
+    await deny("commands.config.panel.stale_detail");
+    return false;
+  };
 
+  if (route.action === "nudge-persona-select") {
+    if (!(await requirePersona(route.personaId))) return true;
+    const config = await nudges.loadPersonaConfig(route.personaId);
+    if (!config || value === undefined) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    if (value.startsWith("add:")) {
+      const category = value.slice("add:".length) as NaturalNudgeCategory;
+      if (
+        !NATURAL_NUDGE_CATEGORIES.includes(category) ||
+        config.idle_nudges.length >= PERSONA_AUTHORED_IDLE_NUDGE_LIMIT
+      ) {
+        await deny(
+          config.idle_nudges.length >= PERSONA_AUTHORED_IDLE_NUDGE_LIMIT
+            ? "commands.config.natural_nudges.limit_detail"
+            : "commands.config.panel.stale_detail",
+        );
+        return true;
+      }
+      await dependencies.showModal(
+        interaction,
+        buildIdleNudgeFormModal(locale, category, nonce, undefined, {
+          customId: buildConfigRouteId({
+            action: "nudge-persona-add-submit",
+            locale,
+            personaId: route.personaId,
+            category,
+            nonce,
+          }),
+        }),
+      );
+      return true;
+    }
+    const authored = config.idle_nudges.find((nudge) => nudge.id === value);
+    if (!authored) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    const content = idleNudgeContentFromAuthored(authored);
+    await dependencies.showModal(
+      interaction,
+      buildIdleNudgeFormModal(locale, authored.category, nonce, content, {
+        customId: buildConfigRouteId({
+          action: "nudge-persona-edit-submit",
+          locale,
+          personaId: route.personaId,
+          id: authored.id,
+          fp: computePersonaNudgeFingerprint(route.personaId, content),
+          nonce,
+        }),
+      }),
+    );
+    return true;
+  }
+  if (route.action === "nudge-persona-availability-select") {
+    if (!(await requirePersona(route.personaId))) return true;
+    const config = await nudges.loadPersonaConfig(route.personaId);
+    const authored = config?.idle_nudges.find((nudge) => nudge.id === value);
+    if (!config || !authored) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    await dependencies.showModal(
+      interaction,
+      buildPersonaNudgeAvailabilityModal(
+        locale,
+        route.personaId,
+        nonce,
+        authored,
+        !config.disabled_idle_nudge_ids.includes(authored.id),
+      ),
+    );
+    return true;
+  }
+  if (route.action === "nudge-persona-remove-open") {
+    if (!(await requirePersona(route.personaId))) return true;
+    const config = await nudges.loadPersonaConfig(route.personaId);
+    if (!config || config.idle_nudges.length === 0) {
+      await deny("commands.config.panel.stale_detail");
+      return true;
+    }
+    dependencies.storeSnapshot(
+      nonce,
+      config.idle_nudges.map((nudge) => nudge.id),
+    );
+    await dependencies.showModal(
+      interaction,
+      buildPersonaNudgeRemovalModal(
+        locale,
+        route.personaId,
+        nonce,
+        computePersonaNudgeListFingerprint(route.personaId, config.idle_nudges),
+        config.idle_nudges,
+      ),
+    );
+    return true;
+  }
   if (route.action === "nudge-interest-select") {
     if (value === NUDGE_ADD_VALUE) {
       await dependencies.showModal(interaction, buildInterestModal(locale, nonce, { personaId: route.personaId }));
@@ -178,6 +306,12 @@ function findModelPage<Group extends { provider: string; models: readonly unknow
 
 function writeReceipt(locale: string, result: NudgeWriteResult): PanelReceipt {
   if (result === "stale") return staleReceipt(locale);
+  if (result === "unchanged")
+    return {
+      tone: "info",
+      heading: localizer(locale, "commands.config.natural_nudges.unchanged_heading"),
+      detail: localizer(locale, "commands.config.natural_nudges.unchanged_detail"),
+    };
   if (result === "success")
     return {
       tone: "success",
@@ -199,6 +333,63 @@ function writeReceipt(locale: string, result: NudgeWriteResult): PanelReceipt {
               ? "commands.config.natural_nudges.generate_failed_detail"
               : "commands.config.panel.write_failed_detail",
     ),
+  };
+}
+
+function personaNudgeReceipt(
+  locale: string,
+  result: NudgeWriteResult,
+  success: "save" | "remove" | "restore" = "save",
+): PanelReceipt {
+  if (result === "stale") return staleReceipt(locale);
+  if (result === "unchanged")
+    return {
+      tone: "info",
+      heading: localizer(locale, "commands.config.natural_nudges.unchanged_heading"),
+      detail: localizer(locale, "commands.config.natural_nudges.unchanged_detail"),
+    };
+  if (result === "success") {
+    return {
+      tone: "success",
+      heading: localizer(
+        locale,
+        success === "restore"
+          ? "commands.config.natural_nudges.idle_restore_success_heading"
+          : "commands.config.natural_nudges.idle_saved_heading",
+      ),
+      detail: localizer(
+        locale,
+        success === "restore"
+          ? "commands.config.natural_nudges.idle_restore_success_detail"
+          : success === "remove"
+            ? "commands.config.natural_nudges.idle_removed_detail"
+            : "commands.config.natural_nudges.idle_saved_detail",
+      ),
+    };
+  }
+  return {
+    tone: "error",
+    heading: localizer(locale, "commands.config.panel.write_failed_heading"),
+    detail: localizer(
+      locale,
+      result === "limit"
+        ? "commands.config.natural_nudges.limit_detail"
+        : result === "invalid"
+          ? "commands.config.natural_nudges.invalid_detail"
+          : "commands.config.panel.write_failed_detail",
+    ),
+  };
+}
+
+function readIdleNudgeForm(interaction: ModalSubmitInteraction, nonce: string, dependencies: ConfigRouteDependencies) {
+  const field = (name: "title" | "brief" | "agenda") =>
+    interaction.fields.getTextInputValue(nudgeStudioFieldId(name, nonce));
+  return {
+    title: field("title"),
+    brief: field("brief"),
+    agendaHint: field("agenda"),
+    prerequisites: dependencies.takeSelectValues(interaction.id, nudgeStudioFieldId("needs", nonce)) ?? [],
+    recommendedTools: dependencies.takeSelectValues(interaction.id, nudgeStudioFieldId("tools", nonce)) ?? [],
   };
 }
 
@@ -224,17 +415,29 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
       ? (interaction as ModalSubmitInteraction).fields.getTextInputValue(buildConfigModalFieldId(name, route.nonce))
       : "";
 
-  const paintPersona = (personaId: number, state: NaturalNudgesPanelState = {}, receipt?: PanelReceipt) =>
+  const repaintPersonaId = (personaId: number) =>
+    context.scope.personas.find((persona) => persona.persona_id === personaId)?.persona_id ??
+    context.scope.personas[0]?.persona_id ??
+    personaId;
+  const paintPersona = (
+    personaId: number,
+    state: NaturalNudgesPanelState = {},
+    receipt?: PanelReceipt,
+    view?: ConfigPanelView,
+  ) =>
     repaint(interaction, {
       locale,
       scope: context.scope,
       category: "persona",
       page: "nudges",
-      selectedPersonaId: personaId,
+      selectedPersonaId: repaintPersonaId(personaId),
       naturalNudges: state,
       receipt,
+      view,
       dependencies,
     });
+  const personaInScope = (personaId: number) =>
+    context.scope.readStatus === "fresh" && context.scope.personas.some((persona) => persona.persona_id === personaId);
   const paintPlugins = (receipt: PanelReceipt) =>
     repaint(interaction, {
       locale,
@@ -317,6 +520,121 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
               "server-config.workspace.persona-nudge-interest.remove",
             );
       await paintPersona(route.personaId, {}, writeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-persona-add-submit": {
+      if (!personaInScope(route.personaId)) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const form = readIdleNudgeForm(interaction as ModalSubmitInteraction, route.nonce, dependencies);
+      const result = await write(
+        () => ops.addPersonaNudge(route.personaId, route.category, form),
+        "server-config.workspace.persona-nudge-idle.add",
+      );
+      await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-persona-edit-submit": {
+      if (!personaInScope(route.personaId)) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const form = readIdleNudgeForm(interaction as ModalSubmitInteraction, route.nonce, dependencies);
+      const result = await write(
+        () => ops.editPersonaNudge(route.personaId, route.id, route.fp, form),
+        "server-config.workspace.persona-nudge-idle.edit",
+      );
+      await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-persona-availability-submit": {
+      if (!personaInScope(route.personaId)) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const checked = dependencies.takeCheckboxValues(interaction.id, nudgeStudioFieldId("checklist", route.nonce));
+      const result =
+        checked === undefined
+          ? "stale"
+          : await write(
+              () => ops.setPersonaNudgeAvailability(route.personaId, route.id, checked.includes("available")),
+              "server-config.workspace.persona-nudge-idle-availability.set",
+            );
+      await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result));
+      return true;
+    }
+    case "nudge-persona-remove-submit": {
+      if (!personaInScope(route.personaId)) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const presented = dependencies.takeSnapshot(route.nonce);
+      if (!presented) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const checked = new Set<string>();
+      let arrived = false;
+      for (let group = 0; group < checklistGroupCount(presented.length); group++) {
+        const values = dependencies.takeCheckboxValues(
+          interaction.id,
+          nudgeStudioFieldId("checklist", route.nonce, group),
+        );
+        if (values === undefined) continue;
+        arrived = true;
+        for (const value of values) checked.add(value);
+      }
+      const result = !arrived
+        ? "stale"
+        : await write(
+            () => ops.removePersonaNudges(route.personaId, route.fp, presented, checked),
+            "server-config.workspace.persona-nudge-idle.remove",
+          );
+      await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result, "remove"));
+      return true;
+    }
+    case "nudge-persona-restore-view": {
+      const persona = context.scope.personas.find((candidate) => candidate.persona_id === route.personaId);
+      const config = persona ? await dependencies.naturalNudges.loadPersonaConfig(route.personaId) : null;
+      if (
+        context.scope.readStatus !== "fresh" ||
+        !persona ||
+        persona.is_pointer !== true ||
+        config?.idle_nudges_override !== true
+      ) {
+        await paintPersona(route.personaId, {}, staleReceipt(locale));
+        return true;
+      }
+      const nonce = dependencies.createNonce();
+      dependencies.storeSnapshot(nonce, [String(route.personaId)]);
+      await paintPersona(route.personaId, {}, undefined, {
+        kind: "nudge-restore-confirm",
+        personaId: route.personaId,
+        nonce,
+      });
+      return true;
+    }
+    case "nudge-persona-restore-confirm": {
+      const persona = context.scope.personas.find((candidate) => candidate.persona_id === route.personaId);
+      const snapshot = dependencies.takeSnapshot(route.nonce);
+      const config = persona ? await dependencies.naturalNudges.loadPersonaConfig(route.personaId) : null;
+      const result =
+        context.scope.readStatus !== "fresh" ||
+        !persona ||
+        persona.is_pointer !== true ||
+        config?.idle_nudges_override !== true ||
+        !snapshot?.includes(String(route.personaId))
+          ? "stale"
+          : await write(
+              () => ops.restorePersonaNudgeList(route.personaId),
+              "server-config.workspace.persona-nudge-idle.restore",
+            );
+      await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result, "restore"));
+      return true;
+    }
+    case "nudge-persona-restore-cancel": {
+      await paintPersona(route.personaId);
       return true;
     }
     case "nudge-idle-nudges-set": {
