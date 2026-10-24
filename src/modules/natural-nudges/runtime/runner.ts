@@ -3,13 +3,20 @@ import type { TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { NaturalNudgeCategory, NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
-import { availableIdleNudgeTools, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
+import {
+  availableIdleNudgeTools,
+  findMissingIdleNudgeTool,
+  findPersonaRunnableIdleNudge,
+  sameIdleNudgeDefinition,
+  type IdleNudgeDefinition,
+} from "@/modules/natural-nudges/runtime/idleNudges";
 import { resolveEffectiveChannelIds, type NudgeChannel } from "@/modules/natural-nudges/runtime/channels";
 import { type NudgeModelRef, resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
 import { IDLE_NUDGE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
 import { planIdleNudge, type IdleNudgePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
 import { isTargetStillReachable, type PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
+import { loadAvailableToolNames } from "@/modules/natural-nudges/runtime/tools";
 import { recordIdleNudgeSample, type IdleNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { isChannelProcessingLocked, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
@@ -79,10 +86,27 @@ async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel
   const personaId = attempt.persona.persona_id;
   if (typeof personaId !== "number") return "persona_removed";
   const personas = await personaRepository.loadAllForServer(attempt.serverDiscId);
-  if (!personas.some((persona) => persona.persona_id === personaId)) return "persona_removed";
+  const currentPersona = personas.find((persona) => persona.persona_id === personaId);
+  if (!currentPersona) return "persona_removed";
   if ((await resolvePlannerModel(personas[0], config.llm_id)).kind !== "ready") return "no_model";
   const personaConfig = (await naturalNudgeRepository.loadPersonaConfigs([personaId])).get(personaId);
   if (!personaConfig || personaConfig.talkativeness === 0) return "persona_silenced";
+  const [customIdleNudges, scopes] = await Promise.all([
+    naturalNudgeRepository.listCustomIdleNudges(attempt.serverId),
+    naturalNudgeRepository.loadPersonaScopes(attempt.serverId),
+  ]);
+  const currentIdleNudge = findPersonaRunnableIdleNudge(attempt.idleNudge.key, {
+    personaId,
+    disabledBuiltIns: config.disabled_builtin_idle_nudges,
+    customIdleNudges,
+    scopes,
+    personaConfig,
+  });
+  if (!currentIdleNudge) return "idle_nudge_unavailable";
+  if (!sameIdleNudgeDefinition(attempt.idleNudge, currentIdleNudge)) return "idle_nudge_changed";
+  const availableTools = await loadAvailableToolNames(currentPersona);
+  attempt.availableTools = availableTools;
+  if (findMissingIdleNudgeTool(currentIdleNudge, availableTools)) return "tools_unavailable";
   const whitelist = await whitelistRepository.checkChannelWhitelist(attempt.serverDiscId, target.channel.id);
   if (!whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, personaId)) return "persona_not_allowed";
   for (const { persona: partner } of attempt.partners) {
@@ -95,13 +119,13 @@ async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel
   }
   if (attempt.target) {
     const guild = attempt.client.guilds.cache.get(attempt.serverDiscId);
-    const persona = { ...attempt.persona, persona_id: personaId };
+    const targetPersona = { ...attempt.persona, persona_id: personaId };
     if (
       !guild ||
       !(await isTargetStillReachable({
         guild,
         serverId: attempt.serverId,
-        persona,
+        persona: targetPersona,
         target: attempt.target,
         channel: target.channel,
         now,

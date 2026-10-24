@@ -1,3 +1,7 @@
+import {
+  CUSTOM_IDLE_NUDGE_KEY_PREFIX,
+  PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX,
+} from "@/modules/natural-nudges/db/types";
 import { metricSampleRepository } from "@/utils/db/repositories/MetricSampleRepository";
 
 const NATURAL_NUDGE_IDLE_METRIC = "natural_nudge_idle";
@@ -14,7 +18,7 @@ export interface IdleNudgeSample {
   reason: string;
   heat?: number;
   category?: string;
-  /** Built-in key, or `custom` so free-text titles never reach telemetry. */
+  /** Built-in key, or the source for an authored definition, so free-text titles and local IDs stay out of telemetry. */
   idleNudgeKey?: string;
   plannerModel?: string;
   plannerInputTokens?: number;
@@ -35,7 +39,11 @@ export function recordIdleNudgeSample(sample: IdleNudgeSample): void {
   if (sample.heat !== undefined) fields.heat = Math.round(sample.heat * 10) / 10;
   if (sample.category) fields.category = sample.category;
   if (sample.idleNudgeKey)
-    fields.idle_nudge_key = sample.idleNudgeKey.startsWith("custom:") ? "custom" : sample.idleNudgeKey;
+    fields.idle_nudge_key = sample.idleNudgeKey.startsWith(CUSTOM_IDLE_NUDGE_KEY_PREFIX)
+      ? "custom"
+      : sample.idleNudgeKey.startsWith(PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX)
+        ? "persona"
+        : sample.idleNudgeKey;
   if (sample.plannerModel) fields.planner_model = sample.plannerModel;
   if (sample.plannerInputTokens !== undefined) fields.planner_tokens_in = sample.plannerInputTokens;
   if (sample.plannerOutputTokens !== undefined) fields.planner_tokens_out = sample.plannerOutputTokens;
