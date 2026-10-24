@@ -84,10 +84,11 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   one exception is a Play Scene's later turns, which turn 0 queues itself (below).
 - **Re-check right before sending.** `recheckBeforeSend` reads settings, caps, the persona, the
   persona channel whitelist, and Ping User target eligibility fresh. It also re-resolves the planned
-  idle nudge from fresh server and persona rows and re-admits its prerequisite tools, aborting as
-  `idle_nudge_unavailable`, `idle_nudge_changed`, or `tools_unavailable` when the entry was removed,
-  switched off, edited, or lost a tool during planning. The lull admits planning; new
-  messages during planning do not cancel the attempt. Generation reads the current conversation,
+  idle nudge from fresh server and persona rows and re-admits its tools, hanging conversation,
+  eligible partners, and target memories or activity when required. It aborts as
+  `idle_nudge_unavailable`, `idle_nudge_changed`, `tools_unavailable`, or `prerequisites_unavailable`
+  when the entry or a required condition changed during planning. The lull admits planning.
+  Generation reads the current conversation,
   while the channel processing lock and admission gate still prevent overlapping turns.
 - **Caps follow the frequency level.** `IDLE_NUDGE_DAILY_CAPS` and `ACTIVE_NUDGE_DAILY_CAPS` in
   `runtime/tuning.ts` map each level to its daily ceiling, so the panel estimate, the idle nudge
@@ -359,6 +360,10 @@ reaching that persona; per-entry overlays would let a preset edit change half an
 `setPersonaIdleNudgeAvailability` writes only the disabled IDs, so a toggle never snapshots.
 `restorePersonaIdleNudgeList` sets the list back to `NULL` and prunes disabled IDs that no longer
 exist in the preset, leaving interests and talkativeness alone. A full resync still deletes the row.
+
+Persona removal checklists and preset-list restore confirmations retain content fingerprints.
+The repository checks those fingerprints under the persona write lock, so a stale confirmation
+cannot discard content edited after the dialog opened.
 
 Cards carry the effective list as `natural_nudge_idle_nudges` but never availability or server custom
 nudges. Import validates the list before any write, restores it through `replacePersonaIdleNudges`

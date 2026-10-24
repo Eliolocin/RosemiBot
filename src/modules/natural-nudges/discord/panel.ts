@@ -209,7 +209,13 @@ function buildIdleNudgeSection(
             ...entries.map((entry) => ({
               label: safeSelectOptionText(entry.authored.title, 100),
               description: safeSelectOptionText(
-                `${nudgeCategoryLabel(locale, entry.authored.category)} · ${ownedNudgeState(entry, blockers)}`,
+                `${nudgeCategoryLabel(locale, entry.authored.category)} · ${t(
+                  {
+                    available: "commands.config.natural_nudges.idle_entry_available",
+                    off: "commands.config.natural_nudges.idle_entry_off",
+                    blocked: "commands.config.natural_nudges.idle_entry_blocked_label",
+                  }[ownedNudgeState(entry, blockers)],
+                )}`,
                 100,
               ),
               value: entry.authored.id,

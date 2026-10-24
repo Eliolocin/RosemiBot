@@ -1,3 +1,4 @@
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
 /**
  * Route coverage for the `/config` Persona surface.
  *
@@ -86,11 +87,7 @@ import {
   nudgeStudioFieldId,
   parseNudgeStudioRoute,
 } from "@/modules/natural-nudges/discord/studioCatalog";
-import {
-  computePersonaNudgeFingerprint,
-  computePersonaNudgeListFingerprint,
-  idleNudgeContentFromAuthored,
-} from "@/modules/natural-nudges/discord/studioOperations";
+import { idleNudgeContentFromAuthored } from "@/modules/natural-nudges/discord/studioOperations";
 
 let nudgeOverrideClears = 0;
 import {
@@ -5368,6 +5365,41 @@ describe("config persona authored idle nudges", () => {
     expect(h.personaNudgeCalls).toEqual([]);
   });
 
+  it.each(["edit", "add", "remove"] as const)("rejects a restore after a concurrent list %s", async (change) => {
+    const config = makeNudgeConfig({ idle_nudges_override: true });
+    const pointer = makePersona({ persona_id: 55, is_pointer: true });
+    const h = makeHarness({ personas: [pointer], nudgeConfig: config });
+    await dispatch(
+      h,
+      makeInteraction({
+        harness: h,
+        customId: buildConfigRouteId({ action: "nudge-persona-restore-view", locale: "en-US", personaId: 55 }),
+      }),
+    );
+    const nonce = [...h.snapshots.keys()][0];
+    if (!nonce) throw new Error("Missing restore confirmation snapshot");
+    if (change === "edit")
+      config.idle_nudges = config.idle_nudges.map((nudge) => ({ ...nudge, brief: "Edited brief." }));
+    else if (change === "add") config.idle_nudges.push(authoredNudge({ id: "added-later" }));
+    else config.idle_nudges = [];
+
+    await dispatch(
+      h,
+      makeInteraction({
+        harness: h,
+        customId: buildConfigRouteId({
+          action: "nudge-persona-restore-confirm",
+          locale: "en-US",
+          personaId: 55,
+          nonce,
+        }),
+      }),
+    );
+    expect(h.personaNudgeCalls).toEqual([]);
+    expect(h.telemetry).toEqual([]);
+    expect(JSON.stringify(h.edits.at(-1))).toMatch(localizedProse("en-US", "commands.config.panel.stale_detail"));
+  });
+
   it("reports a failed write without recording a successful action", async () => {
     const h = makeHarness({ nudgeConfig: makeNudgeConfig(), personaNudgeResult: "write-failed" });
     const authored = authoredNudge();
@@ -5431,8 +5463,9 @@ describe("persona idle nudge operations", () => {
       ).resolves.toBe("stale");
       expect(update).toHaveBeenCalledTimes(1);
 
-      await naturalNudgePanelDependencies.operations.restorePersonaNudgeList(55);
-      expect(restore).toHaveBeenCalledWith(55);
+      const listFp = computePersonaNudgeListFingerprint(55, config.idle_nudges);
+      await naturalNudgePanelDependencies.operations.restorePersonaNudgeList(55, listFp);
+      expect(restore).toHaveBeenCalledWith(55, listFp);
     } finally {
       load.mockRestore();
       add.mockRestore();
@@ -5458,7 +5491,11 @@ describe("persona idle nudge operations", () => {
         naturalNudgePanelDependencies.operations.removePersonaNudges(55, fp, ["first", "second"], new Set(["second"])),
       ).resolves.toBe("success");
       expect(remove).toHaveBeenCalledTimes(1);
-      expect(remove).toHaveBeenCalledWith(55, "first");
+      expect(remove).toHaveBeenCalledWith(
+        55,
+        "first",
+        computePersonaNudgeFingerprint(55, config.idle_nudges[0] as PersonaAuthoredIdleNudge),
+      );
     } finally {
       load.mockRestore();
       remove.mockRestore();

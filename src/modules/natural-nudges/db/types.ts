@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { DecisionModelRow } from "@/types/db/schema";
 
@@ -230,6 +231,50 @@ export const personaAuthoredIdleNudgesSchema = z.preprocess(
       message: "Duplicate authored idle nudge id",
     }),
 );
+
+export function computePersonaNudgeFingerprint(
+  personaId: number,
+  content: Omit<PersonaAuthoredIdleNudgeDraft, "prerequisites" | "recommended_tools"> & {
+    prerequisites: readonly string[];
+    recommended_tools: readonly string[];
+  },
+): string {
+  return createHash("sha256")
+    .update(
+      `persona-nudge:${personaId}:${JSON.stringify([
+        content.category,
+        content.title,
+        content.brief,
+        content.agenda_hint,
+        content.prerequisites,
+        content.recommended_tools,
+      ])}`,
+    )
+    .digest("base64url")
+    .slice(0, 8);
+}
+
+export function computePersonaNudgeListFingerprint(
+  personaId: number,
+  idleNudges: readonly PersonaAuthoredIdleNudge[],
+): string {
+  return createHash("sha256")
+    .update(
+      `persona-nudges:${personaId}:${JSON.stringify(
+        idleNudges.map((nudge) => [
+          nudge.id,
+          nudge.category,
+          nudge.title,
+          nudge.brief,
+          nudge.agenda_hint,
+          nudge.prerequisites,
+          nudge.recommended_tools,
+        ]),
+      )}`,
+    )
+    .digest("base64url")
+    .slice(0, 8);
+}
 
 export const personaNaturalNudgeConfigSchema = z.object({
   persona_id: z.number().int(),

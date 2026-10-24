@@ -9,6 +9,8 @@ import {
   CUSTOM_IDLE_NUDGE_KEY_PREFIX,
   customIdleNudgeKey,
   customIdleNudgeRowSchema,
+  computePersonaNudgeFingerprint,
+  computePersonaNudgeListFingerprint,
   defaultServerNaturalNudgeConfig,
   DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
   enabledIdleNudgeServerSchema,
@@ -462,10 +464,15 @@ class NaturalNudgeRepository {
     });
   }
 
-  async removePersonaIdleNudge(personaId: number, idleNudgeId: string): Promise<PersonaIdleNudgeWriteResult> {
+  async removePersonaIdleNudge(
+    personaId: number,
+    idleNudgeId: string,
+    expectedFingerprint: string,
+  ): Promise<PersonaIdleNudgeWriteResult> {
     if (!personaAuthoredIdleNudgeIdSchema.safeParse(idleNudgeId).success) return "invalid";
     return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
-      if (!config.idle_nudges.some((nudge) => nudge.id === idleNudgeId)) return "stale";
+      const nudge = config.idle_nudges.find((nudge) => nudge.id === idleNudgeId);
+      if (!nudge || computePersonaNudgeFingerprint(personaId, nudge) !== expectedFingerprint) return "stale";
       await this.writePersonaIdleNudgeState(client, personaId, config, {
         idleNudges: config.idle_nudges.filter((nudge) => nudge.id !== idleNudgeId),
         disabledIdleNudgeIds: config.disabled_idle_nudge_ids.filter((id) => id !== idleNudgeId),
@@ -497,8 +504,13 @@ class NaturalNudgeRepository {
   }
 
   /** Clears only the list override, keeping interests, talkativeness, and availability that still names a preset entry. */
-  async restorePersonaIdleNudgeList(personaId: number): Promise<PersonaIdleNudgeWriteResult> {
-    return this.withPersonaIdleNudgeWrite(personaId, async (client, config, presetIdleNudges) => {
+  async restorePersonaIdleNudgeList(
+    personaId: number,
+    expectedFingerprint: string,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config, presetIdleNudges, isPointer) => {
+      if (!isPointer) return "stale";
+      if (computePersonaNudgeListFingerprint(personaId, config.idle_nudges) !== expectedFingerprint) return "stale";
       if (!config.idle_nudges_override) return "unchanged";
       const restoredIds = new Set(presetIdleNudges.map((nudge) => nudge.id));
       await this.writePersonaIdleNudgeState(client, personaId, config, {
@@ -515,12 +527,13 @@ class NaturalNudgeRepository {
       client: SQL,
       config: PersonaNaturalNudgeConfig,
       presetIdleNudges: readonly PersonaAuthoredIdleNudge[],
+      isPointer: boolean,
     ) => Promise<PersonaIdleNudgeWriteResult>,
   ): Promise<PersonaIdleNudgeWriteResult> {
     try {
       return await sql.transaction(async (tx) => {
-        const [persona] = await tx<Array<{ persona_id: number }>>`
-          SELECT persona_id FROM personas WHERE persona_id = ${personaId} FOR UPDATE
+        const [persona] = await tx<Array<{ persona_id: number; is_pointer: boolean }>>`
+          SELECT persona_id, is_pointer FROM personas WHERE persona_id = ${personaId} FOR UPDATE
         `;
         if (!persona) return "stale";
         const config = (await this.loadPersonaConfigs([personaId], tx)).get(personaId);
@@ -531,7 +544,7 @@ class NaturalNudgeRepository {
           });
           return "write-failed";
         }
-        return await operation(tx, config, presetIdleNudges);
+        return await operation(tx, config, presetIdleNudges, persona.is_pointer);
       });
     } catch (error) {
       await log.error("Natural Nudges: failed to write persona idle nudges", error, { metadata: { personaId } });

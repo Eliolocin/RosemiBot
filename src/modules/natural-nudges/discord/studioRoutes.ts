@@ -355,7 +355,7 @@ async function runWrite(
   }
   if (route.action !== "remove-submit") return "invalid";
   const customIds: number[] = [];
-  const personaEntries: Array<{ ownerPersonaId: number; idleNudgeId: string }> = [];
+  const personaEntries: Array<{ ownerPersonaId: number; idleNudgeId: string; fp: string }> = [];
   const keptKeys = new Set<string>();
   for (const value of presented) {
     const parsed = parseStudioRemovalKey(value);
@@ -365,7 +365,7 @@ async function runWrite(
       continue;
     }
     if (parsed.kind === "custom") customIds.push(parsed.id);
-    else personaEntries.push({ ownerPersonaId: parsed.ownerPersonaId, idleNudgeId: parsed.idleNudgeId });
+    else personaEntries.push({ ownerPersonaId: parsed.ownerPersonaId, idleNudgeId: parsed.idleNudgeId, fp: parsed.fp });
   }
   const customKept = new Set(
     [...keptKeys].flatMap((key) => {
@@ -374,11 +374,16 @@ async function runWrite(
     }),
   );
   const personaKept = new Set([...keptKeys].filter((key) => !key.startsWith("custom:")));
-  const [customResult, personaResult] = await Promise.all([
-    deps.operations.removeCustomIdleNudges(serverId, category, customIds, customKept),
-    deps.operations.removePersonaIdleNudges(category, livePersonaIds, personaEntries, personaKept),
-  ]);
-  if (customResult === "write-failed" || personaResult === "write-failed") return "write-failed";
+  const personaResult = await deps.operations.removePersonaIdleNudges(
+    category,
+    livePersonaIds,
+    personaEntries,
+    personaKept,
+  );
+  if (personaResult === "stale" || personaResult === "write-failed" || personaResult === "invalid")
+    return personaResult;
+  const customResult = await deps.operations.removeCustomIdleNudges(serverId, category, customIds, customKept);
+  if (customResult === "write-failed") return "write-failed";
   if (customResult === "success" || personaResult === "success") return "success";
   return "unchanged";
 }

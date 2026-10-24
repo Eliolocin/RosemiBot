@@ -1,3 +1,4 @@
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
 import { createHash } from "node:crypto";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import {
@@ -13,8 +14,6 @@ import {
   type ServerNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import {
-  computePersonaNudgeFingerprint,
-  computePersonaNudgeListFingerprint,
   idleNudgeContentFromAuthored,
   loadPersonaNudgeBlockerView,
   parseIdleNudgeForm,
@@ -418,16 +417,22 @@ const naturalNudgeOperations = {
     );
     if (targets.length === 0) return "unchanged";
     for (const id of targets) {
-      const result = await naturalNudgeRepository.removePersonaIdleNudge(personaId, id);
-      if (result === "write-failed" || result === "invalid") return "write-failed";
+      const nudge = current.idle_nudges.find((nudge) => nudge.id === id);
+      if (!nudge) return "stale";
+      const result = await naturalNudgeRepository.removePersonaIdleNudge(
+        personaId,
+        id,
+        computePersonaNudgeFingerprint(personaId, nudge),
+      );
+      if (result !== "success") return result;
     }
     return "success";
   },
 
-  async restorePersonaNudgeList(personaId: number): Promise<NudgeWriteResult> {
+  async restorePersonaNudgeList(personaId: number, expectedFingerprint: string): Promise<NudgeWriteResult> {
     const current = await loadPersonaNudgeConfig(personaId);
     if (!current) return "stale";
-    return naturalNudgeRepository.restorePersonaIdleNudgeList(personaId);
+    return naturalNudgeRepository.restorePersonaIdleNudgeList(personaId, expectedFingerprint);
   },
 };
 

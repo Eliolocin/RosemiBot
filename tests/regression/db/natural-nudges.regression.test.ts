@@ -1,3 +1,4 @@
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import { llmModelRepo } from "@/utils/db/repositories";
@@ -294,7 +295,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
         UPDATE persona_presets SET natural_nudge_idle_nudges = ${[STARGAZING]}::jsonb
         WHERE preset_lineage_id = ${PRESET_LINEAGE_ID}
       `;
-      expect(await naturalNudgeRepository.restorePersonaIdleNudgeList(personaId)).toBe("success");
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, config?.idle_nudges ?? []),
+        ),
+      ).toBe("success");
       config = await loadConfig();
       expect(config).toMatchObject({
         talkativeness: 1,
@@ -308,7 +314,57 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
         SELECT authored_idle_nudges FROM persona_natural_nudge_configs WHERE persona_id = ${personaId}
       `;
       expect(restored.authored_idle_nudges).toBeNull();
-      expect(await naturalNudgeRepository.restorePersonaIdleNudgeList(personaId)).toBe("unchanged");
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, [STARGAZING]),
+        ),
+      ).toBe("unchanged");
+    });
+
+    it("rejects stale removal and restore fingerprints without discarding newer content", async () => {
+      expect(await naturalNudgeRepository.replacePersonaIdleNudges(personaId, PRESET_LIST)).toBe("success");
+      const entryFp = computePersonaNudgeFingerprint(personaId, STARGAZING);
+      const listFp = computePersonaNudgeListFingerprint(personaId, PRESET_LIST);
+      const edited = { ...STARGAZING, ...draft("New constellation") };
+      expect(
+        await naturalNudgeRepository.updatePersonaIdleNudge(personaId, STARGAZING.id, draft("New constellation")),
+      ).toBe("success");
+      expect(await naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, STARGAZING.id, false)).toBe(
+        "success",
+      );
+
+      expect(await naturalNudgeRepository.removePersonaIdleNudge(personaId, STARGAZING.id, entryFp)).toBe("stale");
+      expect(await naturalNudgeRepository.restorePersonaIdleNudgeList(personaId, listFp)).toBe("stale");
+      expect(await loadConfig()).toMatchObject({
+        idle_nudges: [edited, TEA_BREAK],
+        disabled_idle_nudge_ids: [STARGAZING.id],
+        idle_nudges_override: true,
+      });
+
+      expect(
+        await naturalNudgeRepository.removePersonaIdleNudge(
+          personaId,
+          STARGAZING.id,
+          computePersonaNudgeFingerprint(personaId, edited),
+        ),
+      ).toBe("success");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: [TEA_BREAK], disabled_idle_nudge_ids: [] });
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, [TEA_BREAK]),
+        ),
+      ).toBe("success");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: PRESET_LIST, idle_nudges_inherited: true });
+      expect(await personaRepository.materializeIfPointer(personaId)).toBe(true);
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, PRESET_LIST),
+        ),
+      ).toBe("stale");
+      expect(await loadConfig()).toMatchObject({ idle_nudges: PRESET_LIST, idle_nudges_override: true });
     });
 
     it("stores an explicit empty list and rejects malformed or over-limit definitions", async () => {
@@ -372,7 +428,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
         UPDATE persona_natural_nudge_configs SET authored_idle_nudges = NULL, disabled_idle_nudge_ids = '[1]'::jsonb
         WHERE persona_id = ${personaId}
       `;
-      expect(await naturalNudgeRepository.restorePersonaIdleNudgeList(personaId)).toBe("write-failed");
+      expect(
+        await naturalNudgeRepository.restorePersonaIdleNudgeList(
+          personaId,
+          computePersonaNudgeListFingerprint(personaId, PRESET_LIST),
+        ),
+      ).toBe("write-failed");
     });
 
     it("copies the inherited list when an existing customization row materializes", async () => {

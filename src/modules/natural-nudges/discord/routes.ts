@@ -1,3 +1,4 @@
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
 import { MessageFlags, type ModalSubmitInteraction } from "discord.js";
 import type { PanelAction } from "@/constants/panelActions";
 import type { PanelReceipt } from "@/types/discord/panel";
@@ -37,11 +38,7 @@ import {
   NUDGE_INTEREST_LABEL_FIELD,
 } from "@/modules/natural-nudges/discord/panel";
 import { buildIdleNudgeFormModal, checklistGroupCount } from "@/modules/natural-nudges/discord/studioPanel";
-import {
-  computePersonaNudgeFingerprint,
-  computePersonaNudgeListFingerprint,
-  idleNudgeContentFromAuthored,
-} from "@/modules/natural-nudges/discord/studioOperations";
+import { idleNudgeContentFromAuthored } from "@/modules/natural-nudges/discord/studioOperations";
 import { nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
 import {
   NATURAL_NUDGE_CATEGORIES,
@@ -607,7 +604,10 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
         return true;
       }
       const nonce = dependencies.createNonce();
-      dependencies.storeSnapshot(nonce, [String(route.personaId)]);
+      dependencies.storeSnapshot(nonce, [
+        String(route.personaId),
+        computePersonaNudgeListFingerprint(route.personaId, config.idle_nudges),
+      ]);
       await paintPersona(route.personaId, {}, undefined, {
         kind: "nudge-restore-confirm",
         personaId: route.personaId,
@@ -618,16 +618,19 @@ export async function handleNudgeRoutes(context: NudgeRouteContext): Promise<boo
     case "nudge-persona-restore-confirm": {
       const persona = context.scope.personas.find((candidate) => candidate.persona_id === route.personaId);
       const snapshot = dependencies.takeSnapshot(route.nonce);
+      const fp = snapshot?.[1];
       const config = persona ? await dependencies.naturalNudges.loadPersonaConfig(route.personaId) : null;
       const result =
         context.scope.readStatus !== "fresh" ||
         !persona ||
         persona.is_pointer !== true ||
         config?.idle_nudges_override !== true ||
-        !snapshot?.includes(String(route.personaId))
+        snapshot?.[0] !== String(route.personaId) ||
+        fp === undefined ||
+        fp !== computePersonaNudgeListFingerprint(route.personaId, config.idle_nudges)
           ? "stale"
           : await write(
-              () => ops.restorePersonaNudgeList(route.personaId),
+              () => ops.restorePersonaNudgeList(route.personaId, fp),
               "server-config.workspace.persona-nudge-idle.restore",
             );
       await paintPersona(route.personaId, {}, personaNudgeReceipt(locale, result, "restore"));

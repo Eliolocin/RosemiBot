@@ -147,6 +147,7 @@ export default {
       idle_entry_row: `{title} ({category}): {note}`,
       idle_entry_available: `available`,
       idle_entry_off: `off`,
+      idle_entry_blocked_label: `blocked`,
       idle_entry_blocked: `blocked, {reason}`,
       idle_add_option: `+ Add {category}`,
       idle_select_placeholder: `Select or add an idle nudge...`,

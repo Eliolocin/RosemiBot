@@ -1,3 +1,4 @@
+import { computePersonaNudgeFingerprint } from "@/modules/natural-nudges/db/types";
 import {
   ButtonStyle,
   ComponentType,
@@ -39,7 +40,7 @@ import type {
   NudgeStudioView,
   StudioEntry,
 } from "@/modules/natural-nudges/discord/studioOperations";
-import { personaNudgeLocalId, computePersonaNudgeFingerprint } from "@/modules/natural-nudges/discord/studioOperations";
+import { personaNudgeLocalId, idleNudgeContentFromDefinition } from "@/modules/natural-nudges/discord/studioOperations";
 import { resolveRangeSelection } from "@/utils/discord/interactions/panelController";
 import type { ResolvedRangeSelection } from "@/types/discord/panel";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
@@ -713,22 +714,27 @@ export function studioRemovalKey(entry: StudioEntry): string | null {
   if (entry.custom) return `c:${entry.custom.custom_idle_nudge_id}`;
   const ownerId = entry.definition.ownerPersonaId;
   const idleNudgeId = personaNudgeLocalId(entry.definition);
-  return ownerId === undefined || idleNudgeId === null ? null : `p:${ownerId}:${idleNudgeId}`;
+  return ownerId === undefined || idleNudgeId === null
+    ? null
+    : `p:${ownerId}:${idleNudgeId}:${computePersonaNudgeFingerprint(ownerId, idleNudgeContentFromDefinition(entry.definition))}`;
 }
 
 export function parseStudioRemovalKey(
   value: string,
-): { kind: "custom"; id: number } | { kind: "persona"; ownerPersonaId: number; idleNudgeId: string } | null {
+):
+  | { kind: "custom"; id: number }
+  | { kind: "persona"; ownerPersonaId: number; idleNudgeId: string; fp: string }
+  | null {
   const custom = /^c:(\d+)$/.exec(value);
   if (custom) {
     const id = Number(custom[1]);
     return Number.isSafeInteger(id) && id > 0 ? { kind: "custom", id } : null;
   }
-  const persona = /^p:(\d+):([A-Za-z0-9_-]{1,24})$/.exec(value);
+  const persona = /^p:(\d+):([A-Za-z0-9_-]{1,24}):([A-Za-z0-9_-]{8})$/.exec(value);
   if (!persona) return null;
   const ownerPersonaId = Number(persona[1]);
   return Number.isSafeInteger(ownerPersonaId) && ownerPersonaId > 0
-    ? { kind: "persona", ownerPersonaId, idleNudgeId: persona[2] as string }
+    ? { kind: "persona", ownerPersonaId, idleNudgeId: persona[2] as string, fp: persona[3] as string }
     : null;
 }
 

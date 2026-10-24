@@ -95,8 +95,9 @@ keeps its interests, talkativeness, and the on/off choices for entries that stil
 
 Persona cards (`/persona export`) include the persona's idle nudges, from either the preset or its own
 copy, and importing the card restores them. On/off choices are local to a server and are not exported,
-so imported entries start switched on. Server nudges never go into a card. A card from before this
-feature carries no idle nudges, so importing it as the main persona leaves that persona with none.
+so imported entries start switched on. Server nudges never go into a card. An older card that still
+matches an official preset follows that preset's current idle nudges. Other older cards import with
+no persona idle nudges.
 
 ### Hidden agendas
 

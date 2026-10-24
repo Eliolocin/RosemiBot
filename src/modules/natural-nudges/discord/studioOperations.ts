@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { computePersonaNudgeFingerprint } from "@/modules/natural-nudges/db/types";
 import type { TomoriState } from "@/types/db/schema";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import {
@@ -109,46 +109,6 @@ export function personaNudgeLocalId(definition: IdleNudgeDefinition): string | n
   if (personaId === undefined) return null;
   const prefix = `${PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX}${personaId}:`;
   return definition.key.startsWith(prefix) ? definition.key.slice(prefix.length) : null;
-}
-
-/** Binds an edit modal to the definition content it prefilled, so a concurrent edit submits as stale. */
-export function computePersonaNudgeFingerprint(personaId: number, content: IdleNudgeFormContent): string {
-  return createHash("sha256")
-    .update(
-      `persona-nudge:${personaId}:${JSON.stringify([
-        content.category,
-        content.title,
-        content.brief,
-        content.agenda_hint,
-        content.prerequisites,
-        content.recommended_tools,
-      ])}`,
-    )
-    .digest("base64url")
-    .slice(0, 8);
-}
-
-/** Binds a list-replacing removal to the exact authored list it presented. */
-export function computePersonaNudgeListFingerprint(
-  personaId: number,
-  idleNudges: readonly PersonaAuthoredIdleNudge[],
-): string {
-  return createHash("sha256")
-    .update(
-      `persona-nudges:${personaId}:${JSON.stringify(
-        idleNudges.map((nudge) => [
-          nudge.id,
-          nudge.category,
-          nudge.title,
-          nudge.brief,
-          nudge.agenda_hint,
-          nudge.prerequisites,
-          nudge.recommended_tools,
-        ]),
-      )}`,
-    )
-    .digest("base64url")
-    .slice(0, 8);
 }
 
 /**
@@ -413,7 +373,7 @@ export const nudgeStudioOperations = {
   async removePersonaIdleNudges(
     category: NaturalNudgeCategory,
     livePersonaIds: readonly number[],
-    presented: ReadonlyArray<{ ownerPersonaId: number; idleNudgeId: string }>,
+    presented: ReadonlyArray<{ ownerPersonaId: number; idleNudgeId: string; fp: string }>,
     keptKeys: ReadonlySet<string>,
   ): Promise<StudioWriteResult> {
     const targets = presented.filter(
@@ -424,17 +384,16 @@ export const nudgeStudioOperations = {
     const configs = await naturalNudgeRepository.loadPersonaConfigs([
       ...new Set(targets.map((target) => target.ownerPersonaId)),
     ]);
+    for (const { ownerPersonaId, idleNudgeId, fp } of targets) {
+      const nudge = configs.get(ownerPersonaId)?.idle_nudges.find((nudge) => nudge.id === idleNudgeId);
+      if (!nudge || nudge.category !== category || computePersonaNudgeFingerprint(ownerPersonaId, nudge) !== fp)
+        return "stale";
+    }
     let removed = 0;
-    for (const { ownerPersonaId, idleNudgeId } of targets) {
-      const config = configs.get(ownerPersonaId);
-      if (!config) continue;
-      const entry = listPersonaIdleNudges(ownerPersonaId, config).find(
-        (candidate) =>
-          candidate.definition.key === `${PERSONA_AUTHORED_IDLE_NUDGE_KEY_PREFIX}${ownerPersonaId}:${idleNudgeId}`,
-      );
-      if (!entry || entry.definition.category !== category) continue;
-      const result = await naturalNudgeRepository.removePersonaIdleNudge(ownerPersonaId, idleNudgeId);
+    for (const { ownerPersonaId, idleNudgeId, fp } of targets) {
+      const result = await naturalNudgeRepository.removePersonaIdleNudge(ownerPersonaId, idleNudgeId, fp);
       if (result === "write-failed" || result === "invalid") return "write-failed";
+      if (result === "stale") return "stale";
       if (result === "success") removed++;
     }
     return removed > 0 ? "success" : "unchanged";

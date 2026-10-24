@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import {
   IDLE_NUDGE_FREQUENCY_LEVELS,
   PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
@@ -16,7 +16,8 @@ import { buildConfigRouteId } from "@/utils/discord/configPanelCatalog";
 import { collectTextDisplays } from "../../helpers/panelLimits";
 import { createPersona } from "../../helpers/fixtures";
 import { expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
-import { initializeLocalizer, localizer } from "@/utils/text/localizer";
+import { initializeLocalizer, localizer, hasLocaleKey } from "@/utils/text/localizer";
+import * as localizerModule from "@/utils/text/localizer";
 
 const LOCALE = "en-US";
 const CHANNEL_ID = "111111111111111111";
@@ -48,7 +49,7 @@ interface Observed {
   label?: string;
   placeholder?: string;
   description?: string;
-  options?: Array<{ label?: string; value?: string }>;
+  options?: Array<{ label?: string; value?: string; description?: string }>;
 }
 
 function walk(value: unknown): Observed[] {
@@ -76,6 +77,7 @@ function walk(value: unknown): Observed[] {
                   return {
                     label: typeof choice.label === "string" ? choice.label : undefined,
                     value: typeof choice.value === "string" ? choice.value : undefined,
+                    description: typeof choice.description === "string" ? choice.description : undefined,
                   };
                 })
               : undefined,
@@ -250,6 +252,51 @@ describe("Persona authored idle nudges panel", () => {
       expect(title).not.toBe("commands.config.natural_nudges.idle_title");
       expect(addOption).not.toBe("commands.config.natural_nudges.idle_add_option");
     });
+  });
+
+  it("renders option status through locale keys in every locale", () => {
+    const realLocalizer = localizerModule.localizer;
+    const keys = [
+      "commands.config.natural_nudges.idle_entry_available",
+      "commands.config.natural_nudges.idle_entry_off",
+      "commands.config.natural_nudges.idle_entry_blocked_label",
+    ];
+    const localized = spyOn(localizerModule, "localizer").mockImplementation((locale, key, variables) => {
+      const copy = realLocalizer(locale, key, variables);
+      return keys.includes(key) ? `[${copy}]` : copy;
+    });
+    try {
+      expectForEveryLocale((locale) => {
+        const body = buildPersonaNudgesBody({
+          locale,
+          persona: NUDGE_PERSONA,
+          config: makePersonaNudgeConfig(),
+          writesDisabled: false,
+          personaNudges: { blockers: new Map([["persona:55:quiet-hour", { kind: "tool", tool: "web_search" }]]) },
+        });
+        const options = walk(body).find(
+          (component) =>
+            component.customId ===
+            buildConfigRouteId({
+              action: "nudge-persona-select",
+              locale,
+              personaId: 55,
+            }),
+        )?.options;
+        for (const [id, key] of [
+          ["quiet-hour", keys[2]],
+          ["tea-check", keys[1]],
+          ["morning-song", keys[0]],
+        ] as const) {
+          if (!key) throw new Error("Missing status key");
+          expect(options?.find((option) => option.value === id)?.description).toContain(
+            localizedCopy(hasLocaleKey(locale, key) ? locale : "en-US", key),
+          );
+        }
+      });
+    } finally {
+      localized.mockRestore();
+    }
   });
 });
 
