@@ -177,6 +177,7 @@ Persistence is described in
 - `moderation`
 - `novelai`
 - `nsfw`
+- `nudge-studio`
 - `nuke`
 - `persona`
 - `personal`

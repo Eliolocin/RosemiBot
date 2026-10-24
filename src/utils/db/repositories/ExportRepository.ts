@@ -20,6 +20,7 @@ import {
   type MemoryItem,
 } from "@/types/db/dataExport";
 import { shortTermMemoryRepository } from "./ShortTermMemoryRepository";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 
 interface WorkspaceConfigProjectionRow {
   server_id: number;
@@ -124,6 +125,7 @@ interface PersonalConfigProjectionRow {
   privacy_level: number | null;
   message_proxy_service: string | null;
   shortterm_cache_crossserver_opt_in: boolean;
+  natural_nudge_opt_out: boolean;
   physical_appearance_tags: string[];
   impersonation_prompt: string | null;
   personal_dtm: "off" | "follow" | "on";
@@ -625,6 +627,7 @@ export class ExportRepository {
           COALESCE(upc.personal_dtm, 'follow') AS personal_dtm,
           COALESCE(upc.personal_deliberate_tool_mode, 'follow') AS personal_deliberate_tool_mode,
           COALESCE(upc.shortterm_cache_crossserver_opt_in, false) AS shortterm_cache_crossserver_opt_in,
+          COALESCE(upc.natural_nudge_opt_out, false) AS natural_nudge_opt_out,
           u.message_proxy_service,
           upc.timezone_offset,
           upc.prefix_override,
@@ -676,6 +679,7 @@ export class ExportRepository {
           personal_dtm: userData.personal_dtm ?? undefined,
           personal_deliberate_tool_mode: userData.personal_deliberate_tool_mode ?? undefined,
           shortterm_cache_crossserver_opt_in: userData.shortterm_cache_crossserver_opt_in ?? undefined,
+          natural_nudge_opt_out: userData.natural_nudge_opt_out ?? undefined,
           timezone_offset: userData.timezone_offset ?? undefined,
           message_proxy_service: userData.message_proxy_service,
           prefix_override: userData.prefix_override ?? null,
@@ -944,6 +948,7 @@ export class ExportRepository {
         access: {
           user_byok_mode: configData.user_byok_mode,
         },
+        nudges: await this.loadNudgesSection(configData.server_id),
       };
 
       const exportCandidate = {
@@ -965,6 +970,20 @@ export class ExportRepository {
     }
   }
 
+  private async loadNudgesSection(serverId: number) {
+    const [config, customIdleNudges] = await Promise.all([
+      naturalNudgeRepository.loadServerConfig(serverId, this.database),
+      naturalNudgeRepository.listCustomIdleNudges(serverId, this.database),
+    ]);
+    const { server_id: _serverId, channel_disc_ids: _channels, ...portable } = config;
+    return {
+      ...portable,
+      custom_idle_nudges: customIdleNudges.map(
+        ({ custom_idle_nudge_id: _idleNudgeId, server_id: _owner, ...idleNudge }) => idleNudge,
+      ),
+    };
+  }
+
   /**
    * Exports the portable personal configuration in the v2 sectioned format.
    * The query omits naming lineage data because it cannot be rebound safely.
@@ -978,6 +997,7 @@ export class ExportRepository {
           COALESCE(u.privacy_level, 0) AS privacy_level,
           u.message_proxy_service AS message_proxy_service,
           COALESCE(upc.shortterm_cache_crossserver_opt_in, false) AS shortterm_cache_crossserver_opt_in,
+          COALESCE(upc.natural_nudge_opt_out, false) AS natural_nudge_opt_out,
           COALESCE(upc.physical_appearance_tags, ARRAY[]::TEXT[]) AS physical_appearance_tags,
           upc.impersonation_prompt AS impersonation_prompt,
           COALESCE(upc.personal_dtm, 'follow') AS personal_dtm,
@@ -1013,6 +1033,7 @@ export class ExportRepository {
         privacy: {
           privacy_level: configData.privacy_level,
           shortterm_cache_crossserver_opt_in: configData.shortterm_cache_crossserver_opt_in,
+          natural_nudge_opt_out: configData.natural_nudge_opt_out,
           message_proxy_service: configData.message_proxy_service,
         },
         appearance: {

@@ -1,3 +1,4 @@
+import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
 import { emitScheduledWorkNudge } from "@/timers/scheduledWorkSignals";
 import { invalidateAllChannelContextNoteCacheForServer } from "@/utils/cache/channelContextNoteCacheStore";
 import { invalidateAllChannelLlmCacheForServer } from "@/utils/cache/channelLlmCacheStore";
@@ -22,6 +23,7 @@ export interface ServerResetOperationDependencies {
   invalidateWhitelistCache(serverDiscId: string): void;
   invalidateAllUserBlacklistCacheForServer(serverDiscId: string): void;
   invalidateAllPersonaUserBlockCacheForServer(serverId: number): void;
+  invalidateNaturalNudgeConfigCache(serverId: number): void;
   emitScheduledWorkNudge(reason: string): void;
 }
 
@@ -34,6 +36,7 @@ const defaultDependencies: ServerResetOperationDependencies = {
   invalidateWhitelistCache,
   invalidateAllUserBlacklistCacheForServer,
   invalidateAllPersonaUserBlockCacheForServer,
+  invalidateNaturalNudgeConfigCache,
   emitScheduledWorkNudge,
 };
 
@@ -59,5 +62,6 @@ export async function resetServerConfiguration(
   deps.invalidateWhitelistCache(input.serverDiscId);
   deps.invalidateAllUserBlacklistCacheForServer(input.serverDiscId);
   deps.invalidateAllPersonaUserBlockCacheForServer(input.serverId);
+  deps.invalidateNaturalNudgeConfigCache(input.serverId);
   deps.emitScheduledWorkNudge(`server-config-reset:${input.serverId}`);
 }

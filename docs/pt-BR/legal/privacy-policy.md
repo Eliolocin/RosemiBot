@@ -27,11 +27,13 @@ Usamos dados salvos para fornecer os recursos que você escolhe, lembrar suas pr
 
 ### 2.1) Sua conta e preferências
 
-Armazenamos seu ID de usuário do Discord, escolhas de privacidade e as informações de perfil e preferências que você escolhe salvar. Também mantemos totais de uso para você consultar estatísticas suas, do Servidor e de suas personas.
+Armazenamos seu ID de usuário do Discord, escolhas de privacidade e as informações de perfil e preferências que você escolhe salvar. Também mantemos totais de uso para você consultar estatísticas suas, do Servidor e de suas personas. Suas preferências salvas incluem se as personas podem mencionar você para iniciar uma conversa (Menções de Personas).
 
 ### 2.2) Memórias e configurações do Servidor
 
 Mantemos memórias pessoais e do Servidor, personalizações de personas, lembretes e configurações do Servidor para fornecer os recursos configurados.
+
+Quando uma persona inicia uma conversa por conta própria (Natural Nudges), registramos qual persona falou, o canal, se alguém respondeu e o membro mencionado. Também salvamos o objetivo privado da persona para aquela conversa, que pode mencionar esse membro.
 
 A memória de curto prazo opcional salva resumos de conversas. Outras memórias salvas ficam até serem excluídas e podem descrever pessoas que não as escreveram.
 
@@ -61,7 +63,7 @@ O TomoriBot lê temporariamente mensagens recentes, mídia relevante, informaç�
 
 ## 4) Quem recebe seus dados
 
-- **Provedores de IA:** o provedor selecionado recebe o prompt, contexto relevante da conversa, informações da persona e mídia necessários para texto, imagens, vídeo, voz ou pesquisa em documentos. Solicitações por assinatura usam o OpenRouter e os provedores do modelo selecionado. Consultamos gastos com o OpenRouter para aplicar a franquia.
+- **Provedores de IA:** o provedor selecionado recebe o prompt, contexto relevante da conversa, informações da persona e mídia necessários para texto, imagens, vídeo, voz ou pesquisa em documentos. Antes de uma persona mencionar alguém, o modelo do Servidor também recebe o nome desse membro, a atividade atual e memórias pessoais recentes, a menos que o nível de privacidade dele oculte essas informações. Solicitações por assinatura usam o OpenRouter e os provedores do modelo selecionado. Consultamos gastos com o OpenRouter para aplicar a franquia.
 - **Patreon:** a vinculação nos autoriza a verificar sua associação. O Patreon fornece atualizações de conta e associação; o Patreon e seus provedores de pagamento tratam pagamentos e dados de pagamento.
 - **Provedores de pesquisa:** quando a pesquisa na web é usada, o provedor recebe consultas e contexto relevante.
 - **Matrix:** quando uma ponte está configurada, mensagens são compartilhadas entre o canal do Discord e a sala do Matrix vinculados.
@@ -76,6 +78,7 @@ Esses serviços podem processar dados fora do seu país e têm suas próprias po
 | Resumos da memória de curto prazo | 90 dias após a última atividade, por padrão |
 | Registros de erros | 90 dias |
 | Registros de desempenho e identificadores de mensagens do bot | 30 dias |
+| Registros do Natural Nudges | 30 dias; o objetivo privado da persona por até 90 dias |
 | Registros de atualização de associação do Patreon | 30 dias, por padrão |
 | Registros de login do Patreon concluídos ou expirados | Elegíveis para exclusão após uma hora, por padrão |
 | Uso detalhado da assinatura | 90 dias; registros do período atual ficam até seu fim, se for posterior |
@@ -94,6 +97,7 @@ Remover o bot mantém os dados do Servidor para um novo convite; execute `/nuke`
 | O que você quer fazer | Onde fazer |
 |---|---|
 | Controlar a visibilidade de mensagens e o uso da memória pessoal | `/personal config` |
+| Impedir que as personas mencionem você para iniciar uma conversa | `/personal config` > `Privacidade` > `Menções de Personas` |
 | Consultar ou remover memórias pessoais | `/personal memories` |
 | Consultar ou remover memórias e documentos do Servidor | `/memories` |
 | Exportar configurações ou memórias pessoais | `/export personal config`, `/export personal memories` |
@@ -106,7 +110,7 @@ Remover o bot mantém os dados do Servidor para um novo convite; execute `/nuke`
 
 Suas memórias e documentos do Servidor ficam, sem a associação de autoria; peça a um gerenciador para excluí-los com `/memories`. Se uma memória ou documento compartilhado contém seus dados pessoais e você não consegue a remoção, contate-nos diretamente pela Seção 9. Não é necessária a permissão de um gerenciador para solicitar análise e remoção.
 
-As configurações de privacidade limitam a visibilidade de mensagens e a personalização; não apagam memórias existentes. Suas escolhas de não participar da coleta permanecem após a exclusão para que ela não seja reativada silenciosamente.
+As configurações de privacidade limitam a visibilidade de mensagens e a personalização; não apagam memórias existentes. Suas escolhas de não participar da coleta permanecem após a exclusão para que ela não seja reativada silenciosamente. Sua escolha para Menções de Personas é uma configuração de personalização, portanto o `/personal nuke` a apaga; desative as Menções de Personas novamente depois se ainda quiser mantê-las desativadas.
 
 Para assinaturas, use o painel de assinatura para consultar sua franquia e patrocínios ou parar de patrocinar um Servidor. Cancele a renovação pelo Patreon; parar um patrocínio ou excluir dados do bot não interrompe a cobrança.
 

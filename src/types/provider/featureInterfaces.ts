@@ -326,9 +326,19 @@ interface DecisionPredicateQuestion {
   instructions: string;
 }
 
+/** One answer out of several; option IDs follow the same pattern as question IDs. */
+interface DecisionChoiceQuestion {
+  type: "choice";
+  id: string;
+  instructions: string;
+  options: ReadonlyArray<{ id: string; description: string }>;
+}
+
+type DecisionQuestion = DecisionPredicateQuestion | DecisionChoiceQuestion;
+
 export interface DecisionInput {
   evidence: string;
-  questions: readonly DecisionPredicateQuestion[];
+  questions: readonly DecisionQuestion[];
   abortSignal?: AbortSignal;
   /** Report validated usage before verdict validation, including late cancelled responses. */
   onUsage?: (usage: DecisionUsage) => void;
@@ -344,7 +354,10 @@ export interface ProviderDecisionRequest extends DecisionInput {
   correlationId: string;
 }
 
-export type DecisionAnswer = { type: "predicate"; id: string; probability: number } | { type: "refusal"; id: string };
+export type DecisionAnswer =
+  | { type: "predicate"; id: string; probability: number }
+  | { type: "choice"; id: string; choice: string; probabilities: Record<string, number> }
+  | { type: "refusal"; id: string };
 
 export interface DecisionUsage {
   inputTokens?: number;

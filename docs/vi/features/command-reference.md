@@ -11,7 +11,7 @@ sidebar:
 
 Tất cả các lệnh slash hiện được TomoriBot đăng ký, được tạo từ cùng trình xây dựng lệnh và mô tả tiếng Việt dùng để đăng ký trên Discord (mô tả chưa được dịch sẽ hiển thị bằng tiếng Anh).
 
-Các nhóm lệnh cấp cao nhất: **41**. Các lệnh slash có thể thực thi: **88**.
+Các nhóm lệnh cấp cao nhất: **42**. Các lệnh slash có thể thực thi: **89**.
 
 ## `/comment`
 
@@ -207,6 +207,14 @@ Các lệnh và cài đặt giới hạn độ tuổi.
 | `/nsfw jailbreaks` | Quản lý các hành vi jailbreak tùy chọn cho prompt của mình trên máy chủ này. |
 | `/nsfw persona default` | Áp dụng cấu hình preset persona NSFW |
 | `/nsfw persona import` | Nhập persona từ tệp PNG, JSON hoặc CHARX, bao gồm cả persona NSFW |
+
+## `/nudge-studio`
+
+Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn.
+
+| Lệnh | Tóm tắt |
+|---|---|
+| `/nudge-studio` | Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn. |
 
 ## `/nuke`
 

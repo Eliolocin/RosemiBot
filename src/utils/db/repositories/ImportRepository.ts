@@ -1,5 +1,11 @@
 import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
+import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { supportsCheckerChoice } from "@/modules/natural-nudges/db/types";
+import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
+import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/idleNudges";
 import { sql } from "@/utils/db/client";
+import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
 import {
@@ -98,6 +104,7 @@ interface SectionTableDefinition {
 interface PreparedConfigImport {
   tablePatches: ConfigTablePatch[];
   stmCategories?: Array<{ position: number; label: string; description: string }>;
+  nudges?: NonNullable<WorkspaceConfigExportData["nudges"]>;
   configFieldsCount: number;
 }
 
@@ -236,6 +243,8 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
     },
   ],
   access: [{ tableName: "server_byok_configs", fields: ["user_byok_mode"] }],
+  // Written by its own upsert, because a server that never opened the page has no row to update.
+  nudges: [],
 };
 
 const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTableDefinition[]> = {
@@ -256,7 +265,10 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
   ],
   privacy: [
     { tableName: "users", fields: ["privacy_level", "message_proxy_service"] },
-    { tableName: "user_personalization_configs", fields: ["shortterm_cache_crossserver_opt_in"] },
+    {
+      tableName: "user_personalization_configs",
+      fields: ["shortterm_cache_crossserver_opt_in", "natural_nudge_opt_out"],
+    },
   ],
   appearance: [{ tableName: "user_personalization_configs", fields: ["physical_appearance_tags"] }],
   response_modes: [
@@ -332,6 +344,55 @@ function getStmCategories(value: unknown): Array<{ position: number; label: stri
 }
 
 /**
+ * The planner and checker models must be offered to this workspace, at most one checker may be set, and
+ * every custom idle nudge must name known checks.
+ */
+async function validateNudgesImport(
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<boolean> {
+  const idleNudges = nudges.custom_idle_nudges ?? [];
+  if (
+    !idleNudges.every(
+      (idleNudge) =>
+        idleNudge.prerequisites.every(isKnownPrerequisite) && idleNudge.recommended_tools.every(isNudgeToolName),
+    )
+  )
+    return false;
+  if (nudges.checker_llm_id != null && nudges.checker_decision_model_id != null) return false;
+  const textModelIds = [nudges.llm_id, nudges.checker_llm_id].filter((id): id is number => id != null);
+  if (textModelIds.length > 0) {
+    const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
+    const offered = new Set(groups.flatMap((group) => group.models.map((model) => model.id)));
+    if (!textModelIds.every((id) => offered.has(id))) return false;
+  }
+  if (nudges.checker_decision_model_id == null) return true;
+  return (await loadDecisionModelsForScope({ kind: "server", ownerId: serverId })).some(
+    ({ model }) => model.decision_model_id === nudges.checker_decision_model_id && supportsCheckerChoice(model),
+  );
+}
+
+async function importNudgesSection(
+  tx: SQL,
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<void> {
+  const { custom_idle_nudges: customIdleNudges, ...imported } = nudges;
+  // Clears the other checker column, because the one-checker CHECK rejects a row that keeps both set.
+  const settings =
+    imported.checker_llm_id != null
+      ? { ...imported, checker_decision_model_id: null }
+      : imported.checker_decision_model_id != null
+        ? { ...imported, checker_llm_id: null }
+        : imported;
+  if (!(await naturalNudgeRepository.saveServerConfig(serverId, settings, tx))) {
+    throw new Error("Natural Nudges settings import failed");
+  }
+  if (customIdleNudges !== undefined)
+    await naturalNudgeRepository.replaceCustomIdleNudges(serverId, customIdleNudges, tx);
+}
+
+/**
  * ImportRepository: owns all data import operations.
  *
  * Handles personal and server data import, per-domain slice imports
@@ -365,6 +426,7 @@ class ImportRepository {
 
     const tablePatches: ConfigTablePatch[] = [];
     let stmCategories: PreparedConfigImport["stmCategories"];
+    let nudges: PreparedConfigImport["nudges"];
     let configFieldsCount = 0;
 
     for (const section of presentSections) {
@@ -384,6 +446,11 @@ class ImportRepository {
         0,
       );
 
+      if (section === "nudges" && isRecord(sectionValidation.data)) {
+        nudges = sectionValidation.data as PreparedConfigImport["nudges"];
+        configFieldsCount += Object.keys(sectionValidation.data).length;
+      }
+
       if (section === "memory" && isRecord(sectionValidation.data)) {
         const categories = getStmCategories(sectionValidation.data);
         if (categories !== undefined) {
@@ -393,7 +460,7 @@ class ImportRepository {
       }
     }
 
-    return { success: true, prepared: { tablePatches, stmCategories, configFieldsCount } };
+    return { success: true, prepared: { tablePatches, stmCategories, nudges, configFieldsCount } };
   }
 
   private preparePersonalConfig(
@@ -541,7 +608,7 @@ class ImportRepository {
       const preparedResult = this.prepareWorkspaceConfig(input, selectedSections);
       if (!preparedResult.success) return preparedResult;
       const { prepared } = preparedResult;
-      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined) {
+      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined && prepared.nudges === undefined) {
         return { success: true, itemsImported: { configFieldsCount: 0 } };
       }
 
@@ -560,13 +627,18 @@ class ImportRepository {
           return { success: false, error: "commands.config.drafting.import_unavailable" };
         }
       }
+      if (prepared.nudges && !(await validateNudgesImport(serverId, prepared.nudges))) {
+        return { success: false, error: "commands.config.natural_nudges.import_unavailable" };
+      }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
         if (prepared.stmCategories !== undefined) await this.updateStmCategories(tx, serverId, prepared.stmCategories);
+        if (prepared.nudges) await importNudgesSection(tx, serverId, prepared.nudges);
       });
 
       invalidateTomoriStateCache(serverDiscId);
+      if (prepared.nudges) invalidateNaturalNudgeConfigCache(serverId);
       return { success: true, itemsImported: { configFieldsCount: prepared.configFieldsCount } };
     } catch (error) {
       log.error(`Error importing workspace config for server ${serverDiscId}:`, error);
@@ -766,6 +838,7 @@ class ImportRepository {
             user_id,
             user_nickname,
             shortterm_cache_crossserver_opt_in,
+            natural_nudge_opt_out,
             physical_appearance_tags,
             nai_char_ref_url,
             impersonation_prompt,
@@ -781,6 +854,7 @@ class ImportRepository {
             ${userId},
             ${importData.user_nickname},
             ${importData.shortterm_cache_crossserver_opt_in ?? false},
+            ${importData.natural_nudge_opt_out ?? false},
             ${sql.array(physicalAppearanceTags, "TEXT")},
             ${naiCharRefUrl},
             ${impersonationPrompt},
@@ -796,6 +870,7 @@ class ImportRepository {
           ON CONFLICT (user_id) DO UPDATE SET
             user_nickname = EXCLUDED.user_nickname,
             shortterm_cache_crossserver_opt_in = COALESCE(${importData.shortterm_cache_crossserver_opt_in ?? null}, user_personalization_configs.shortterm_cache_crossserver_opt_in),
+            natural_nudge_opt_out = COALESCE(${importData.natural_nudge_opt_out ?? null}, user_personalization_configs.natural_nudge_opt_out),
             physical_appearance_tags = EXCLUDED.physical_appearance_tags,
             nai_char_ref_url = EXCLUDED.nai_char_ref_url,
             impersonation_prompt = EXCLUDED.impersonation_prompt,
@@ -849,6 +924,7 @@ class ImportRepository {
       if (importData.personal_dtm !== undefined) fieldsCount++;
       if (importData.personal_deliberate_tool_mode !== undefined) fieldsCount++;
       if (importData.shortterm_cache_crossserver_opt_in !== undefined) fieldsCount++;
+      if (importData.natural_nudge_opt_out !== undefined) fieldsCount++;
       if (importData.timezone_offset !== undefined) fieldsCount++;
       if (importData.message_proxy_service !== undefined) fieldsCount++;
       if (importData.prefix_override !== undefined) fieldsCount++;

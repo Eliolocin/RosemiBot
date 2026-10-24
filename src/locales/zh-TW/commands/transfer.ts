@@ -50,6 +50,8 @@ export default {
     section_speech_description: "語音與說話設定。",
     section_access_label: "存取",
     section_access_description: "伺服器存取與權限設定。",
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description: "Natural Nudges 設定與自訂閒置搭話，不包含允許的頻道。",
     section_profile_label: "個人檔案",
     section_profile_description: "個人檔案設定。",
     section_privacy_label: "隱私",

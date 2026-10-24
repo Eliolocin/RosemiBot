@@ -158,6 +158,7 @@ export default {
     field_blacklisted_members_with_count: `{current} 人`,
     field_personal_dtm: `個人DTM`,
     field_crossserver_stm: `クロスサーバーSTM`,
+    field_ping_users: "ペルソナからのメンション",
     field_nai_char_ref: `NAIキャラクター参照画像`,
     custom_endpoint_capability_label: `{capability}`,
     field_vision_model: `ビジョンモデル`,

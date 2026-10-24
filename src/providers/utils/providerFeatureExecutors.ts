@@ -1,5 +1,6 @@
 import type {
   DecisionInput,
+  DecisionModelOption,
   DecisionModelReference,
   DecisionResult,
   DecisionApiStyle,
@@ -43,7 +44,10 @@ export interface DecisionExecutionRequest extends DecisionInput {
   reference: DecisionModelReference | null;
 }
 
-const loadDecisionModelsForScope = (scope: OpenRouterModelScope) => llmModelRepo.loadDecisionModelOptions(scope);
+/** The Decision models `callDecisionsForProvider` accepts for a scope, so pickers offer exactly what it will call. */
+export function loadDecisionModelsForScope(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
+  return llmModelRepo.loadDecisionModelOptions(scope);
+}
 
 export async function callDecisionsForProvider(request: DecisionExecutionRequest): Promise<DecisionResult> {
   const correlationId = crypto.randomUUID();

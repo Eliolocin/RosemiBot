@@ -67,6 +67,9 @@ const modalCheckboxGroupValues = new Map<string, Record<string, string[]>>();
 // Separate from the scalar store because a channel select submits several IDs and `[]` must stay distinct from a missing entry.
 const modalChannelSelectValues = new Map<string, Record<string, string[]>>();
 
+// Every value of a string select, for multi-pick fields; the scalar store keeps only the first.
+const modalStringSelectValues = new Map<string, Record<string, string[]>>();
+
 // Storage for resolved attachments from modal file uploads (Discord.js doesn't expose these)
 const modalResolvedAttachments = new Map<string, Record<string, APIAttachment>>();
 
@@ -238,6 +241,7 @@ function setupWebSocketInterception(client: unknown) {
               const fileUploadValues: Record<string, string[]> = {};
               const checkboxGroupValues: Record<string, string[]> = {};
               const channelSelectValues: Record<string, string[]> = {};
+              const stringSelectValues: Record<string, string[]> = {};
 
               for (const comp of packet.d.data.components) {
                 if (comp.type !== 18 || !comp.component?.custom_id) continue;
@@ -253,6 +257,10 @@ function setupWebSocketInterception(client: unknown) {
                 // A submitted select left empty may arrive without `values`, so it records as `[]`; only an uncaptured submission reads as missing.
                 if (inner.type === 8) {
                   channelSelectValues[customId] = Array.isArray(inner.values) ? inner.values : [];
+                }
+
+                if (inner.type === 3) {
+                  stringSelectValues[customId] = Array.isArray(inner.values) ? inner.values : [];
                 }
 
                 // File Upload (type 19): store all attachment IDs
@@ -290,6 +298,10 @@ function setupWebSocketInterception(client: unknown) {
                 log.info(
                   `Stored ${Object.keys(checkboxGroupValues).length} checkbox group value set(s) for interaction`,
                 );
+              }
+
+              if (Object.keys(stringSelectValues).length > 0) {
+                modalStringSelectValues.set(interactionId, stringSelectValues);
               }
 
               if (Object.keys(channelSelectValues).length > 0) {
@@ -455,6 +467,7 @@ export async function showRoutedRawModal(
 }
 
 export function takeRawModalSelectValue(interactionId: string, customId: string): string | undefined {
+  consumeStoredValue(modalStringSelectValues, interactionId, customId);
   const storedValues = modalSelectValues.get(interactionId);
   if (!storedValues) return undefined;
   const val = storedValues[customId];
@@ -463,6 +476,28 @@ export function takeRawModalSelectValue(interactionId: string, customId: string)
     modalSelectValues.delete(interactionId);
   }
   return val;
+}
+
+function consumeStoredValue<T>(
+  store: Map<string, Record<string, T>>,
+  interactionId: string,
+  customId: string,
+): T | undefined {
+  const storedValues = store.get(interactionId);
+  if (!storedValues) return undefined;
+  const val = storedValues[customId];
+  delete storedValues[customId];
+  if (Object.keys(storedValues).length === 0) store.delete(interactionId);
+  return val;
+}
+
+/**
+ * Consumes every value submitted for one String Select.
+ * @returns `undefined` when the submission is missing or already consumed; `[]` when submitted empty.
+ */
+export function takeRawModalStringSelectValues(interactionId: string, customId: string): string[] | undefined {
+  consumeStoredValue(modalSelectValues, interactionId, customId);
+  return consumeStoredValue(modalStringSelectValues, interactionId, customId);
 }
 
 export function takeRawModalUserSelectValue(interactionId: string, customId: string): string | undefined {
@@ -3513,6 +3548,7 @@ export async function promptWithRawModal(
       modalFileUploadValues.delete(submitted.id);
       modalCheckboxGroupValues.delete(submitted.id);
       modalChannelSelectValues.delete(submitted.id);
+      modalStringSelectValues.delete(submitted.id);
       modalResolvedAttachments.delete(submitted.id);
 
       // Auto-defer reply if requested to prevent 3-second interaction timeout

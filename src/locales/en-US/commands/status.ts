@@ -156,6 +156,7 @@ export default {
     field_blacklisted_members_with_count: `{current} members`,
     field_personal_dtm: `Personal DTM`,
     field_crossserver_stm: `Cross-Server STM`,
+    field_ping_users: `Pings from Personas`,
     field_nai_char_ref: `NAI Character Reference`,
     custom_endpoint_capability_label: `{capability}`,
     field_vision_model: `Vision Model`,

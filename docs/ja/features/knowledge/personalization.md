@@ -83,7 +83,7 @@ TomoriBotは、あるフィールドを別のフィールドから推論する�
 `/personal config`を使用して追加機能をカスタマイズします。
 
 - **外観** (`プロフィール` > `外見`): [画像生成](/ja/features/capabilities/media-generation/image-generation/#tag-customization) があなたを参照するたびに使用されるbooruスタイルの外観タグを保存します。空のボックスを送信してクリアしてください。
-- **プライバシー制御** (`プライバシー` > `プライバシー管理`): 可視性レベル (`なし`、`部分的`、または`完全`) を選択するか、サーバー間の短期メモリ共有を切り替えます。
+- **プライバシー制御** (`プライバシー` > `プライバシー管理`): 可視性レベル (`なし`、`部分的`、または`完全`) を選択するか、サーバー間の短期記憶共有を切り替えるか、またはペルソナがあなたにメンションして会話を始めることがないよう [ペルソナからのメンション](/features/chatting-personality/natural-nudges/#ping-user) をオフにします。
 - **応答モード** (`高度な設定` > `応答モード`): [意図的なトリガー モード](/ja/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode) の個人オーバーライドを切り替えます。
 - **偽装** (`高度な設定` > `なりきり（Impersonation）`): 誰かが`/impersonate user`を呼び出すときに使用される再利用可能なプロンプトを設定します。
 

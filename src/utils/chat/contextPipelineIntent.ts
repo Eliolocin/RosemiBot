@@ -1,8 +1,10 @@
-import { buildChatTurnContext as buildBaseChatTurnContext } from "@/utils/chat/contextPipeline";
+import {
+  buildChatTurnContext as buildBaseChatTurnContext,
+  resolveTurnDeliberateToolMode,
+} from "@/utils/chat/contextPipeline";
 import type { ChatTurn, ChatTurnContext } from "@/utils/chat/types";
 import { hasExplicitLongTermMemoryIntent } from "@/utils/memory/explicitLongTermMemoryIntent";
 import { isShortTermMemoryMaintenanceDue } from "@/utils/memory/shortTermMemoryMaintenance";
-import { resolveDeliberateToolMode } from "@/utils/tools/deliberateToolMode";
 
 const SHORT_TERM_MEMORY_TOOL_NAME = "update_short_term_memory";
 
@@ -19,10 +21,7 @@ const SHORT_TERM_MEMORY_TOOL_NAME = "update_short_term_memory";
  */
 export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnContext> {
   const incoming = turn.lockedTurn.admission.incoming;
-  const deliberateToolModeActive = resolveDeliberateToolMode(
-    turn.persona.config.deliberate_tool_mode,
-    turn.userRow.personal_deliberate_tool_mode ?? "follow",
-  );
+  const deliberateToolModeActive = resolveTurnDeliberateToolMode(turn);
 
   const manualOverrides = incoming.manualStreamingContextOverrides;
   const toolsExplicitlyDisabled = manualOverrides?.disableAllTools === true || turn.isUserImpersonation;

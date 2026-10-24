@@ -166,6 +166,16 @@ previous option's marker even when the new model comes from another catalog. The
 wrapper runs `onWritten` after every successful model write, including failed or throwing ownership
 updates, so callers can invalidate cached state.
 
+Structured calls outside the persona's own turn (the pinned response reviewer and Natural Nudges)
+resolve their model through `resolveServerStructuredModel`
+(`src/utils/provider/serverStructuredOutput.ts`), which names the slot that pays: `reviewer`,
+`nudge-planner`, `nudge-checker`, or `text` when the call borrows the server's chat model. An option
+that owns that slot must supply the key through `selection.resolveServerCredentials`, together with
+its usage context and optionally the saved row whose settings the call mirrors. An owning option that
+is unavailable or has no resolver leaves the call unavailable rather than falling back to the
+server's saved key, and a `ProviderRequestDeniedError` it throws reaches the caller. Each selection
+of a pinned slot claims or releases it like any other model write.
+
 Deployment behavior maps onto these fields:
 
 | Behavior | Field |
@@ -178,6 +188,7 @@ Deployment behavior maps onto these fields:
 | Capability ownership read, write, and clear | `selection.owns`, `selection.claim`, `selection.release` |
 | Model admission and refusal | `selection.validateModel` |
 | Payer-aware speech selection and registration | `selection.setSpeech` |
+| Credentials for server-pinned structured calls | `selection.resolveServerCredentials` |
 | Removing the stored selection | `selection.remove` |
 | Panel entry, description, and removal copy | `copy.labelKey`, `copy.entryDescriptionKeys`, `copy.removeImpactKey` |
 | Panel select action and its copy | `copy.addActionLabelKey`, `copy.addActionDescriptionKeys`, `panel.handleAction` |

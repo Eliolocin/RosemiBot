@@ -77,6 +77,7 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
     preloadedCustomExpressions,
     isUserImpersonation = false,
     impersonatedUserId,
+    shortTermMemoryUserId,
     impersonatedUserNickname,
     impersonatedUserPrompt,
     personaUserBlocks,
@@ -319,7 +320,8 @@ export async function buildContextNative(params: BuildContextParams): Promise<Na
   );
 
   try {
-    const actualTriggeringUserId = impersonatedUserId ?? snapshot?.triggererUserRow?.user_disc_id;
+    const actualTriggeringUserId =
+      impersonatedUserId ?? shortTermMemoryUserId ?? snapshot?.triggererUserRow?.user_disc_id;
     // Per-server master switch (migration 054): when STM is disabled we no longer skip the
     // whole build. "Off" means the bot stops AUTO-managing STM (the write tool and the
     // cadence nudge are suppressed): but existing STM content STILL surfaces so admins can

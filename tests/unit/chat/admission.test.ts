@@ -15,7 +15,10 @@ import {
   acquireChannelLockForTurn,
   channelLocks,
   getOrCreateChannelLockEntry,
+  interruptNudgeScene,
+  isNudgeOutputActive,
   releaseChannelLockAndReplayQueue,
+  runWithChannelLock,
   setActiveChannelTurnState,
   type QueuedMessage,
 } from "@/utils/chat/channelQueue";
@@ -40,7 +43,7 @@ import {
   clearMessageProxyRouteMetricsForTests,
   getMessageProxyRouteMetricsSnapshot,
 } from "@/utils/messageProxy/router";
-import type { ChatIncoming } from "@/utils/chat/types";
+import type { ChatIncoming, RunnableChatAdmission } from "@/utils/chat/types";
 import { stallUntilAborted, stubGlobalFetch } from "../../helpers/fetchStub";
 import { createUserRow } from "../../helpers/fixtures";
 
@@ -288,6 +291,194 @@ describe("evaluateChatAdmission server blacklist", () => {
     } finally {
       for (const spy of [rowSpy, privacySpy, blacklistSpy, transcribeSpy]) spy.mockRestore();
       invalidateUserCache(memberId);
+    }
+  });
+
+  it("does not let a blacklisted bystander block a turn that borrows their message", async () => {
+    const memberId = "100000000000000022";
+    invalidateUserCache(memberId);
+    const rowSpy = spyOn(userRepository, "loadByDiscordId").mockResolvedValue(null);
+    const privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
+    const blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(true);
+
+    try {
+      const incoming = {
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "borrowed-anchor",
+          content: "night all",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: memberId, bot: false, username: "member" },
+          guild: { id: "300000000000000032" },
+          channel: { id: "channel-1", type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: true,
+        borrowsTriggerMessage: true,
+      } as unknown as ChatIncoming;
+
+      const admission = await evaluateChatAdmission(incoming);
+
+      expect(admission.disposition === "run" ? null : admission.reason).not.toBe("server_blacklisted_user");
+      expect(blacklistSpy).not.toHaveBeenCalled();
+    } finally {
+      for (const spy of [rowSpy, privacySpy, blacklistSpy]) spy.mockRestore();
+      invalidateUserCache(memberId);
+    }
+  });
+});
+
+describe("evaluateChatAdmission Natural Nudges scene interrupt", () => {
+  it("drops only nudge scene turns, and only for a member's own message, even one the gates then block", async () => {
+    const memberId = "100000000000000023";
+    const channelId = "scene-channel";
+    invalidateUserCache(memberId);
+    const rowSpy = spyOn(userRepository, "loadByDiscordId").mockResolvedValue(null);
+    const privacySpy = spyOn(userRepository, "getPrivacyLevel").mockResolvedValue(PrivacyLevel.MINIMAL);
+    const blacklistSpy = spyOn(userRepository, "isBlacklisted").mockResolvedValue(true);
+    const sceneTurn = { commandId: "scene", sequence: [], turnIndex: 1, totalTurns: 2 };
+    const anchor = { id: "anchor" } as Message;
+    const commandSceneJob: QueuedMessage = { message: anchor, sceneTurn };
+    const admit = async (overrides: { bot?: boolean; isManuallyTriggered?: boolean; isFromQueue?: boolean }) => {
+      const discarded: string[] = [];
+      const nudgeJob: QueuedMessage = {
+        message: anchor,
+        sceneTurn,
+        naturalNudge: { toolNames: [] },
+        onQueueDiscard: (reason) => {
+          discarded.push(reason);
+        },
+      };
+      const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000033");
+      lockEntry.messageQueue = [nudgeJob, commandSceneJob];
+      await evaluateChatAdmission({
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "member-message",
+          content: "wait what",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: memberId, bot: overrides.bot ?? false, username: "member" },
+          guild: { id: "300000000000000033" },
+          channel: { id: channelId, type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: overrides.isManuallyTriggered ?? false,
+        isFromQueue: overrides.isFromQueue ?? false,
+      } as unknown as ChatIncoming);
+      return { queue: lockEntry.messageQueue, discarded };
+    };
+
+    try {
+      const member = await admit({});
+      expect(member.queue).toEqual([commandSceneJob]);
+      expect(member.discarded).toEqual(["scene_interrupted"]);
+
+      for (const overrides of [{ bot: true }, { isManuallyTriggered: true }, { isFromQueue: true }]) {
+        const kept = await admit(overrides);
+        expect({ overrides, queued: kept.queue.length }).toEqual({ overrides, queued: 2 });
+      }
+    } finally {
+      for (const spy of [rowSpy, privacySpy, blacklistSpy]) spy.mockRestore();
+      invalidateUserCache(memberId);
+      channelLocks.delete(channelId);
+    }
+  });
+
+  it("hands the interrupting member to the next scripted speaker, else to the scene persona speaking now", () => {
+    const channelId = "scene-catch-channel";
+    const anchor = { id: "anchor" } as Message;
+    const sceneTurn = { commandId: "nudge:scene", sequence: [], turnIndex: 1, totalTurns: 3 };
+    const sceneJob = (selectedPersonaId: number): QueuedMessage => ({
+      message: anchor,
+      sceneTurn,
+      naturalNudge: { toolNames: [] },
+      selectedPersonaId,
+    });
+    const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000034");
+    const lockFor = (naturalNudge: "single" | "scene") =>
+      acquireChannelLockForTurn(lockEntry, {
+        messageId: "anchor",
+        userDiscId: "100000000000000024",
+        isPersonaJob: false,
+        selectedPersonaId: 5,
+        isCommandTriggered: true,
+        naturalNudge,
+      });
+
+    try {
+      lockFor("scene");
+      lockEntry.messageQueue = [sceneJob(7), sceneJob(8)];
+      expect(interruptNudgeScene(channelId)).toBe(7);
+      expect(lockEntry.messageQueue).toEqual([]);
+      expect(interruptNudgeScene(channelId)).toBe(5);
+
+      lockFor("single");
+      expect(interruptNudgeScene(channelId)).toBeUndefined();
+    } finally {
+      channelLocks.delete(channelId);
+    }
+  });
+
+  it("ignores a persona's own message while nudge work holds the channel and just after, so it starts no replies", async () => {
+    const channelId = "scene-output-channel";
+    const admitPersonaMessage = async () =>
+      evaluateChatAdmission({
+        client: { user: { id: "tomori" } },
+        message: {
+          id: "persona-message",
+          content: "ティモリ、ことね。こっち来て",
+          mentions: { users: new Map(), roles: new Map(), everyone: false },
+          embeds: [],
+          attachments: new Map(),
+          webhookId: null,
+          interaction: null,
+          reference: null,
+          author: { id: "tomori", bot: true, username: "Tomori" },
+          guild: { id: "300000000000000035" },
+          channel: { id: channelId, type: ChannelType.GuildText },
+        },
+        isManuallyTriggered: false,
+        isFromQueue: false,
+      } as unknown as ChatIncoming);
+    const lockEntry = getOrCreateChannelLockEntry(channelId, "300000000000000035");
+
+    try {
+      acquireChannelLockForTurn(lockEntry, {
+        messageId: "anchor",
+        userDiscId: "100000000000000025",
+        isPersonaJob: false,
+        selectedPersonaId: 5,
+        isCommandTriggered: true,
+        naturalNudge: "scene",
+      });
+      expect(await admitPersonaMessage()).toMatchObject({ disposition: "ignore", reason: "nudge_output" });
+
+      releaseChannelLockAndReplayQueue({
+        channelId,
+        lockEntry,
+        completedMessageId: "anchor",
+        handleStopResponse: async () => undefined,
+        processQueuedMessage: async () => undefined,
+      });
+      expect(await admitPersonaMessage()).toMatchObject({ disposition: "ignore", reason: "nudge_output" });
+
+      const activeDuringNormalTurn = await runWithChannelLock(
+        {
+          incoming: { isPersonaJob: false, isManuallyTriggered: false },
+          message: { id: "member-message", channel: { id: channelId } },
+          serverDiscId: "300000000000000035",
+          userDiscId: "100000000000000025",
+        } as unknown as RunnableChatAdmission,
+        async () => isNudgeOutputActive(channelId),
+        { handleStopResponse: async () => undefined, processQueuedMessage: async () => undefined },
+      );
+      expect(activeDuringNormalTurn).toBe(false);
+    } finally {
+      channelLocks.delete(channelId);
     }
   });
 });

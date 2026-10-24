@@ -86,6 +86,18 @@ Application caches are partitioned by domain ownership, lifetime, and storage ba
 - **Webhook cache (`src/utils/discord/webhook/webhookCore.ts`)**: caches the primary Discord webhook by parent channel, managed slots by webhook ID, and legacy persona webhooks by channel and persona. Encrypted tokens restore managed slots after a restart. Primary lookup restores only the primary; local-avatar dispatch restores the other persisted slots for selection. Historic operations restore slots by exact webhook ID and leave the primary entry intact. A failed slot-list query allows the next lookup to retry immediately. Verified SHA-256 assignments hydrate the data-URI cache on an exact match, avoiding a redundant PATCH after restart. An uncertain PATCH clears the cached assignment. Successful sends update in-memory use order; persisted row order supplies the restart order. Parent-channel locks cover local-avatar selection and sending. Lifecycle lookup uses separate coordination, and restoration shares a per-webhook lock with avatar PATCHes. HTTPS overrides bypass avatar locks. Invalidation can remove one failed webhook or every webhook in a channel.
 - **Persona workflow avatar cache (`src/utils/discord/ui/personaWorkflow.ts`)**: transient `Map<number, AvatarCacheEntry>` scoped to an active persona picker interaction. Reuses resolved avatar buffers across pagination, validation failures, and retries. Discarded when the interaction workflow terminates.
 
+- **Natural Nudges meters (`src/modules/natural-nudges/runtime/processor.ts`)**: per-server heat, waking
+  hours, and last `message_sent` time, kept for 15 minutes because they move over days. The same
+  processor holds the rolled lull in memory, and `runtime/inFlight.ts` holds the one-nudge-per-server
+  lock that idle nudges and Active Nudges share.
+- **Active Nudge gate (`src/modules/natural-nudges/runtime/configCache.ts`)**: per guild, the server ID,
+  settings, effective channels, and heat the Active Nudge counter checks on every message, kept for 5
+  minutes. A miss is shared by every message that arrives while it loads, and a failed read is not
+  cached. `invalidateNaturalNudgeConfigCache` runs after a successful settings write on the plugin
+  page, a workspace import with a `nudges` section, and a server reset. Phase A and the re-check
+  before sending still read settings and persona interests fresh. The Active Nudge counters, rests, and
+  per-channel watches live in `runtime/activeNudges.ts` and start over after a restart.
+
 Managed webhook caches hold at most four slots per parent channel. Cache counts include pool slots,
 and clearing the cache leaves their database rows and Discord webhooks intact for restoration.
 Delivery continuity stores the actual webhook ID and delivered identity separately from avatar
