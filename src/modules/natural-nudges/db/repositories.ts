@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import type { SQL } from "bun";
-import type { z } from "zod";
+import { z } from "zod";
 import { PrivacyLevel } from "@/types/db/schema";
 import { sql } from "@/utils/db/client";
 import { log } from "@/utils/misc/logger";
@@ -8,10 +9,16 @@ import {
   CUSTOM_IDLE_NUDGE_KEY_PREFIX,
   customIdleNudgeKey,
   customIdleNudgeRowSchema,
+  computePersonaNudgeFingerprint,
+  computePersonaNudgeListFingerprint,
   defaultServerNaturalNudgeConfig,
   DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
   enabledIdleNudgeServerSchema,
   fireRowSchema,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
+  personaAuthoredIdleNudgeDraftSchema,
+  personaAuthoredIdleNudgeIdSchema,
+  personaAuthoredIdleNudgesSchema,
   personaNaturalNudgeConfigSchema,
   personaScopeRowSchema,
   pingUserCandidateSchema,
@@ -27,6 +34,8 @@ import {
   type NaturalNudgeRuntimeState,
   type NewActiveNudgeFireRow,
   type NewFireRow,
+  type PersonaAuthoredIdleNudge,
+  type PersonaAuthoredIdleNudgeDraft,
   type PersonaNaturalNudgeConfig,
   type PingUserCandidate,
   type ServerNaturalNudgeConfig,
@@ -49,6 +58,20 @@ function parseRows<T>(schema: z.ZodType<T>, rows: unknown[], label: string): T[]
 const idleNudgeServerRowSchema = enabledIdleNudgeServerSchema.extend({
   config: serverNaturalNudgeConfigSchema.nullable(),
 });
+
+const presetIdleNudgesRowSchema = z.object({
+  preset_idle_nudges: personaAuthoredIdleNudgesSchema,
+});
+
+export type PersonaIdleNudgeWriteResult = "success" | "unchanged" | "stale" | "invalid" | "limit" | "write-failed";
+
+function generatePersonaIdleNudgeId(usedIds: ReadonlySet<string>): string | null {
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const id = randomUUID().replace(/-/g, "").slice(0, 10);
+    if (!usedIds.has(id)) return id;
+  }
+  return null;
+}
 
 class NaturalNudgeRepository {
   async loadServerConfig(serverId: number, client: SQL = sql): Promise<ServerNaturalNudgeConfig> {
@@ -300,19 +323,24 @@ class NaturalNudgeRepository {
     }
   }
 
-  /**
-   * Effective persona settings: a stored row wins; an unforked preset pointer reads its preset's
-   * defaults live; anything else uses the column defaults.
-   */
-  async loadPersonaConfigs(personaIds: readonly number[]): Promise<Map<number, PersonaNaturalNudgeConfig>> {
+  /** Effective persona settings: a stored row wins, then the live preset for a pointer, then the defaults. */
+  async loadPersonaConfigs(
+    personaIds: readonly number[],
+    client: SQL = sql,
+  ): Promise<Map<number, PersonaNaturalNudgeConfig>> {
     const configs = new Map<number, PersonaNaturalNudgeConfig>();
     if (personaIds.length === 0) return configs;
-    const rows = await sql`
+    const rows = await client`
       SELECT p.persona_id,
         COALESCE(c.talkativeness, CASE WHEN p.is_pointer THEN pp.natural_nudge_talkativeness END,
           ${DEFAULT_NATURAL_NUDGE_TALKATIVENESS}) AS talkativeness,
         COALESCE(c.interests, CASE WHEN p.is_pointer THEN pp.natural_nudge_interests END, '[]'::jsonb) AS interests,
-        c.persona_id IS NOT NULL AS has_override
+        COALESCE(c.authored_idle_nudges, CASE WHEN p.is_pointer THEN pp.natural_nudge_idle_nudges END,
+          '[]'::jsonb) AS idle_nudges,
+        COALESCE(c.disabled_idle_nudge_ids, '[]'::jsonb) AS disabled_idle_nudge_ids,
+        c.persona_id IS NOT NULL AS has_override,
+        c.authored_idle_nudges IS NOT NULL AS idle_nudges_override,
+        c.authored_idle_nudges IS NULL AND p.is_pointer AND pp.persona_preset_id IS NOT NULL AS idle_nudges_inherited
       FROM personas p
       LEFT JOIN persona_natural_nudge_configs c ON c.persona_id = p.persona_id
       LEFT JOIN persona_presets pp ON p.is_pointer = true
@@ -346,16 +374,217 @@ class NaturalNudgeRepository {
     }
   }
 
-  /** Freezes the preset's defaults into the persona's own row when a pointer materializes. */
+  /** Freezes the preset's current defaults, including its authored list, into a materializing pointer's row. */
   async copyPresetDefaults(
     client: SQL,
     personaId: number,
-    defaults: { talkativeness: number; interests: NaturalNudgeInterest[] },
+    defaults: {
+      talkativeness: number;
+      interests: NaturalNudgeInterest[];
+      idleNudges: readonly PersonaAuthoredIdleNudge[];
+    },
   ): Promise<void> {
+    const idleNudges = personaAuthoredIdleNudgesSchema.safeParse(defaults.idleNudges);
+    if (!idleNudges.success) {
+      throw new Error(`Natural Nudges: invalid preset authored idle nudges for persona ${personaId}`);
+    }
     await client`
-      INSERT INTO persona_natural_nudge_configs (persona_id, talkativeness, interests)
-      VALUES (${personaId}, ${defaults.talkativeness}, ${defaults.interests}::jsonb)
-      ON CONFLICT (persona_id) DO NOTHING
+      INSERT INTO persona_natural_nudge_configs (persona_id, talkativeness, interests, authored_idle_nudges)
+      VALUES (${personaId}, ${defaults.talkativeness}, ${defaults.interests}::jsonb,
+        ${idleNudges.data}::jsonb)
+      ON CONFLICT (persona_id) DO UPDATE SET
+        authored_idle_nudges = EXCLUDED.authored_idle_nudges
+      WHERE persona_natural_nudge_configs.authored_idle_nudges IS NULL
+    `;
+  }
+
+  async replacePersonaIdleNudges(
+    personaId: number,
+    idleNudges: readonly PersonaAuthoredIdleNudge[],
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    const parsed = personaAuthoredIdleNudgesSchema.safeParse(idleNudges);
+    if (!parsed.success) return "invalid";
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: parsed.data,
+        disabledIdleNudgeIds: [],
+      });
+      return "success";
+    });
+  }
+
+  async addPersonaIdleNudge(
+    personaId: number,
+    draft: PersonaAuthoredIdleNudgeDraft,
+    idleNudgeId?: string,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    const parsedDraft = personaAuthoredIdleNudgeDraftSchema.safeParse(draft);
+    if (!parsedDraft.success) return "invalid";
+    if (idleNudgeId !== undefined && !personaAuthoredIdleNudgeIdSchema.safeParse(idleNudgeId).success) return "invalid";
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
+      if (config.idle_nudges.length >= PERSONA_AUTHORED_IDLE_NUDGE_LIMIT) return "limit";
+      const usedIds = new Set(config.idle_nudges.map((nudge) => nudge.id));
+      const nextId = idleNudgeId ?? generatePersonaIdleNudgeId(usedIds);
+      if (nextId === null) return "write-failed";
+      if (usedIds.has(nextId)) return "invalid";
+      const parsed = personaAuthoredIdleNudgesSchema.safeParse([
+        ...config.idle_nudges,
+        { ...parsedDraft.data, id: nextId },
+      ]);
+      if (!parsed.success) return "invalid";
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: parsed.data,
+        disabledIdleNudgeIds: config.disabled_idle_nudge_ids,
+      });
+      return "success";
+    });
+  }
+
+  async updatePersonaIdleNudge(
+    personaId: number,
+    idleNudgeId: string,
+    draft: PersonaAuthoredIdleNudgeDraft,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    const parsedDraft = personaAuthoredIdleNudgeDraftSchema.safeParse(draft);
+    if (!parsedDraft.success) return "invalid";
+    if (!personaAuthoredIdleNudgeIdSchema.safeParse(idleNudgeId).success) return "invalid";
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
+      const index = config.idle_nudges.findIndex((nudge) => nudge.id === idleNudgeId);
+      if (index < 0) return "stale";
+      const next = config.idle_nudges.map((nudge, position) =>
+        position === index ? { ...parsedDraft.data, id: idleNudgeId } : nudge,
+      );
+      const parsed = personaAuthoredIdleNudgesSchema.safeParse(next);
+      if (!parsed.success) return "invalid";
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: parsed.data,
+        disabledIdleNudgeIds: config.disabled_idle_nudge_ids,
+      });
+      return "success";
+    });
+  }
+
+  async removePersonaIdleNudge(
+    personaId: number,
+    idleNudgeId: string,
+    expectedFingerprint: string,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    if (!personaAuthoredIdleNudgeIdSchema.safeParse(idleNudgeId).success) return "invalid";
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
+      const nudge = config.idle_nudges.find((nudge) => nudge.id === idleNudgeId);
+      if (!nudge || computePersonaNudgeFingerprint(personaId, nudge) !== expectedFingerprint) return "stale";
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: config.idle_nudges.filter((nudge) => nudge.id !== idleNudgeId),
+        disabledIdleNudgeIds: config.disabled_idle_nudge_ids.filter((id) => id !== idleNudgeId),
+      });
+      return "success";
+    });
+  }
+
+  /** Local availability stays out of the authored list, so a toggle never snapshots an inherited preset list. */
+  async setPersonaIdleNudgeAvailability(
+    personaId: number,
+    idleNudgeId: string,
+    enabled: boolean,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    if (!personaAuthoredIdleNudgeIdSchema.safeParse(idleNudgeId).success) return "invalid";
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config) => {
+      if (!config.idle_nudges.some((nudge) => nudge.id === idleNudgeId)) return "stale";
+      const disabled = new Set(config.disabled_idle_nudge_ids);
+      const wasDisabled = disabled.has(idleNudgeId);
+      if (enabled) disabled.delete(idleNudgeId);
+      else disabled.add(idleNudgeId);
+      if (enabled === !wasDisabled) return "unchanged";
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: config.idle_nudges_override ? config.idle_nudges : null,
+        disabledIdleNudgeIds: [...disabled],
+      });
+      return "success";
+    });
+  }
+
+  /** Clears only the list override, keeping interests, talkativeness, and availability that still names a preset entry. */
+  async restorePersonaIdleNudgeList(
+    personaId: number,
+    expectedFingerprint: string,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    return this.withPersonaIdleNudgeWrite(personaId, async (client, config, presetIdleNudges, isPointer) => {
+      if (!isPointer) return "stale";
+      if (computePersonaNudgeListFingerprint(personaId, config.idle_nudges) !== expectedFingerprint) return "stale";
+      if (!config.idle_nudges_override) return "unchanged";
+      const restoredIds = new Set(presetIdleNudges.map((nudge) => nudge.id));
+      await this.writePersonaIdleNudgeState(client, personaId, config, {
+        idleNudges: null,
+        disabledIdleNudgeIds: config.disabled_idle_nudge_ids.filter((id) => restoredIds.has(id)),
+      });
+      return "success";
+    });
+  }
+
+  private async withPersonaIdleNudgeWrite(
+    personaId: number,
+    operation: (
+      client: SQL,
+      config: PersonaNaturalNudgeConfig,
+      presetIdleNudges: readonly PersonaAuthoredIdleNudge[],
+      isPointer: boolean,
+    ) => Promise<PersonaIdleNudgeWriteResult>,
+  ): Promise<PersonaIdleNudgeWriteResult> {
+    try {
+      return await sql.transaction(async (tx) => {
+        const [persona] = await tx<Array<{ persona_id: number; is_pointer: boolean }>>`
+          SELECT persona_id, is_pointer FROM personas WHERE persona_id = ${personaId} FOR UPDATE
+        `;
+        if (!persona) return "stale";
+        const config = (await this.loadPersonaConfigs([personaId], tx)).get(personaId);
+        const presetIdleNudges = await this.loadPresetIdleNudges(tx, personaId);
+        if (!config || !presetIdleNudges) {
+          await log.error("Natural Nudges: persona nudge state is unreadable", undefined, {
+            metadata: { personaId },
+          });
+          return "write-failed";
+        }
+        return await operation(tx, config, presetIdleNudges, persona.is_pointer);
+      });
+    } catch (error) {
+      await log.error("Natural Nudges: failed to write persona idle nudges", error, { metadata: { personaId } });
+      return "write-failed";
+    }
+  }
+
+  private async loadPresetIdleNudges(client: SQL, personaId: number): Promise<PersonaAuthoredIdleNudge[] | null> {
+    const rows = await client`
+      SELECT COALESCE(pp.natural_nudge_idle_nudges, '[]'::jsonb) AS preset_idle_nudges
+      FROM personas p
+      LEFT JOIN persona_presets pp ON p.is_pointer = true
+        AND pp.preset_lineage_id = p.preset_lineage_id
+        AND pp.preset_language = p.preset_language
+      WHERE p.persona_id = ${personaId}
+    `;
+    const [row] = parseRows(presetIdleNudgesRowSchema, rows, "persona preset idle nudges");
+    return row?.preset_idle_nudges ?? null;
+  }
+
+  private async writePersonaIdleNudgeState(
+    client: SQL,
+    personaId: number,
+    config: PersonaNaturalNudgeConfig,
+    next: { idleNudges: readonly PersonaAuthoredIdleNudge[] | null; disabledIdleNudgeIds: readonly string[] },
+  ): Promise<void> {
+    if (config.has_override) {
+      await client`
+        UPDATE persona_natural_nudge_configs
+        SET authored_idle_nudges = ${next.idleNudges}::jsonb,
+          disabled_idle_nudge_ids = ${next.disabledIdleNudgeIds}::jsonb
+        WHERE persona_id = ${personaId}
+      `;
+      return;
+    }
+    await client`
+      INSERT INTO persona_natural_nudge_configs
+        (persona_id, talkativeness, interests, authored_idle_nudges, disabled_idle_nudge_ids)
+      VALUES (${personaId}, ${config.talkativeness}, ${config.interests}::jsonb,
+        ${next.idleNudges}::jsonb, ${next.disabledIdleNudgeIds}::jsonb)
     `;
   }
 

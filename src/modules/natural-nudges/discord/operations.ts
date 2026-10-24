@@ -1,15 +1,25 @@
+import { computePersonaNudgeFingerprint, computePersonaNudgeListFingerprint } from "@/modules/natural-nudges/db/types";
 import { createHash } from "node:crypto";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import {
   NATURAL_NUDGE_INTEREST_LIMIT,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
   naturalNudgeInterestSchema,
   supportsCheckerChoice,
   type IdleNudgeFrequencyLevel,
+  type NaturalNudgeCategory,
   type NaturalNudgeInterest,
   type NaturalNudgeRuntimeState,
   type PersonaNaturalNudgeConfig,
   type ServerNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
+import {
+  idleNudgeContentFromAuthored,
+  loadPersonaNudgeBlockerView,
+  parseIdleNudgeForm,
+  type IdleNudgeForm,
+  type PersonaNudgeBlockerView,
+} from "@/modules/natural-nudges/discord/studioOperations";
 import {
   activeNudgeTripRange,
   computeHeat,
@@ -47,6 +57,7 @@ import {
 
 export type NudgeWriteResult =
   | "success"
+  | "unchanged"
   | "stale"
   | "invalid"
   | "limit"
@@ -356,6 +367,82 @@ const naturalNudgeOperations = {
       ? "success"
       : "write-failed";
   },
+
+  /** Adds one owned definition; the repository snapshots an inherited preset list on this first content edit. */
+  async addPersonaNudge(
+    personaId: number,
+    category: NaturalNudgeCategory,
+    form: IdleNudgeForm,
+  ): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current) return "stale";
+    if (current.idle_nudges.length >= PERSONA_AUTHORED_IDLE_NUDGE_LIMIT) return "limit";
+    const draft = parseIdleNudgeForm(category, form);
+    if (!draft) return "invalid";
+    return naturalNudgeRepository.addPersonaIdleNudge(personaId, draft);
+  },
+
+  /** Edits the definition a fingerprint still matches, preserving its stable local ID and availability. */
+  async editPersonaNudge(
+    personaId: number,
+    idleNudgeId: string,
+    fp: string,
+    form: IdleNudgeForm,
+  ): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    const authored = current?.idle_nudges.find((nudge) => nudge.id === idleNudgeId);
+    if (
+      !current ||
+      !authored ||
+      computePersonaNudgeFingerprint(personaId, idleNudgeContentFromAuthored(authored)) !== fp
+    )
+      return "stale";
+    const draft = parseIdleNudgeForm(authored.category, form);
+    if (!draft) return "invalid";
+    return naturalNudgeRepository.updatePersonaIdleNudge(personaId, idleNudgeId, draft);
+  },
+
+  async setPersonaNudgeAvailability(
+    personaId: number,
+    idleNudgeId: string,
+    enabled: boolean,
+  ): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current?.idle_nudges.some((nudge) => nudge.id === idleNudgeId)) return "stale";
+    return naturalNudgeRepository.setPersonaIdleNudgeAvailability(personaId, idleNudgeId, enabled);
+  },
+
+  /** Removes only unchecked entries that still belong to the frozen list the modal presented. */
+  async removePersonaNudges(
+    personaId: number,
+    fp: string,
+    presentedIds: readonly string[],
+    keptIds: ReadonlySet<string>,
+  ): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current || computePersonaNudgeListFingerprint(personaId, current.idle_nudges) !== fp) return "stale";
+    const targets = presentedIds.filter(
+      (id) => !keptIds.has(id) && current.idle_nudges.some((nudge) => nudge.id === id),
+    );
+    if (targets.length === 0) return "unchanged";
+    for (const id of targets) {
+      const nudge = current.idle_nudges.find((nudge) => nudge.id === id);
+      if (!nudge) return "stale";
+      const result = await naturalNudgeRepository.removePersonaIdleNudge(
+        personaId,
+        id,
+        computePersonaNudgeFingerprint(personaId, nudge),
+      );
+      if (result !== "success") return result;
+    }
+    return "success";
+  },
+
+  async restorePersonaNudgeList(personaId: number, expectedFingerprint: string): Promise<NudgeWriteResult> {
+    const current = await loadPersonaNudgeConfig(personaId);
+    if (!current) return "stale";
+    return naturalNudgeRepository.restorePersonaIdleNudgeList(personaId, expectedFingerprint);
+  },
 };
 
 type NaturalNudgeOperations = typeof naturalNudgeOperations;
@@ -363,17 +450,24 @@ type NaturalNudgeOperations = typeof naturalNudgeOperations;
 /** What a repaint carries between Natural Nudges routes; views missing here are loaded fresh. */
 export interface NaturalNudgesPanelState {
   personaConfig?: PersonaNaturalNudgeConfig | null;
+  personaNudges?: PersonaNudgeBlockerView;
   settings?: NaturalNudgesSettingsView;
 }
 
 export interface NaturalNudgePanelDependencies {
   loadSettings(serverId: number, locale: string, chatState: TomoriState | null): Promise<NaturalNudgesSettingsView>;
   loadPersonaConfig(personaId: number): Promise<PersonaNaturalNudgeConfig | null>;
+  loadPersonaNudges(
+    persona: TomoriState,
+    personas: readonly TomoriState[],
+    config: PersonaNaturalNudgeConfig,
+  ): Promise<PersonaNudgeBlockerView>;
   operations: NaturalNudgeOperations;
 }
 
 export const naturalNudgePanelDependencies: NaturalNudgePanelDependencies = {
   loadSettings: loadSettingsView,
   loadPersonaConfig: loadPersonaNudgeConfig,
+  loadPersonaNudges: loadPersonaNudgeBlockerView,
   operations: naturalNudgeOperations,
 };

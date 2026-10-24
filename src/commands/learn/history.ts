@@ -1114,14 +1114,10 @@ export async function execute(
 
     const memCheck = memoryGuard.checkMemory();
     if (memCheck.status === "critical") {
-      await interaction.reply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "rate_limit.error_memory_critical_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "rate_limit.error_memory_critical_description"))
-            .setColor(ColorCode.ERROR),
-        ],
-        flags: MessageFlags.Ephemeral,
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "rate_limit.error_memory_critical_title",
+        descriptionKey: "rate_limit.error_memory_critical_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -1437,17 +1433,10 @@ export async function execute(
       });
 
       if (fetchResult.formattedResult.messageCount === 0) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.learn.history.no_extractable_content_title", ColorCode.WARN),
-              )
-              .setDescription(
-                `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
-              )
-              .setColor(ColorCode.WARN),
-          ],
+        await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+          titleKey: "commands.learn.history.no_extractable_content_title",
+          description: `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
+          color: ColorCode.WARN,
         });
         return;
       }
@@ -1489,21 +1478,16 @@ export async function execute(
       await finalizeDocumentContent(documentId, extractResult.allChunkText);
       invalidateTomoriStateCache(guildId);
 
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
-            .setDescription(
-              `${localizer(locale, "commands.learn.history.success_description", {
-                fact_count: extractResult.totalFactCount.toString(),
-                message_count: fetchResult.formattedResult.messageCount.toString(),
-                name: nameInput,
-                chunk_count: extractResult.totalFactCount.toString(),
-                scope: scopeLabel,
-              })}\n\n${footer}`,
-            )
-            .setColor(ColorCode.SUCCESS),
-        ],
+      await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+        titleKey: "commands.learn.history.success_title",
+        description: `${localizer(locale, "commands.learn.history.success_description", {
+          fact_count: extractResult.totalFactCount.toString(),
+          message_count: fetchResult.formattedResult.messageCount.toString(),
+          name: nameInput,
+          chunk_count: extractResult.totalFactCount.toString(),
+          scope: scopeLabel,
+        })}\n\n${footer}`,
+        color: ColorCode.SUCCESS,
       });
       return;
     }
@@ -1562,17 +1546,10 @@ export async function execute(
     });
 
     if (formattedResult.messageCount === 0) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(
-              localizedStatusTitle(locale, "commands.learn.history.no_extractable_content_title", ColorCode.WARN),
-            )
-            .setDescription(
-              `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
-            )
-            .setColor(ColorCode.WARN),
-        ],
+      await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+        titleKey: "commands.learn.history.no_extractable_content_title",
+        description: `${localizer(locale, "commands.learn.history.no_extractable_content_description")}\n\n${footer}`,
+        color: ColorCode.WARN,
       });
       return;
     }
@@ -1617,17 +1594,12 @@ export async function execute(
       await finalizeDocumentContent(documentId, extractResult.allChunkText);
       invalidateTomoriStateCache(guildId);
 
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
-            .setDescription(
-              `${localizer(locale, "commands.learn.history.success_automatic_global_fallback", {
-                name: nameInput,
-              })}\n\n${footer}`,
-            )
-            .setColor(ColorCode.SUCCESS),
-        ],
+      await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+        titleKey: "commands.learn.history.success_title",
+        description: `${localizer(locale, "commands.learn.history.success_automatic_global_fallback", {
+          name: nameInput,
+        })}\n\n${footer}`,
+        color: ColorCode.SUCCESS,
       });
       return;
     }
@@ -1678,13 +1650,11 @@ export async function execute(
     }
 
     if (personaTargets.length === 0) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.learn.history.duplicate_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.learn.history.duplicate_description", { name: nameInput }))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+        titleKey: "commands.learn.history.duplicate_title",
+        descriptionKey: "commands.learn.history.duplicate_description",
+        descriptionVars: { name: nameInput },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -1726,19 +1696,14 @@ export async function execute(
       }),
     );
 
-    await modalSubmitInteraction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(localizedStatusTitle(locale, "commands.learn.history.success_title", ColorCode.SUCCESS))
-          .setDescription(
-            `${localizer(locale, "commands.learn.history.success_automatic_description", {
-              fact_count: extractResult.totalFactCount.toString(),
-              message_count: formattedResult.messageCount.toString(),
-              persona_list: personaResultLines.join("\n"),
-            })}\n\n${footer}`,
-          )
-          .setColor(ColorCode.SUCCESS),
-      ],
+    await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
+      titleKey: "commands.learn.history.success_title",
+      description: `${localizer(locale, "commands.learn.history.success_automatic_description", {
+        fact_count: extractResult.totalFactCount.toString(),
+        message_count: formattedResult.messageCount.toString(),
+        persona_list: personaResultLines.join("\n"),
+      })}\n\n${footer}`,
+      color: ColorCode.SUCCESS,
     });
   } catch (error) {
     const context: ErrorContext = {

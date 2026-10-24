@@ -498,13 +498,10 @@ export async function applyPresetDefault(
 
       if (!interaction.channel || !("send" in interaction.channel)) {
         log.error("No channel available for persona default success message");
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "general.errors.unknown_error_title",
+          descriptionKey: "general.errors.unknown_error_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -519,17 +516,11 @@ export async function applyPresetDefault(
       );
 
       const confirmationColor = avatarUpdateFailed || nicknameUpdateFailed ? ColorCode.WARN : ColorCode.SUCCESS;
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.default.success_title", confirmationColor))
-            .setDescription(
-              localizer(locale, "commands.persona.default.success_confirmation", {
-                nickname: resolvedPersonaName,
-              }),
-            )
-            .setColor(confirmationColor),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.persona.default.success_title",
+        descriptionKey: "commands.persona.default.success_confirmation",
+        descriptionVars: { nickname: resolvedPersonaName },
+        color: confirmationColor,
       });
       return;
     }
@@ -663,13 +654,10 @@ export async function applyPresetDefault(
     const successChannel = modalSubmitInteraction.channel ?? interaction.channel;
     if (!successChannel || !("send" in successChannel)) {
       log.error("No channel available for persona default alter success message");
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "general.errors.unknown_error_title",
+        descriptionKey: "general.errors.unknown_error_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -690,18 +678,11 @@ export async function applyPresetDefault(
       `Applied preset "${selectedPreset.persona_preset_name}" to alter persona "${resolvedAlterName}" with ${uniqueAlterTriggers.length} unique triggers for server ${tomoriState.server_id} by user ${userData.user_disc_id}`,
     );
 
-    await modalSubmitInteraction.editReply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_success_title", alterSuccessColor))
-          .setDescription(
-            localizer(locale, "commands.persona.import.alter_success_confirmation", {
-              nickname: resolvedAlterName,
-              trigger_count: uniqueAlterTriggers.length,
-            }),
-          )
-          .setColor(alterSuccessColor),
-      ],
+    await replyInfoEmbed(modalSubmitInteraction, locale, {
+      titleKey: "commands.persona.import.alter_success_title",
+      descriptionKey: "commands.persona.import.alter_success_confirmation",
+      descriptionVars: { nickname: resolvedAlterName, trigger_count: uniqueAlterTriggers.length },
+      color: alterSuccessColor,
     });
   } catch (error) {
     if (isUniqueViolation(error)) {

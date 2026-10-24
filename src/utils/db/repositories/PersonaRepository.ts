@@ -2230,6 +2230,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     await naturalNudgeRepository.copyPresetDefaults(client, personaId, {
       talkativeness: preset.natural_nudge_talkativeness,
       interests: preset.natural_nudge_interests,
+      idleNudges: preset.natural_nudge_idle_nudges,
     });
     // Freeze the alter avatar by reference too: a pointer alter live-resolves the
     // shared preset avatar, so once it materializes it must keep that exact

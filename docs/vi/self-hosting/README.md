@@ -23,6 +23,3 @@ Bắt đầu chạy phiên bản TomoriBot của riêng bạn thông qua bất k
 Các mô-đun tùy chọn (LLM cục bộ, ComfyUI, SearXNG, Crawl4AI, TTS/STT cục bộ, ChatMock,
 máy chủ MCP cục bộ) đều có trang hướng dẫn riêng, xem
 [`local-endpoints`](/vi/self-hosting/local-endpoints/) để xem danh mục đầy đủ.
-
-Khi bot đã hoạt động, [`maintenance`](/vi/self-hosting/maintenance/) sẽ hướng dẫn về các script phía máy chủ lưu trữ, cách cập nhật,
-cũng như sao lưu và khôi phục cơ sở dữ liệu của bạn.

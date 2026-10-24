@@ -3,198 +3,163 @@ title: "Natural Nudges"
 description: "Let your TomoriBot personas start conversations when a Discord channel goes quiet and join ones that match their interests, at a pace that follows how active your server is."
 sidebar:
   order: 4
-aiGenerated: true
 ---
 
-Natural Nudges lets TomoriBot speak without being mentioned, in two ways:
+Natural Nudges lets your personas speak without being mentioned:
 
-- **Idle Nudges.** When a channel has gone quiet, one of your personas picks something to do, such as
-  checking in on someone, picking a conversation back up, raising a new topic, or starting a short
-  scene with another persona, and posts it in its own voice.
-- **Active Nudges.** When members are talking about something a persona likes, that persona joins in.
+- **Idle nudges** start conversations when a channel goes quiet.
+  - They slow down when nobody answers and stop after several unanswered nudges, until someone
+    talks to TomoriBot again.
+- **Active nudges** join conversations about a persona's interests.
 
-Nudges are meant to feel like a friend checking in:
+The pace follows how often members talk to TomoriBot. Servers that rarely talk to her get neither kind, DMs never get nudges (for now).
 
-- **The pace follows your server.** Servers that talk to TomoriBot every day get about one idle nudge
-  a day; servers that rarely talk to her get none, and no active nudges either.
-- **She waits for a natural gap.** An idle nudge only starts in a channel that has been quiet for one
-  to three hours, during the hours your server is usually awake.
-- **She goes quiet when nobody answers.** Each unanswered idle nudge makes the next one wait longer,
-  and after three in a row she stops until someone talks to her again.
-- **When in doubt, she says nothing.** If someone posts first, the channel gets busy, or nothing
-  fits, the nudge is dropped.
-
-Natural Nudges works in servers only, never in DMs.
-
-## Active Nudges
-<!-- anchor: active-nudges -->
-
-An active nudge is a persona joining a conversation that is already going, because it is about
-something that persona likes. Here is how one happens:
-
-1. While members talk in an eligible channel, TomoriBot counts their messages. Threads count as part
-   of their channel, and the count starts over whenever a persona speaks.
-2. Every so often (sooner in busier servers and at a higher frequency for active nudges), she reads the
-   last five messages and asks whether the conversation is really about one of your personas'
-   interests. A passing mention does not count.
-3. The persona with that interest replies. If several personas share it, the one who has been quieter
-   lately usually goes, and a persona that just spoke sits it out. Now and then another persona takes
-   the turn instead, more often one the server rarely talks to.
-4. The reply comes 15-45 seconds later, as the persona's normal self. If a persona speaks first,
-   members move on, or the channel gets busy, she says nothing.
-
-There is at most one active nudge per channel (threads included) per hour, plus a daily limit for the
-whole server. A persona needs interests on its Nudges page to take part, and Silent personas never do.
-
-## Idle Nudges
+## Idle nudges
 <!-- anchor: idle-nudges -->
 
-Each idle nudge belongs to a category:
+Idle nudges wait until a channel has been quiet for a while, during the hours your server is
+usually awake. There are 28 built-in idle nudges across four categories. You can adjust them and add
+your own for the whole server in `/nudge-studio`, and each persona can have idle nudges of its own
+(see [Persona idle nudges](#persona-idle-nudges)).
 
-| Category | What happens |
-|---|---|
-| **Ping User** | A persona pings one member it knows: a check-in, a follow-up on something they mentioned, a link they might like, a tease about the game they are playing, or an offer to remind them of something. |
-| **Revive Topic** | A persona picks up a conversation that was left hanging: an unanswered question, a second opinion, or something it looked up. |
-| **Start Topic** | A persona raises something new, usually from its own interests: a thought, a hot take, a "would you rather", a news item, a picture, or a voice note. |
-| **Play Scene** | Two or three personas talk to each other in a short scene: a playful argument, a loud "secret" plan for a member, asking each other for advice, or showing off a picture. |
+| Category | What it does | Prerequisites | Notes |
+|---|---|---|---|
+| <a id="ping-user"></a>Ping User | Checks in on a member or shares something they might like. | Recent conversation with this persona in this server, a memory, and permission to ping. Full privacy, personalization blacklists, and persona blocks exclude members. | Frequent contacts are favored; recent pings reduce repeat chances. Opt out in `/personal config` > `Privacy` > `Pings from Personas`. |
+| Revive Topic | Picks up an unfinished conversation. | A conversation left hanging. | N/A |
+| Start Topic | Raises something new, often about the persona's interests. | No extra category requirements. | N/A |
+| <a id="play-scene"></a>Play Scene | Starts a short exchange between two or three personas. | Another persona allowed to nudge in that channel. | Talkative personas join more often; Silent ones never do. If a member posts, the scene stops and a persona answers them. Surprise scenes do not ping their subject. |
 
-`/nudge-studio` (you need Manage Server) has a tab for each category. Each tab lists that category's idle
-nudges with a colored dot:
+### Choose and create idle nudges
 
-- 🟢 **On**: it can be picked.
-- 🟡 **On, but it can't run here yet**: no persona has a tool it needs, a Play Scene has no second
-  persona, or none of the personas it is limited to can nudge. The row says what is missing.
-- 🔴 **Off**.
+Open `/nudge-studio` (requires `Manage Server`) to browse each category. The colored dot shows
+whether a nudge is on, missing a prerequisite, or off. Each row ends with its source: `Built-in`,
+`Server custom`, or `For <persona>` for a nudge a persona owns. Categories with more than 12 rows
+continue on further pages.
 
-**Toggle Availability** opens one idle nudge with a box for each persona:
+`Toggle Availability` chooses which personas can use a nudge:
 
-- **Every box checked**: every persona can use it, including personas you add later.
-- **Some checked**: only those personas, and its row names them, like "Remind you? (Mirri and Juno
-  only)". A persona you add later stays out until you check it.
-- **Nothing checked**: the idle nudge is off.
+- **All checked:** every persona can use it, including personas you add later.
+- **Some checked:** only those personas can use it. New personas stay out until you check them.
+- **None checked:** the nudge is off.
 
-Below the list you can add up to 25 of your own for the whole server. Choosing one opens it for
-editing; **Remove Custom Nudges** lists your own idle nudges, and unchecking one removes it. Each one
-has:
+A persona-owned nudge has one checkbox, `Available to <persona>`, because only its owner can use it.
+Unchecking it turns it off without deleting it.
 
-- **Name**.
+Limiting a server nudge to one persona does not move it onto that persona's page. It stays a server
+nudge, and only the persona's own entries travel with its persona card.
+
+Below the list you can add up to 25 of your own for the whole server. Choosing a server nudge or a
+persona-owned nudge opens it for editing, and the same entry is editable on the persona's `Nudges`
+page. New nudges made here are always server nudges. `Remove Nudges` lists the editable nudges on the
+current page, and unchecking one removes it. Each one has:
+
+- **Name**: the label shown in the studio.
 - **Brief**: what the persona sets out to do. Write `{persona}` where its name goes,
   `{partner}` where the other persona in a Play Scene goes, and `{target}` where the member it is
   about goes.
 - **Agenda** (optional): the kind of small goal the persona keeps after its opener.
 - **Prerequisites**: what must be true before the idle nudge can run, such as a recent memory or an
-  available tool. Each category already brings its own: a member to ping, a hanging conversation, or
-  a second persona.
+  available tool. The category requirements in the table apply automatically.
 - **Recommended tools**: tools the persona is encouraged to use when it has them. The idle nudge
-  still runs without them. A tool picked under Prerequisites is already included, so it is dropped
+  still runs without them. A tool picked under `Prerequisites` is already included, so it is dropped
   from this list when you save.
 
-### Ping User
-<!-- anchor: ping-user -->
+### Persona idle nudges
 
-This kind of idle nudge pings one member by name, so it only picks people the persona actually knows:
+A persona can carry idle nudges that belong to its character, such as Rose checking a cosplay fit or
+Aphel recommending an album. They add to the built-in and server nudges and do not replace them.
 
-- **They talked to this persona recently.** Only members who started a conversation with that persona
-  in this server in the last 14 days can be picked. Being mentioned or talked about does not count,
-  and neither does being close to the same persona in another server.
-- **The persona knows them.** The member has a memory with this persona from the last 30 days, or a
-  recent short-term memory with it.
-- **They have not opted out.** Anyone can turn Pings from Personas off for themselves in
-  `/personal config` > Privacy. Members with Full privacy, members on the server's personalization
-  blacklist, and members the persona has blocked are never picked.
+Open `/config` > `Persona` > `Nudges`. `Idle Nudges` sits below `Interests`:
 
-Among those members, closer ones are picked more often: each message to that persona in this server
-in the last 14 days, and each channel it recently talked with them in, adds to their chance. Someone
-a persona pinged in the last three days is less likely to be picked again. The ping goes to that one
-member only; a Ping User nudge never pings roles, `@everyone`, or anyone else. Any reply in the
-channel counts as an answer.
+- `Select or add an idle nudge...` adds one with `+ Add <category>` or edits an existing one. All four
+  categories are available, with the same fields as a server nudge. A persona holds up to 20,
+  separate from the server's 25.
+- `Toggle availability...` switches individual entries on or off for this persona.
+- `Remove Idle Nudges` deletes the entries you uncheck.
+- `Restore Preset Nudges` appears for a persona that follows an official preset and has its own copy of the list.
 
-### Play Scene
-<!-- anchor: play-scene -->
+How they run:
 
-A Play Scene is a short scene between personas, two to four messages long. The persona that speaks up
-opens it and picks one partner, sometimes two, from the other personas allowed in that channel.
-Talkative personas join more often, and Silent ones never do.
+- Only the owning persona starts them. In a Play Scene the owner leads, and any other persona that
+  can nudge may join as the partner.
+- They follow the same prerequisites, quiet hours, frequency level, and daily limit as every other
+  idle nudge. More entries give a persona more to choose from but do not make it speak more often.
+- Interests drive Active Nudges. Persona idle nudges drive Idle Nudges only.
 
-- **Members come first.** When anyone posts in the channel during the scene, the remaining scene
-  messages are dropped and the persona who was about to speak answers them, as in a conversation
-  someone joins. If they named or mentioned a persona, that persona answers instead.
-- **Scheming stays private.** The personas plan a harmless surprise for someone they know, but the
-  scene does not ping that member.
+Official presets ship with idle nudges. A persona that still follows its preset reads that list as
+the preset is updated. The first time you add, edit, or remove an entry, the persona gets its own copy
+of the whole list, and later preset updates no longer change it. Switching an entry on or off does not
+make a copy. `Restore Preset Nudges` replaces the persona's list with the preset's current list and
+keeps its interests, talkativeness, and the on/off choices for entries that still exist.
+`Resync with Preset` in `Identity & Personality` also resets the list and the on/off choices.
+
+Persona cards (`/persona export`) include the persona's idle nudges, from either the preset or its own
+copy, and importing the card restores them. On/off choices are local to a server and are not exported,
+so imported entries start switched on. Server nudges never go into a card. An older card that still
+matches an official preset follows that preset's current idle nudges. Other older cards import with
+no persona idle nudges.
 
 ### Hidden agendas
 
-Along with its opener, each idle nudge gives the persona a small private goal, such as "find out who
-else likes this anime". The goal stays attached above the opener and only that persona sees it, so it
-keeps pursuing the goal in later replies. In a Play Scene each persona gets its own goal, which the
-others never see. Once the opener scrolls out of the conversation the persona keeps, the goal is
-gone. Agendas never ask for personal details, money, or anything outside the chat. Members allowed to
-use the prompt snapshot can see them.
+Each idle nudge gives the persona a small private goal, such as "find out who else likes this
+anime", to guide later replies. In a Play Scene, each persona gets its own goal. The goal expires
+when the opener leaves the persona's conversation history.
+
+## Active nudges
+<!-- anchor: active-nudges -->
+
+TomoriBot periodically checks recent messages for conversations about your personas' interests.
+Busier servers and higher active nudge frequency settings get more frequent checks. A passing
+mention of an interest does not count.
+
+A persona with a matching interest usually joins in, with quieter personas getting preference.
+Occasionally, another persona takes the turn. Personas that just spoke sit it out.
+
+The persona waits briefly before replying to give the conversation time to develop. If enough new
+messages arrive during that delay, TomoriBot checks that the conversation still matches the same
+interest. If the topic has changed, another persona has spoken, or the channel is busy, the nudge is
+dropped.
+
+Active nudges have channel cooldowns and a server daily limit. Threads share their parent channel's
+cooldown. A persona needs interests on its `Nudges` page to take part, and Silent personas never do.
 
 ## Settings
 
-Natural Nudges is on by default, and nothing needs setting up. Once people in a server talk to
-TomoriBot regularly, idle nudges and active nudges start in the channels where they talk to her.
+Natural Nudges is on by default. Open `/config` > `Plugins` > `Natural Nudges` to change it
+(requires `Manage Server`):
 
-To change how it works, open `/config` > Plugins > Natural Nudges (you need Manage Server):
+- **Modes:** turn idle and active nudges on or off separately.
+- **Channels:** choose channels, or leave the list empty to use recent TomoriBot conversation
+  channels automatically, excluding roleplay channels.
+- **Frequency:** choose `Rare`, `Gentle` (default), `Normal`, or `Lively` for each mode. The page
+  estimates the pace for your server; daily limits keep nudges and checks within that level.
+- **Models:** you can change either model.
+  - `Idle Nudge Planner` decides what a persona will say to start an idle nudge and gives it a
+    private goal for follow-up replies. Defaults to your chat model.
+  - `Active Nudge Checker` checks whether a conversation matches a persona's interests. Selected
+    automatically; a small, cheap model or a Decision model suits its frequent checks.
 
-- **Idle Nudges** and **Active Nudges** turn each one on or off.
-- **Channels** is automatic: the channels where people talked to TomoriBot in the last 14 days,
-  except roleplay channels. Pick channels to choose them yourself, or clear the list to go back to
-  automatic. A channel where other bots post often never goes quiet, so it is left alone.
-- **Model Selection** picks the two AI models Natural Nudges uses. Free Google models fall under
-  Google's terms for free use, which let Google use the conversations sent to them.
-  - **Idle Nudge Planner** plans idle nudges. By default it is the server's chat model. Not every
-    model can do this job; if yours can't, the page says so and lets you pick another.
-  - **Active Nudge Checker** looks at a conversation now and then to see whether it matches an
-    interest. It runs much more often than the planner, so a small, cheap model suits it best. By
-    default TomoriBot picks one for you: a Decision model (a small model made for quick pick-one
-    questions) if the server has an OpenRouter key, otherwise Gemma 4 31B if it has a Google key,
-    otherwise the Idle Nudge Planner. You can pick any of these yourself, including Decision models.
+## Persona settings
 
-The page shows how active the server is, how many idle nudges to expect each week, and how often she
-checks for active nudges.
+Open `/config` > `Persona` > `Nudges` to set:
 
-### How often
+- **Talkativeness:** how often the persona speaks up. `Silent` personas do not nudge.
+- **Interests:** up to 8 topics the persona likes, with descriptions and examples.
+- **Idle Nudges:** up to 20 idle nudges only this persona uses, described under
+  [Persona idle nudges](#persona-idle-nudges).
 
-- **Frequency** sets the pace, separately for idle nudges and for active nudges: Rare, Gentle (the
-  default), Normal, or Lively. Even Lively stays quiet in a server that rarely talks to TomoriBot.
-- **Daily limits** follow the frequency level: Rare allows 1 idle nudge and 1 active nudge a day,
-  Gentle 3 of each, Normal 5 idle nudges and 6 active nudges, and Lively 8 idle nudges and 10 active
-  nudges.
-- **Check limits** keep active nudges from using up an AI key: TomoriBot checks conversations at
-  most 10 times a day on Rare, 20 on Gentle, 40 on Normal, and 60 on Lively. After a check finds
-  nothing, that channel waits longer before the next one, from 10 minutes up to 3 hours. If the AI
-  provider says the key has hit its limit, active nudges pause for 3 hours.
+Official presets include these settings. `/persona generate` suggests interests for new personas;
+`Generate Interests` adds new ones through your current text model. Persona exports include all three.
 
-### When it stays off
+## What gets stored
 
-- **Usage stats are off.** TomoriBot judges how active a server is from its usage stats, so if
-  whoever hosts your bot turned them off, nudges never start.
-- **Members pay with their own keys.** If your server has each member use their own AI key, nobody's
-  key covers a message no one asked for, so Natural Nudges stays off.
+Settings, custom nudges, interests, and persona idle nudges are saved with your server configuration. Nudge history,
+including whether anyone answered and who was pinged, is kept for 30 days. Agendas are kept for
+up to 90 days.
 
-## Persona Settings
-
-Each persona has its own **Nudges** page under `/config` > Persona:
-
-- **Talkativeness**: how often this persona is the one who speaks up. Silent personas never start
-  idle nudges or take part in active ones; shy ones speak up less, chatty ones more.
-- **Interests**: up to 8 topics the persona likes to bring up and join in on, each with a short
-  description and examples (for example **mecha anime**: Fiction about giant piloted robots, such as Gundam).
-
-Official presets come with their own interests and talkativeness. `/persona generate` suggests
-interests for new characters, and **Generate Interests** on the Nudges page adds up to 5 new ones at a
-time from the persona's attributes and sample dialogues, using the Idle Nudge Planner model,
-until the persona has 8. Persona exports carry them.
-
-## What Gets Stored
-
-Natural Nudges keeps your settings, custom idle nudges, and persona interests with your other server
-configuration. It also remembers which idle nudges and active nudges ran recently, whether anyone
-answered, and who a Ping User nudge went to, for 30 days, and each hidden agenda for up to 90 days.
-`/reset` restores the settings and removes custom idle nudges. `/export config` and `/import config`
-carry settings and custom idle nudges, but not a chosen channel list, which belongs to one server.
-Your own Pings from Personas choice is part of your personal settings: `/reset personal config`
-keeps it, `/export personal config` carries it, and `/personal nuke` erases it with the rest of your
-data.
+- **Server config:** `/reset` restores nudge settings and removes custom nudges. Config exports
+  and imports carry settings and custom nudges, excluding the server-specific channel list. Persona
+  idle nudges stay with their persona through a reset and travel in its persona card instead.
+  `/persona default` and deleting a persona remove its idle nudges.
+- **Personal config:** your `Pings from Personas` choice survives `/reset personal config`, is
+  included in `/export personal config`, and is erased by `/personal nuke`.

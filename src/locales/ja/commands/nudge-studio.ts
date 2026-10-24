@@ -23,7 +23,6 @@ export default {
     description_play_scene:
       "2〜3人のペルソナがみんなの前で短い掛け合いを演じる[アイドルナッジ](https://docs.tomoribot.app/ja/features/chatting-personality/natural-nudges/#idle-nudges)。",
     row_notes: "{title} ({notes})",
-    note_custom: "カスタム",
     note_scope: "{personas}のみ",
     note_scope_more: "他{count}件",
     blocker_tool: "{tool}が必要",

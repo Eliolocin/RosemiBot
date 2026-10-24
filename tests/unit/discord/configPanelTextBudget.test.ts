@@ -96,6 +96,18 @@ const MAX_NUDGE_INTERESTS = Array.from({ length: NATURAL_NUDGE_INTEREST_LIMIT },
 
 const MAX_NUDGE_CHANNELS = Array.from({ length: 25 }, (_, index) => `1${String(index).padStart(17, "0")}`);
 
+const MAX_PERSONA_NUDGE_IDS = Array.from({ length: 20 }, (_, index) => `n${index}`.padEnd(24, "i"));
+
+const MAX_PERSONA_NUDGES = MAX_PERSONA_NUDGE_IDS.map((id, index) => ({
+  id,
+  category: (["ping_user", "revive_topic", "start_topic", "play_scene"] as const)[index % 4],
+  title: `${index}`.padEnd(80, "T"),
+  brief: "B".repeat(1000),
+  agenda_hint: "A".repeat(500),
+  prerequisites: ["tool:web_search", "tool:fetch_url"],
+  recommended_tools: [],
+}));
+
 const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
   config: {
     ...defaultServerNaturalNudgeConfig(1),
@@ -771,7 +783,21 @@ describe("config page text budgeting at stored maxima", () => {
           selectedPersonaId: 55,
           readStatus: "fresh",
           naturalNudges: {
-            personaConfig: { persona_id: 55, talkativeness: 4, interests: MAX_NUDGE_INTERESTS, has_override: false },
+            personaConfig: {
+              persona_id: 55,
+              talkativeness: 4,
+              interests: MAX_NUDGE_INTERESTS,
+              has_override: true,
+              idle_nudges: MAX_PERSONA_NUDGES,
+              disabled_idle_nudge_ids: [MAX_PERSONA_NUDGE_IDS[0] as string],
+              idle_nudges_override: true,
+              idle_nudges_inherited: false,
+            },
+            personaNudges: {
+              blockers: new Map([
+                [`persona:55:${MAX_PERSONA_NUDGE_IDS[1]}`, { kind: "tool" as const, tool: "web_search" as const }],
+              ]),
+            },
           },
           receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
         }),

@@ -36,7 +36,12 @@ import { getBaseTriggerWords } from "@/utils/text/localizer";
 import { EMPTY_PERSONA_NAMING_CONFIG } from "@/types/personaNaming";
 import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import { DEFAULT_NATURAL_NUDGE_TALKATIVENESS, sameNaturalNudgeInterests } from "@/modules/natural-nudges/db/types";
+import {
+  DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+  personaAuthoredIdleNudgesSchema,
+  sameNaturalNudgeInterests,
+  type PersonaAuthoredIdleNudge,
+} from "@/modules/natural-nudges/db/types";
 
 export type StPresetsReadResult = { status: "fresh"; presets: StPresetRow[] } | { status: "unavailable"; presets: [] };
 
@@ -93,6 +98,29 @@ function normalizeLineageId(value: unknown): number | null {
 
 function arraysEqual<T>(left: readonly T[], right: readonly T[]): boolean {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Compares authored definitions field by field, because JSONB reorders object keys and a raw
+ * serialization would misread an unchanged list as a customization.
+ */
+function samePersonaAuthoredIdleNudges(cardList: readonly PersonaAuthoredIdleNudge[], stored: unknown): boolean {
+  const card = personaAuthoredIdleNudgesSchema.safeParse(cardList);
+  const preset = personaAuthoredIdleNudgesSchema.safeParse(stored);
+  if (!card.success || !preset.success) return false;
+  const key = (list: readonly PersonaAuthoredIdleNudge[]) =>
+    JSON.stringify(
+      list.map((nudge) => [
+        nudge.id,
+        nudge.category,
+        nudge.title,
+        nudge.brief,
+        nudge.agenda_hint,
+        nudge.prerequisites,
+        nudge.recommended_tools,
+      ]),
+    );
+  return key(card.data) === key(preset.data);
 }
 
 function normalizePresetPublicFlags(preset: TomoriPresetRow): boolean[] {
@@ -474,11 +502,13 @@ class PresetRepository {
           arraysEqual(resolveOfficialPresetTriggerWords(preset), expectedTriggers) &&
           resolveOfficialPresetPrompt(preset) === expectedPrompt &&
           JSON.stringify(preset.preset_naming_config) === JSON.stringify(expectedNamingConfig) &&
-          // Cards from before Natural Nudges carry neither field, so their absence still matches.
+          // Cards from before Natural Nudges carry none of these fields, so their absence still matches.
           (data.natural_nudge_talkativeness === undefined ||
             data.natural_nudge_talkativeness === preset.natural_nudge_talkativeness) &&
           (data.natural_nudge_interests === undefined ||
-            sameNaturalNudgeInterests(data.natural_nudge_interests, preset.natural_nudge_interests))
+            sameNaturalNudgeInterests(data.natural_nudge_interests, preset.natural_nudge_interests)) &&
+          (data.natural_nudge_idle_nudges === undefined ||
+            samePersonaAuthoredIdleNudges(data.natural_nudge_idle_nudges, preset.natural_nudge_idle_nudges))
         );
       }) ?? null
     );
@@ -1031,6 +1061,7 @@ class PresetRepository {
             ? {
                 natural_nudge_interests: nudgeConfig.interests,
                 natural_nudge_talkativeness: nudgeConfig.talkativeness,
+                natural_nudge_idle_nudges: nudgeConfig.idle_nudges,
               }
             : {}),
         },
@@ -1271,6 +1302,14 @@ class PresetRepository {
           talkativeness: validatedImportData.natural_nudge_talkativeness ?? DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
           interests: validatedImportData.natural_nudge_interests ?? [],
         }))
+      )
+        return { success: false, error: "commands.persona.import.error_import_failed" };
+
+      if (
+        (await naturalNudgeRepository.replacePersonaIdleNudges(
+          mainTomoriId,
+          validatedImportData.natural_nudge_idle_nudges ?? [],
+        )) !== "success"
       )
         return { success: false, error: "commands.persona.import.error_import_failed" };
 

@@ -577,17 +577,11 @@ export async function execute(
     if (!quotaReserve.allowed) {
       const resetTime = quotaReserve.resetAt ? new Date(quotaReserve.resetAt).toLocaleString(locale) : "unknown";
 
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "rate_limit.error_quota_exceeded_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "rate_limit.error_quota_exceeded_description", {
-                reset_time: resetTime,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "rate_limit.error_quota_exceeded_title",
+        descriptionKey: "rate_limit.error_quota_exceeded_description",
+        descriptionVars: { reset_time: resetTime },
+        color: ColorCode.ERROR,
         files: [getInputAttachment()],
       });
       return;
@@ -648,13 +642,10 @@ export async function execute(
       }
 
       if (!imageAttachment.content_type?.startsWith("image/")) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.generate.invalid_image_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "commands.persona.generate.invalid_image_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.generate.invalid_image_title",
+          descriptionKey: "commands.persona.generate.invalid_image_description",
+          color: ColorCode.ERROR,
           files: [getInputAttachment()],
         });
         return;
@@ -677,16 +668,10 @@ export async function execute(
           errorKey = "commands.persona.generate.error_download_failed";
         }
 
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, errorKey, ColorCode.ERROR, {
-                  max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB.toString(),
-                }),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: errorKey,
+          titleVars: { max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB },
+          color: ColorCode.ERROR,
           files: [getInputAttachment()],
         });
         return;
@@ -695,14 +680,9 @@ export async function execute(
       // Store buffer for later reuse (image processing) and convert to base64 (AI generation)
       // Buffer is guaranteed to exist when success is true
       if (!downloadResult.buffer) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.generate.error_download_failed", ColorCode.ERROR),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.generate.error_download_failed",
+          color: ColorCode.ERROR,
           files: [getInputAttachment()],
         });
         return;
@@ -757,19 +737,11 @@ export async function execute(
             },
           },
         );
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.generate.image_vision_required_title", ColorCode.ERROR),
-              )
-              .setDescription(
-                localizer(locale, "commands.persona.generate.image_vision_required_description", {
-                  model_name: effectiveModelName,
-                }),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.generate.image_vision_required_title",
+          descriptionKey: "commands.persona.generate.image_vision_required_description",
+          descriptionVars: { model_name: effectiveModelName },
+          color: ColorCode.ERROR,
           files: [getInputAttachment()],
         });
         return;
@@ -806,23 +778,11 @@ export async function execute(
           },
         },
       );
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(
-              localizedStatusTitle(
-                locale,
-                "commands.persona.generate.web_search_tools_required_title",
-                ColorCode.ERROR,
-              ),
-            )
-            .setDescription(
-              localizer(locale, "commands.persona.generate.web_search_tools_required_description", {
-                model_name: effectiveModelName,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.persona.generate.web_search_tools_required_title",
+        descriptionKey: "commands.persona.generate.web_search_tools_required_description",
+        descriptionVars: { model_name: effectiveModelName },
+        color: ColorCode.ERROR,
         files: [getInputAttachment()],
       });
       return;
@@ -1203,35 +1163,17 @@ export async function execute(
       return;
     }
     log.error("Error in preset generate command:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const unknownErrorCopy = {
+      titleKey: "general.errors.unknown_error_title",
+      descriptionKey: "general.errors.unknown_error_description",
+      color: ColorCode.ERROR,
+    };
 
     try {
-      const errorEmbed = new EmbedBuilder()
-        .setTitle(localizedStatusTitle(locale, "general.errors.unexpected_title", ColorCode.ERROR))
-        .setDescription(
-          localizer(locale, "general.errors.unexpected_description", {
-            error: errorMessage,
-          }),
-        )
-        .setColor(ColorCode.ERROR);
-
       if (replyUsesComponentsV2 && (replyInteraction.deferred || replyInteraction.replied)) {
-        await editGenerateStatusReply(replyInteraction, {
-          locale,
-          titleKey: "general.errors.unexpected_title",
-          descriptionKey: "general.errors.unexpected_description",
-          descriptionVars: {
-            error: errorMessage,
-          },
-          color: ColorCode.ERROR,
-        });
-      } else if (replyInteraction.deferred || replyInteraction.replied) {
-        await replyInteraction.editReply({ embeds: [errorEmbed] });
+        await editGenerateStatusReply(replyInteraction, { locale, ...unknownErrorCopy });
       } else {
-        await replyInteraction.reply({
-          embeds: [errorEmbed],
-          flags: MessageFlags.Ephemeral,
-        });
+        await replyInfoEmbed(replyInteraction, locale, unknownErrorCopy);
       }
     } catch {
       log.error("Failed to send error embed");

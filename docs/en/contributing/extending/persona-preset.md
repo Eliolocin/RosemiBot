@@ -38,8 +38,24 @@ covered in [Adding a Locale](/contributing/localization/new-locale/).
 
    `name` becomes the `sprite_key`, `file` is relative to `avatarPath`, `usageInstructions` is prompt
    guidance, and `isIdentity` renders the name as `sprite (Persona)`.
-4. Add or edit shared system prompt presets in `src/db/seed/catalog/systemPrompts.ts` if needed.
-5. Keep each image under 1 MiB; `bun run compress-media` shrinks oversized art.
+4. Add the lineage's Natural Nudges defaults to `PRESET_NATURAL_NUDGE_DEFAULTS` in
+   `src/db/seed/catalog/personas/naturalNudges.ts`, keyed by `preset_lineage_id`. Every language
+   variant shares one entry, and the seeder fails without it. `idleNudges` takes one to a few
+   `PersonaAuthoredIdleNudge` definitions (at most 20), each with:
+   - `id`: a stable slug of up to 24 letters, digits, `_`, or `-`, unique within the list. Never
+     rename it once shipped, because the runtime key and a persona's local on/off choice use it.
+   - `category`: `ping_user`, `revive_topic`, `start_topic`, or `play_scene`. Skip the prerequisite the
+     category already implies (`CATEGORY_IMPLIED_PREREQUISITES`), and keep `recommended_tools` free of
+     a tool a `tool:<name>` prerequisite already requires. The `/config` editor saves them that way.
+   - `title`, `brief`, `agenda_hint`: English text shared by every language variant, with `{persona}`, `{target}`, and
+     `{partner}` placeholders. Write from the character's attributes and interests, and require a
+     `tool:<name>` prerequisite for any brief that needs a tool, such as `tool:image` for a picture or
+     `tool:web_search` for current facts.
+   - Avoid a Ping User or Play Scene entry unless the brief needs a target or a partner.
+   Entries add to the built-in and server nudges and share their frequency and daily limit. Interests
+   drive Active Nudges, so idle nudges do not repeat them.
+5. Add or edit shared system prompt presets in `src/db/seed/catalog/systemPrompts.ts` if needed.
+6. Keep each image under 1 MiB; `bun run compress-media` shrinks oversized art.
 
 ## How presets reach servers
 
@@ -63,13 +79,15 @@ boot.
 ## Verify
 
 ```bash
-bun run check-seed-catalogs   # names, paired dialogues, attributes, sprite files, prompts
+bun run check-seed-catalogs   # names, paired dialogues, attributes, sprite files, prompts, nudge defaults
 bun run check-media-size
 bun run check
 bun run lint
+bun run test tests/unit/naturalNudges/idleNudges.test.ts
 ```
 
 Then seed a dev database and check `/setup`, `/persona default`, `/persona export`, and
 `/persona import`. A pointer persona should show the seeded values, pick up a seed edit after cache
-invalidation, and become a copy on its first local edit. See
+invalidation, and become a copy on its first local edit. Open `/config` > `Persona` > `Nudges` to see
+the seeded idle nudges. See
 [Persona Presets](/architecture/subsystems/persona-presets/) for the pointer model.

@@ -23,6 +23,7 @@ import {
   DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
   naturalNudgeInterestsSchema,
   naturalNudgeTalkativenessSchema,
+  personaAuthoredIdleNudgesSchema,
 } from "@/modules/natural-nudges/db/types";
 import { UTC_OFFSET_MAX, UTC_OFFSET_MIN, UTC_OFFSET_STEP_HOURS } from "@/constants/utcOffset";
 
@@ -1240,6 +1241,7 @@ const tomoriPresetSchema = z.object({
   is_nsfw: z.boolean().default(false),
   natural_nudge_interests: naturalNudgeInterestsSchema.default([]),
   natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.default(DEFAULT_NATURAL_NUDGE_TALKATIVENESS),
+  natural_nudge_idle_nudges: personaAuthoredIdleNudgesSchema.default([]),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });

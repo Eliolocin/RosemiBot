@@ -15,13 +15,26 @@ import {
   NATURAL_NUDGE_INTEREST_LABEL_MAX,
   NATURAL_NUDGE_INTEREST_LIMIT,
   NATURAL_NUDGE_TALKATIVENESS_LEVELS,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
   type NaturalNudgeInterest,
+  type PersonaAuthoredIdleNudge,
   type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
 import {
   computeInterestListFingerprint,
   type NaturalNudgesSettingsView,
 } from "@/modules/natural-nudges/discord/operations";
+import type { PersonaNudgeBlockerView } from "@/modules/natural-nudges/discord/studioOperations";
+import { listPersonaIdleNudges, type IdleNudgeBlocker } from "@/modules/natural-nudges/runtime/idleNudges";
+import {
+  buildNudgeChecklistModal,
+  nudgeBlockerLabel,
+  nudgeCategoryLabel,
+} from "@/modules/natural-nudges/discord/studioPanel";
+import { DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX, getDiscordTextLength } from "@/utils/discord/ui/componentsV2Limits";
+import { buildTextPreview, textPreviewFooterKey, textPreviewFooterVars } from "@/utils/text/textPreview";
+import { escapeDiscordMarkdown } from "@/utils/text/discordMarkdown";
+import { truncateDiscordText } from "@/utils/text/discordTextLimits";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { buildConfigRouteId, CONFIG_MODEL_PAGE_SIZE } from "@/utils/discord/configPanelCatalog";
 import { encodeConfigProviderPageValue } from "@/utils/discord/interactions/configModelLoaders";
@@ -100,6 +113,187 @@ export interface PersonaNudgesRenderInput {
   config: PersonaNaturalNudgeConfig | undefined;
   /** Read-only for members and while the workspace read is stale. */
   writesDisabled: boolean;
+  /** Blockers for this persona's own entries; absent on a read that could not resolve tools. */
+  personaNudges?: PersonaNudgeBlockerView;
+  /** Full body text allowance from the parent `/config` payload. */
+  textBudget?: number;
+}
+
+interface OwnedNudge {
+  authored: PersonaAuthoredIdleNudge;
+  definition: ReturnType<typeof listPersonaIdleNudges>[number]["definition"];
+  enabled: boolean;
+}
+
+function ownedNudges(personaId: number, config: PersonaNaturalNudgeConfig): OwnedNudge[] {
+  return listPersonaIdleNudges(personaId, config).flatMap((entry, index) => {
+    const authored = config.idle_nudges[index];
+    return authored ? [{ authored, definition: entry.definition, enabled: entry.enabled }] : [];
+  });
+}
+
+function ownedNudgeState(
+  entry: OwnedNudge,
+  blockers: ReadonlyMap<string, IdleNudgeBlocker> | undefined,
+): "available" | "off" | "blocked" {
+  if (!entry.enabled) return "off";
+  return blockers?.has(entry.definition.key) ? "blocked" : "available";
+}
+
+const OWNED_STATE_CIRCLES: Record<"available" | "off" | "blocked", string> = {
+  available: "🟢",
+  off: "🔴",
+  blocked: "🟡",
+};
+
+function ownedNudgeRow(locale: string, entry: OwnedNudge, blocker: IdleNudgeBlocker | undefined): string {
+  const state = blocker ? "blocked" : entry.enabled ? "available" : "off";
+  const note = blocker
+    ? localizer(locale, "commands.config.natural_nudges.idle_entry_blocked", {
+        reason: nudgeBlockerLabel(locale, blocker),
+      })
+    : localizer(
+        locale,
+        state === "available"
+          ? "commands.config.natural_nudges.idle_entry_available"
+          : "commands.config.natural_nudges.idle_entry_off",
+      );
+  return `${OWNED_STATE_CIRCLES[state]} ${localizer(locale, "commands.config.natural_nudges.idle_entry_row", {
+    title: escapeDiscordMarkdown(truncateDiscordText(entry.authored.title, 50)),
+    category: escapeDiscordMarkdown(nudgeCategoryLabel(locale, entry.authored.category)),
+    note,
+  })}`;
+}
+
+function buildIdleNudgeSection(
+  locale: string,
+  personaId: number,
+  config: PersonaNaturalNudgeConfig,
+  writesDisabled: boolean,
+  input: PersonaNudgesRenderInput,
+): ComponentInContainerData[] {
+  const t = (key: string, vars: Record<string, string | number> = {}) => localizer(locale, key, vars);
+  const entries = ownedNudges(personaId, config);
+  const blockers = input.personaNudges?.blockers;
+  const canAdd = entries.length < PERSONA_AUTHORED_IDLE_NUDGE_LIMIT;
+  const restoreAvailable = input.persona.is_pointer === true && config.idle_nudges_override;
+  const heading = `### ${t("commands.config.natural_nudges.idle_title")}\n${t(
+    "commands.config.natural_nudges.idle_description",
+  )}`;
+
+  const tail: ComponentInContainerData[] = [];
+  if (entries.length === 0) {
+    tail.push(text(`> ${t("commands.config.natural_nudges.idle_none")}`));
+  }
+  if (canAdd || entries.length > 0) {
+    const addOptions: SelectMenuComponentOptionData[] = canAdd
+      ? (["ping_user", "revive_topic", "start_topic", "play_scene"] as const).map((category) => ({
+          label: safeSelectOptionText(
+            t("commands.config.natural_nudges.idle_add_option", {
+              category: nudgeCategoryLabel(locale, category),
+            }),
+            100,
+          ),
+          value: `add:${category}`,
+        }))
+      : [];
+    tail.push({
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildConfigRouteId({ action: "nudge-persona-select", locale, personaId }),
+          placeholder: safeSelectOptionText(t("commands.config.natural_nudges.idle_select_placeholder"), 150),
+          options: [
+            ...addOptions,
+            ...entries.map((entry) => ({
+              label: safeSelectOptionText(entry.authored.title, 100),
+              description: safeSelectOptionText(
+                `${nudgeCategoryLabel(locale, entry.authored.category)} · ${t(
+                  {
+                    available: "commands.config.natural_nudges.idle_entry_available",
+                    off: "commands.config.natural_nudges.idle_entry_off",
+                    blocked: "commands.config.natural_nudges.idle_entry_blocked_label",
+                  }[ownedNudgeState(entry, blockers)],
+                )}`,
+                100,
+              ),
+              value: entry.authored.id,
+            })),
+          ],
+          disabled: writesDisabled,
+        },
+      ],
+    });
+  }
+  if (entries.length > 0) {
+    tail.push({
+      type: ComponentType.ActionRow,
+      components: [
+        {
+          type: ComponentType.StringSelect,
+          customId: buildConfigRouteId({ action: "nudge-persona-availability-select", locale, personaId }),
+          placeholder: safeSelectOptionText(t("commands.config.natural_nudges.idle_availability_placeholder"), 150),
+          options: entries.map((entry) => ({
+            label: safeSelectOptionText(entry.authored.title, 100),
+            description: safeSelectOptionText(nudgeCategoryLabel(locale, entry.authored.category), 100),
+            emoji: { name: OWNED_STATE_CIRCLES[ownedNudgeState(entry, blockers)] },
+            value: entry.authored.id,
+          })),
+          disabled: writesDisabled,
+        },
+      ],
+    });
+  }
+  tail.push({
+    type: ComponentType.ActionRow,
+    components: [
+      button(
+        t("commands.config.natural_nudges.idle_remove_button"),
+        { action: "nudge-persona-remove-open", locale, personaId },
+        writesDisabled || entries.length === 0,
+        true,
+      ),
+      ...(restoreAvailable
+        ? [
+            button(
+              t("commands.config.natural_nudges.idle_restore_button"),
+              { action: "nudge-persona-restore-view", locale, personaId },
+              writesDisabled,
+              true,
+            ),
+          ]
+        : []),
+    ],
+  });
+  if (!canAdd) {
+    tail.push(text(t("commands.config.natural_nudges.idle_limit_note", { max: PERSONA_AUTHORED_IDLE_NUDGE_LIMIT })));
+  }
+  if (config.idle_nudges_inherited) {
+    tail.push(text(`-# ${t("commands.config.natural_nudges.idle_inherited_note")}`));
+  }
+
+  const listRows = entries.map((entry) => ownedNudgeRow(locale, entry, blockers?.get(entry.definition.key)));
+  const tailTextLength = tail.reduce(
+    (total, component) =>
+      total +
+      (component.type === ComponentType.TextDisplay && "content" in component
+        ? getDiscordTextLength(component.content)
+        : 0),
+    0,
+  );
+  const allowance = input.textBudget ?? DISCORD_MESSAGE_TEXT_DISPLAY_TOTAL_MAX;
+  const listBudget = Math.max(
+    0,
+    Math.min(1_200, allowance - getDiscordTextLength(heading) - tailTextLength - listRows.length * 2 - 350),
+  );
+  if (entries.length === 0) return [text(heading), ...tail];
+  const list = buildTextPreview(listRows.join("\n"), listBudget);
+  const footer = textPreviewFooterKey(list);
+  const listComponent = text(
+    `${withLinePrefix("> ", list.text)}${footer ? `\n-# ${t(footer, textPreviewFooterVars(list, locale))}` : ""}`,
+  );
+  return [text(heading), listComponent, ...tail];
 }
 
 export function buildPersonaNudgesBody(input: PersonaNudgesRenderInput): ComponentInContainerData[] {
@@ -189,6 +383,7 @@ export function buildPersonaNudgesBody(input: PersonaNudgesRenderInput): Compone
       ),
     ],
   });
+  components.push(...buildIdleNudgeSection(locale, personaId, config, writesDisabled, input));
   return components;
 }
 
@@ -293,6 +488,67 @@ export function buildInterestModal(
       },
     ],
   };
+}
+
+export function buildPersonaNudgeAvailabilityModal(
+  locale: string,
+  personaId: number,
+  nonce: string,
+  authored: PersonaAuthoredIdleNudge,
+  enabled: boolean,
+): RawModalPayload {
+  const t = (key: string) => localizer(locale, key);
+  return buildNudgeChecklistModal(
+    locale,
+    buildConfigRouteId({
+      action: "nudge-persona-availability-submit",
+      locale,
+      personaId,
+      id: authored.id,
+      nonce,
+    }),
+    "commands.config.natural_nudges.idle_availability_modal_title",
+    safeSelectOptionText(authored.title, MODAL_TEXT_MAX),
+    "commands.config.natural_nudges.idle_availability_description",
+    nonce,
+    [
+      {
+        value: "available",
+        label: safeSelectOptionText(t("commands.config.natural_nudges.idle_availability_option"), 100),
+        checked: enabled,
+      },
+    ],
+  );
+}
+
+export function buildPersonaNudgeRemovalModal(
+  locale: string,
+  personaId: number,
+  nonce: string,
+  fp: string,
+  entries: readonly PersonaAuthoredIdleNudge[],
+): RawModalPayload {
+  const t = (key: string) => localizer(locale, key);
+  return buildNudgeChecklistModal(
+    locale,
+    buildConfigRouteId({
+      action: "nudge-persona-remove-submit",
+      locale,
+      personaId,
+      fp,
+      nonce,
+    }),
+    "commands.config.natural_nudges.idle_remove_modal_title",
+    safeSelectOptionText(t("commands.config.natural_nudges.idle_title"), MODAL_TEXT_MAX),
+    "commands.config.natural_nudges.idle_remove_description",
+    nonce,
+    entries.map((authored) => ({
+      value: authored.id,
+      label: safeSelectOptionText(authored.title, 100),
+      description: safeSelectOptionText(nudgeCategoryLabel(locale, authored.category), 100),
+      checked: true,
+    })),
+  );
 }
 
 /**

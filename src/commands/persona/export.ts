@@ -72,13 +72,10 @@ export async function execute(
     const exportResult = await presetRepository.exportPresetData(serverDiscId, selectedPersona.persona_id);
 
     if (!exportResult.success) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.export.failed_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, exportResult.error))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.export.failed_title",
+        descriptionKey: exportResult.error,
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -165,13 +162,10 @@ export async function execute(
         (await getServerAvatar(interaction.guild, client));
     } catch (error) {
       log.error(`Failed to get avatar for ${interaction.guild ? "guild" : "DM"} ${serverDiscId}:`, error as Error);
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.export.avatar_failed_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.persona.export.avatar_failed_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.export.avatar_failed_title",
+        descriptionKey: "commands.persona.export.avatar_failed_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -184,13 +178,10 @@ export async function execute(
         `Failed to embed metadata into PNG for ${interaction.guild ? "guild" : "DM"} ${serverDiscId}:`,
         error as Error,
       );
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.export.embed_failed_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.persona.export.embed_failed_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.export.embed_failed_title",
+        descriptionKey: "commands.persona.export.embed_failed_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -230,22 +221,10 @@ export async function execute(
       metadata: { commandName: "preset export" },
     });
 
-    if (!interaction.replied && !interaction.deferred) {
-      await replyInfoEmbed(interaction, locale, {
-        titleKey: "general.errors.unknown_error_title",
-        descriptionKey: "general.errors.unknown_error_description",
-        color: ColorCode.ERROR,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-            .setColor(ColorCode.ERROR),
-        ],
-      });
-    }
+    await replyInfoEmbed(interaction, locale, {
+      titleKey: "general.errors.unknown_error_title",
+      descriptionKey: "general.errors.unknown_error_description",
+      color: ColorCode.ERROR,
+    });
   }
 }

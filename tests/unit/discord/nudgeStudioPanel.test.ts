@@ -6,16 +6,19 @@ import {
   CUSTOM_IDLE_NUDGE_LIST_MAX,
   CUSTOM_IDLE_NUDGE_TITLE_MAX,
   NATURAL_NUDGE_CATEGORIES,
+  PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
   type NaturalNudgeCategory,
 } from "@/modules/natural-nudges/db/types";
-import { nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
+import { buildNudgeStudioRouteId, nudgeStudioFieldId } from "@/modules/natural-nudges/discord/studioCatalog";
 import type { NudgeStudioView, StudioEntry } from "@/modules/natural-nudges/discord/studioOperations";
 import {
   availabilityOptions,
   buildAvailabilityModal,
   buildIdleNudgeFormModal,
   buildNudgeStudioPayload,
+  buildPersonaAvailabilityModal,
   buildRemovalModal,
+  NUDGE_STUDIO_PAGE_SIZE,
   removalOptions,
 } from "@/modules/natural-nudges/discord/studioPanel";
 import {
@@ -24,18 +27,18 @@ import {
   customIdleNudgeDefinition,
   NUDGE_PREREQUISITE_IDS,
   NUDGE_TOOL_NAMES,
+  type IdleNudgeDefinition,
 } from "@/modules/natural-nudges/runtime/idleNudges";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import {
   DISCORD_CHECKBOX_GROUP_OPTIONS_MAX,
   DISCORD_MODAL_COMPONENTS_MAX,
-  DISCORD_SELECT_OPTIONS_MAX,
   validateRawModalLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createCustomIdleNudge, createPersona } from "../../helpers/fixtures";
-import { expectForEveryLocale, localizedCopy } from "../../helpers/localeCases";
+import { expectForEveryLocale, localizedCopy, localizedProse } from "../../helpers/localeCases";
 import { collectTextDisplays, expectSafePanelPayload } from "../../helpers/panelLimits";
 
 const NONCE = "nonce1234567";
@@ -56,9 +59,34 @@ function customRow(category: NaturalNudgeCategory, index: number) {
   });
 }
 
-/** The fullest view a category can hold: every built-in plus the whole server's custom limit, all blocked. */
-function fullestView(category: NaturalNudgeCategory, customs = CUSTOM_IDLE_NUDGE_LIMIT): NudgeStudioView {
+function personaDefinition(category: NaturalNudgeCategory, ownerId: number, index: number): IdleNudgeDefinition {
+  return {
+    key: `persona:${ownerId}:n${index}`,
+    category,
+    title: `Persona ${ownerId} nudge ${index}`.padEnd(CUSTOM_IDLE_NUDGE_TITLE_MAX, "*"),
+    brief: "`B*".repeat(CUSTOM_IDLE_NUDGE_BRIEF_MAX).slice(0, CUSTOM_IDLE_NUDGE_BRIEF_MAX),
+    agendaHint: null,
+    prerequisites: [],
+    recommendedTools: [],
+    builtIn: false,
+    ownerPersonaId: ownerId,
+  };
+}
+
+/** The fullest view a category can hold: every built-in, the server custom limit, and persona-owned entries. */
+function fullestView(
+  category: NaturalNudgeCategory,
+  customs = CUSTOM_IDLE_NUDGE_LIMIT,
+  personaCount = 0,
+  nudgesPerPersona = PERSONA_AUTHORED_IDLE_NUDGE_LIMIT,
+): NudgeStudioView {
   const rows = Array.from({ length: customs }, (_, index) => customRow(category, index));
+  const personaEntries: StudioEntry[] = Array.from({ length: personaCount }, (_, personaIndex) =>
+    Array.from({ length: nudgesPerPersona }, (_, nudgeIndex) => ({
+      definition: personaDefinition(category, personaIndex + 1, nudgeIndex),
+      enabled: nudgeIndex % 2 === 0,
+    })),
+  ).flat();
   const entries: StudioEntry[] = [
     ...BUILTIN_IDLE_NUDGES.filter((definition) => definition.category === category).map((definition) => ({
       definition,
@@ -71,8 +99,14 @@ function fullestView(category: NaturalNudgeCategory, customs = CUSTOM_IDLE_NUDGE
       custom,
       blocker: custom.enabled ? { kind: "tool" as const, tool: "peek_profile_picture" as const } : undefined,
     })),
+    ...personaEntries,
   ];
-  return { category, entries, customCount: customs, personaNames: new Map() };
+  return {
+    category,
+    entries,
+    customCount: customs,
+    personaNames: new Map(Array.from({ length: personaCount }, (_, index) => [index + 1, `Juno ${index + 1}`])),
+  };
 }
 
 /** More personas than one checklist modal can present, with nicknames at Discord's display-name length. */
@@ -100,14 +134,17 @@ function modalSelect(modal: { components: RawDiscordComponent[] }, customId: str
 }
 
 describe("Nudge Studio panel", () => {
-  it("stays within message limits in every locale and category at the custom idle nudge limit", () => {
+  it("stays within message limits in every locale and category at the custom and persona limits", () => {
     expectForEveryLocale((locale) => {
       for (const category of NATURAL_NUDGE_CATEGORIES) {
-        for (const customs of [0, CUSTOM_IDLE_NUDGE_LIMIT - 1, CUSTOM_IDLE_NUDGE_LIMIT]) {
+        const view = fullestView(category, CUSTOM_IDLE_NUDGE_LIMIT, 20);
+        const lastPage = Math.ceil(view.entries.length / NUDGE_STUDIO_PAGE_SIZE) - 1;
+        for (const page of new Set([0, 1, lastPage])) {
           for (const receipt of [false, true]) {
             const payload = buildNudgeStudioPayload({
               locale,
-              view: fullestView(category, customs),
+              view,
+              page,
               receipt: receipt
                 ? {
                     tone: "success",
@@ -116,11 +153,20 @@ describe("Nudge Studio panel", () => {
                   }
                 : undefined,
             });
-            expectSafePanelPayload(payload, `${locale}:${category}:${customs}:${receipt}`);
+            expectSafePanelPayload(payload, `${locale}:${category}:${page}:${receipt}`);
           }
         }
       }
     });
+  });
+
+  it("keeps every page of a maximum combined category valid", () => {
+    const category = "ping_user";
+    const view = fullestView(category, CUSTOM_IDLE_NUDGE_LIMIT, 20);
+    for (let page = 0; page < Math.ceil(view.entries.length / NUDGE_STUDIO_PAGE_SIZE); page++) {
+      const payload = buildNudgeStudioPayload({ locale: "en-US", view, page });
+      expectSafePanelPayload(payload, `page ${page}`);
+    }
   });
 
   it("marks enabled, blocked, and disabled idle nudges and tags custom ones", () => {
@@ -148,10 +194,10 @@ describe("Nudge Studio panel", () => {
     expect(rows[1]).toContain(blocker);
     expect(rows[2]?.startsWith("> 🔴")).toBe(true);
 
-    const intro = localizedCopy("en-US", "commands.nudge-studio.custom_intro", {
+    const intro = localizedProse("en-US", "commands.nudge-studio.custom_intro", {
       category: localizedCopy("en-US", "commands.nudge-studio.category_ping_user"),
     });
-    const tipsDisplay = displays.find((content) => content.includes(intro));
+    const tipsDisplay = displays.find((content) => intro.test(content));
     expect(tipsDisplay).toBeDefined();
     const tipLines = tipsDisplay?.split("\n").filter((line) => line.startsWith("> ")) ?? [];
     expect(tipLines.length).toBeGreaterThan(0);
@@ -170,15 +216,21 @@ describe("Nudge Studio panel", () => {
     ).toBe(true);
   });
 
-  it("keeps the add option only below the server-wide custom limit", () => {
+  it("keeps the add option only below the server-wide custom limit, which persona entries do not count toward", () => {
     const optionValues = (customs: number): string[] => {
       const payload = buildNudgeStudioPayload({ locale: "en-US", view: fullestView("ping_user", customs) });
       return selectOptions(payload, "select")?.map((option) => option.value) ?? [];
     };
 
-    expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT - 1)).toHaveLength(CUSTOM_IDLE_NUDGE_LIMIT);
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT - 1)[0]).toBe("add");
     expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT)).not.toContain("add");
+    expect(optionValues(CUSTOM_IDLE_NUDGE_LIMIT - 1).length).toBeLessThanOrEqual(NUDGE_STUDIO_PAGE_SIZE);
+
+    const withPersonaEntries = buildNudgeStudioPayload({
+      locale: "en-US",
+      view: fullestView("ping_user", CUSTOM_IDLE_NUDGE_LIMIT - 1, 20),
+    });
+    expect(selectOptions(withPersonaEntries, "select")?.[0]?.value).toBe("add");
   });
 
   it("names a scope's live personas on its row, and gives each Toggle Availability option its state and brief", () => {
@@ -208,18 +260,66 @@ describe("Nudge Studio panel", () => {
     );
   });
 
-  it("pages the Toggle Availability menu so every idle nudge in a full category stays reachable", () => {
-    const view = fullestView("ping_user");
-    const pages = [0, 1].map((page) => buildNudgeStudioPayload({ locale: "en-US", view, page }));
-    const reached = pages.flatMap(
+  it("pages the list, the edit select, and Toggle Availability so every entry stays reachable", () => {
+    const view = fullestView("ping_user", CUSTOM_IDLE_NUDGE_LIMIT, 4);
+    const pageCount = Math.ceil(view.entries.length / NUDGE_STUDIO_PAGE_SIZE);
+    const pages = Array.from({ length: pageCount }, (_, page) =>
+      buildNudgeStudioPayload({ locale: "en-US", view, page }),
+    );
+    const availabilityReached = pages.flatMap(
       (payload) => selectOptions(payload, "toggle-open")?.map((option) => option.value) ?? [],
     );
-
-    expect(selectOptions(pages[0], "toggle-open")).toHaveLength(DISCORD_SELECT_OPTIONS_MAX);
-    expect(reached).toEqual(view.entries.map((entry) => entry.definition.key));
-    expect(selectOptions(buildNudgeStudioPayload({ locale: "en-US", view, page: 9 }), "toggle-open")).toEqual(
-      selectOptions(pages[1], "toggle-open"),
+    const visibleRows = pages.flatMap((payload) =>
+      collectTextDisplays(payload)
+        .flatMap((content) => content.split("\n"))
+        .filter((line) => /^> [🟢🟡🔴]/u.test(line)),
     );
+    const editValues = pages.flatMap(
+      (payload) =>
+        selectOptions(payload, "select")
+          ?.map((option) => option.value)
+          .filter((value) => value !== "add") ?? [],
+    );
+
+    expect(selectOptions(pages[0], "toggle-open")).toHaveLength(NUDGE_STUDIO_PAGE_SIZE);
+    expect(availabilityReached).toEqual(view.entries.map((entry) => entry.definition.key));
+    expect(visibleRows).toHaveLength(view.entries.length);
+    const editableKeys = view.entries
+      .filter((entry) => entry.custom !== undefined || entry.definition.ownerPersonaId !== undefined)
+      .map((entry) => entry.definition.key);
+    expect(editValues).toEqual(editableKeys);
+    expect(selectOptions(buildNudgeStudioPayload({ locale: "en-US", view, page: 99 }), "toggle-open")).toEqual(
+      selectOptions(pages.at(-1) as ReturnType<typeof buildNudgeStudioPayload>, "toggle-open"),
+    );
+  });
+
+  it("labels each source by name and keeps duplicate titles distinct by their stable keys", () => {
+    const custom = createCustomIdleNudge({ category: "ping_user", title: "Same title" });
+    const persona = personaDefinition("ping_user", 7, 0);
+    persona.title = "Same title";
+    const view: NudgeStudioView = {
+      category: "ping_user",
+      entries: [
+        { definition: BUILTIN_IDLE_NUDGES[0], enabled: true },
+        { definition: customIdleNudgeDefinition(custom), enabled: true, custom },
+        { definition: persona, enabled: true },
+      ],
+      customCount: 1,
+      personaNames: new Map([[7, "Juno"]]),
+    };
+    const displays = collectTextDisplays(buildNudgeStudioPayload({ locale: "en-US", view }));
+    const rows = displays.flatMap((content) => content.split("\n")).filter((line) => /^> [🟢🟡🔴]/u.test(line));
+
+    expect(rows[0]).toContain(localizedCopy("en-US", "commands.nudge-studio.note_source_builtin"));
+    expect(rows[1]).toContain(localizedCopy("en-US", "commands.nudge-studio.note_source_server"));
+    expect(rows[2]).toContain(localizedCopy("en-US", "commands.nudge-studio.note_source_persona", { persona: "Juno" }));
+    const values =
+      selectOptions(buildNudgeStudioPayload({ locale: "en-US", view }), "select")?.flatMap((option) =>
+        option.value === undefined ? [] : [option.value],
+      ) ?? [];
+    expect(values).toContain("custom:1");
+    expect(values).toContain("persona:7:n0");
+    expect(new Set(values).size).toBe(values.length);
   });
 });
 
@@ -227,11 +327,25 @@ describe("Nudge Studio modals", () => {
   it("fits every form, availability, and removal modal within Discord's modal limits", () => {
     expectForEveryLocale((locale) => {
       for (const category of NATURAL_NUDGE_CATEGORIES) {
-        const view = fullestView(category);
+        const view = fullestView(category, CUSTOM_IDLE_NUDGE_LIMIT, 2, 2);
+        const personaEntry = view.entries.find((entry) => entry.definition.ownerPersonaId !== undefined);
         const modals = [
           buildIdleNudgeFormModal(locale, category, NONCE),
-          buildIdleNudgeFormModal(locale, category, NONCE, customRow(category, 1)),
-          buildRemovalModal(locale, category, NONCE, removalOptions(view)),
+          buildIdleNudgeFormModal(
+            locale,
+            category,
+            NONCE,
+            {
+              category,
+              title: "Edited title",
+              brief: "Edited brief",
+              agenda_hint: null,
+              prerequisites: [],
+              recommended_tools: [],
+            },
+            { customId: `config:v2:test:${locale}:${category}:${NONCE}` },
+          ),
+          buildRemovalModal(locale, category, NONCE, removalOptions(view.entries)),
           buildAvailabilityModal(
             locale,
             category,
@@ -240,6 +354,7 @@ describe("Nudge Studio modals", () => {
             NONCE,
             availabilityOptions(manyPersonas(), view.entries[0]),
           ),
+          ...(personaEntry ? [buildPersonaAvailabilityModal(locale, category, personaEntry, 1, NONCE, "Juno 1")] : []),
         ];
         for (const modal of modals) {
           expect(modal.components.length).toBeLessThanOrEqual(DISCORD_MODAL_COMPONENTS_MAX);
@@ -255,7 +370,9 @@ describe("Nudge Studio modals", () => {
       prerequisites: ["relationship_user", "recent_memory", "tool:web_search"],
       recommended_tools: ["web_search"],
     });
-    const modal = buildIdleNudgeFormModal("en-US", "ping_user", NONCE, custom);
+    const modal = buildIdleNudgeFormModal("en-US", "ping_user", NONCE, custom, {
+      customId: `config:v2:test:en-US:ping_user:${NONCE}`,
+    });
     const needs = modalSelect(modal, nudgeStudioFieldId("needs", NONCE));
     const tools = modalSelect(modal, nudgeStudioFieldId("tools", NONCE));
 
@@ -277,10 +394,51 @@ describe("Nudge Studio modals", () => {
     }
   });
 
-  it("presents removal with every custom idle nudge checked", () => {
-    const view = fullestView("start_topic", 12);
-    expect(removalOptions(view).every((option) => option.checked)).toBe(true);
-    expect(removalOptions(view)).toHaveLength(12);
+  it("keeps Danbooru tag lookup selectable and prefilled in the shared form", () => {
+    const modal = buildIdleNudgeFormModal(
+      "en-US",
+      "start_topic",
+      NONCE,
+      {
+        category: "start_topic",
+        title: "Outfit lookup",
+        brief: "Look up the character's clothing tags.",
+        agenda_hint: null,
+        prerequisites: ["tool:danbooru_search_tags"],
+        recommended_tools: [],
+      },
+      {
+        customId: buildNudgeStudioRouteId({
+          action: "edit-submit",
+          locale: "en-US",
+          category: "start_topic",
+          id: 1,
+          nonce: NONCE,
+        }),
+      },
+    );
+    const needs = modalSelect(modal, nudgeStudioFieldId("needs", NONCE));
+    const option = needs?.options?.find((option) => option.value === "tool:danbooru_search_tags");
+    expect(option?.default).toBe(true);
+    expect(option?.label).toBe(
+      localizedCopy("en-US", "commands.nudge-studio.prerequisite_tool", {
+        tool: localizedCopy("en-US", "commands.nudge-studio.tool_danbooru_search_tags"),
+      }),
+    );
+    expect(
+      modalSelect(modal, nudgeStudioFieldId("tools", NONCE))?.options?.some(
+        (option) => option.value === "danbooru_search_tags",
+      ),
+    ).toBe(true);
+  });
+
+  it("presents removal for the visible server and persona entries, all checked", () => {
+    const view = fullestView("start_topic", 12, 2, 2);
+    const removable = view.entries.filter(
+      (entry) => entry.custom !== undefined || entry.definition.ownerPersonaId !== undefined,
+    );
+    expect(removalOptions(removable).every((option) => option.checked)).toBe(true);
+    expect(removalOptions(removable)).toHaveLength(removable.length);
   });
 
   it("presents personas checked by scope: all when open to everyone, none when off", () => {
@@ -290,5 +448,15 @@ describe("Nudge Studio modals", () => {
     expect(checked({ definition, enabled: true })).toEqual([true, true, true]);
     expect(checked({ definition, enabled: true, scope: [2] })).toEqual([false, true, false]);
     expect(checked({ definition, enabled: false })).toEqual([false, false, false]);
+  });
+
+  it("gives a persona-owned nudge a single owner-only availability option", () => {
+    const entry: StudioEntry = { definition: personaDefinition("ping_user", 7, 0), enabled: true };
+    const modal = buildPersonaAvailabilityModal("en-US", "ping_user", entry, 0, NONCE, "Juno");
+    const group = modal.components[0]?.component;
+    expect(group?.options).toHaveLength(1);
+    expect(group?.options?.[0]?.value).toBe("available");
+    expect(group?.options?.[0]?.default).toBe(true);
+    expect(modal.custom_id).toBe(`nudge-studio:v1:pt:en-US:ping_user:0:7:n0:${NONCE}`);
   });
 });

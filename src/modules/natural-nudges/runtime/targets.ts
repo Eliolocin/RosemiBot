@@ -197,14 +197,15 @@ export async function drawPingUserTarget(args: {
   return null;
 }
 
-export async function isTargetStillReachable(args: {
+export async function refreshPingUserTarget(args: {
+  client: Client;
   guild: Guild;
   serverId: number;
   persona: TomoriState & { persona_id: number };
   target: PingUserTarget;
   channel: GuildTextBasedChannel;
   now: Date;
-}): Promise<boolean> {
+}): Promise<PingUserTarget | null> {
   const [candidate] = await naturalNudgeRepository.listPingUserCandidates({
     serverId: args.serverId,
     personaId: args.persona.persona_id,
@@ -213,7 +214,18 @@ export async function isTargetStillReachable(args: {
     memorySince: memorySinceFor(args.now),
     onlyUserId: args.target.userId,
   });
-  if (!candidate) return false;
+  if (!candidate) return null;
   const member = await args.guild.members.fetch({ user: args.target.userDiscId, force: true }).catch(() => null);
-  return member !== null && canView(member, args.channel);
+  if (!member || member.user.bot || !canView(member, args.channel)) return null;
+  await shortTermMemoryRepository.preWarmUsers([candidate.user_disc_id]);
+  const recentMemories = args.persona.config.personal_memories_enabled === false ? 0 : candidate.ltm_recent;
+  if (
+    !isRelationshipEligible(recentMemories, countStmChannels(candidate, args.guild.id, args.persona.persona_lineage_id))
+  )
+    return null;
+  return {
+    ...args.target,
+    recentMemories: await loadRecentMemories(candidate, args.persona, memorySinceFor(args.now)),
+    activity: currentActivity(args.client, args.guild, candidate),
+  };
 }

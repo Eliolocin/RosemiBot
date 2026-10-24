@@ -9,7 +9,7 @@ import type {
   Client,
   SlashCommandSubcommandBuilder,
 } from "discord.js";
-import { MessageFlags, EmbedBuilder } from "discord.js";
+import { MessageFlags } from "discord.js";
 import { localizer } from "../../utils/text/localizer";
 import { log, ColorCode } from "../../utils/misc/logger";
 import { replyInfoEmbed } from "../../utils/discord/interactionHelper";
@@ -17,7 +17,6 @@ import { invalidateTomoriStateCache } from "../../utils/cache/tomoriStateCache";
 import type { TomoriState, UserRow } from "../../types/db/schema";
 import { personaRepository } from "@/utils/db/repositories";
 import { deletePersonaAvatarFromStorage } from "../../utils/storage/avatarStorage";
-import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { respondWithPersonaChoices } from "@/utils/discord/autocomplete/personaAutocomplete";
 import { resolveSelectedPersona } from "@/utils/persona/personaOptionValue";
 
@@ -156,22 +155,10 @@ export async function execute(
       metadata: { commandName: "persona remove" },
     });
 
-    if (!interaction.replied && !interaction.deferred) {
-      await replyInfoEmbed(interaction, locale, {
-        titleKey: "general.errors.unknown_error_title",
-        descriptionKey: "general.errors.unknown_error_description",
-        color: ColorCode.ERROR,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-            .setColor(ColorCode.ERROR),
-        ],
-      });
-    }
+    await replyInfoEmbed(interaction, locale, {
+      titleKey: "general.errors.unknown_error_title",
+      descriptionKey: "general.errors.unknown_error_description",
+      color: ColorCode.ERROR,
+    });
   }
 }

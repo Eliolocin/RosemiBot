@@ -2,18 +2,31 @@ import type { Client, GuildTextBasedChannel, Message } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
-import type { NaturalNudgeCategory, NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
-import { availableIdleNudgeTools, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
 import {
-  hasActivitySince,
+  HANGING_CONVERSATION_PREREQUISITE,
+  type NaturalNudgeCategory,
+  type NaturalNudgeInterest,
+} from "@/modules/natural-nudges/db/types";
+import {
+  availableIdleNudgeTools,
+  findMissingIdleNudgeTool,
+  findPersonaRunnableIdleNudge,
+  isIdleNudgeEligible,
+  sameIdleNudgeDefinition,
+  type IdleNudgeDefinition,
+} from "@/modules/natural-nudges/runtime/idleNudges";
+import {
+  fetchRecentMessages,
+  isHangingConversation,
   resolveEffectiveChannelIds,
   type NudgeChannel,
 } from "@/modules/natural-nudges/runtime/channels";
 import { type NudgeModelRef, resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
-import { IDLE_NUDGE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
+import { IDLE_NUDGE_DAILY_CAPS, PLANNER_HISTORY_MESSAGES } from "@/modules/natural-nudges/runtime/tuning";
 import { planIdleNudge, type IdleNudgePlan, type ScenePartner } from "@/modules/natural-nudges/runtime/planner";
-import { isTargetStillReachable, type PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
+import { refreshPingUserTarget, type PingUserTarget } from "@/modules/natural-nudges/runtime/targets";
+import { loadAvailableToolNames } from "@/modules/natural-nudges/runtime/tools";
 import { recordIdleNudgeSample, type IdleNudgeSample } from "@/modules/natural-nudges/runtime/telemetry";
 import { isChannelProcessingLocked, tomoriChat } from "@/events/messageCreate/tomoriChat";
 import { isDeliveredTurnResult } from "@/utils/chat/postTurnEffects";
@@ -83,39 +96,82 @@ async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel
   const personaId = attempt.persona.persona_id;
   if (typeof personaId !== "number") return "persona_removed";
   const personas = await personaRepository.loadAllForServer(attempt.serverDiscId);
-  if (!personas.some((persona) => persona.persona_id === personaId)) return "persona_removed";
+  const currentPersona = personas.find((persona) => persona.persona_id === personaId);
+  if (!currentPersona) return "persona_removed";
   if ((await resolvePlannerModel(personas[0], config.llm_id)).kind !== "ready") return "no_model";
-  const personaConfig = (await naturalNudgeRepository.loadPersonaConfigs([personaId])).get(personaId);
+  const personaConfigs = await naturalNudgeRepository.loadPersonaConfigs(
+    personas.flatMap((persona) => (typeof persona.persona_id === "number" ? [persona.persona_id] : [])),
+  );
+  const personaConfig = personaConfigs.get(personaId);
   if (!personaConfig || personaConfig.talkativeness === 0) return "persona_silenced";
+  const [customIdleNudges, scopes] = await Promise.all([
+    naturalNudgeRepository.listCustomIdleNudges(attempt.serverId),
+    naturalNudgeRepository.loadPersonaScopes(attempt.serverId),
+  ]);
+  const currentIdleNudge = findPersonaRunnableIdleNudge(attempt.idleNudge.key, {
+    personaId,
+    disabledBuiltIns: config.disabled_builtin_idle_nudges,
+    customIdleNudges,
+    scopes,
+    personaConfig,
+  });
+  if (!currentIdleNudge) return "idle_nudge_unavailable";
+  if (!sameIdleNudgeDefinition(attempt.idleNudge, currentIdleNudge)) return "idle_nudge_changed";
+  const availableTools = await loadAvailableToolNames(currentPersona);
+  attempt.availableTools = availableTools;
+  if (findMissingIdleNudgeTool(currentIdleNudge, availableTools)) return "tools_unavailable";
   const whitelist = await whitelistRepository.checkChannelWhitelist(attempt.serverDiscId, target.channel.id);
   if (!whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, personaId)) return "persona_not_allowed";
+  const canPartner = (partnerId: number) =>
+    (personaConfigs.get(partnerId)?.talkativeness ?? 0) > 0 &&
+    whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, partnerId);
   for (const { persona: partner } of attempt.partners) {
     if (!personas.some((persona) => persona.persona_id === partner.persona_id)) return "partner_removed";
-    if (
-      typeof partner.persona_id !== "number" ||
-      !whitelistRepository.isPersonaAllowedByWhitelistStatus(whitelist, partner.persona_id)
-    )
-      return "partner_not_allowed";
+    if (typeof partner.persona_id !== "number" || !canPartner(partner.persona_id)) return "partner_not_allowed";
   }
   if (attempt.target) {
     const guild = attempt.client.guilds.cache.get(attempt.serverDiscId);
-    const persona = { ...attempt.persona, persona_id: personaId };
-    if (
-      !guild ||
-      !(await isTargetStillReachable({
-        guild,
-        serverId: attempt.serverId,
-        persona,
-        target: attempt.target,
-        channel: target.channel,
-        now,
-      }))
-    ) {
-      return "target_unavailable";
-    }
+    if (!guild) return "target_unavailable";
+    const currentTarget = await refreshPingUserTarget({
+      client: attempt.client,
+      guild,
+      serverId: attempt.serverId,
+      persona: { ...currentPersona, persona_id: personaId },
+      target: attempt.target,
+      channel: target.channel,
+      now,
+    });
+    if (!currentTarget) return "target_unavailable";
+    attempt.target = currentTarget;
   }
 
-  if (hasActivitySince(target.channel, target.lastMessageId)) return "channel_activity";
+  const needsHangingConversation =
+    currentIdleNudge.category === "revive_topic" ||
+    currentIdleNudge.prerequisites.includes(HANGING_CONVERSATION_PREREQUISITE);
+  const hasHangingConversation = needsHangingConversation
+    ? isHangingConversation(
+        await fetchRecentMessages(target.channel, PLANNER_HISTORY_MESSAGES),
+        personas,
+        attempt.client.user?.id,
+        now,
+      )
+    : false;
+  if (
+    !isIdleNudgeEligible(currentIdleNudge, {
+      hasHangingConversation,
+      hasScenePartner: personas.some(
+        (persona) =>
+          typeof persona.persona_id === "number" && persona.persona_id !== personaId && canPartner(persona.persona_id),
+      ),
+      availableTools,
+      target: attempt.target && {
+        hasRecentMemories: attempt.target.recentMemories.length > 0,
+        isActive: attempt.target.activity !== null,
+      },
+    })
+  )
+    return "prerequisites_unavailable";
+
   if (!isWithinWakingHours(attempt.awake, now, attempt.serverId)) return "waking_hours_ended";
   if (isChannelProcessingLocked(target.channel.id)) return "channel_busy";
   return null;
@@ -231,22 +287,15 @@ function idleNudgeAgendas(
  * Last message to borrow as the turn's trigger; only a channel read as empty gets the placeholder
  * reminders use, so a failed read never posts a stray one.
  */
-async function resolveAnchorMessage(
-  channel: GuildTextBasedChannel,
-): Promise<{ message: Message; seeded: boolean } | null> {
+async function resolveAnchorMessage(channel: GuildTextBasedChannel): Promise<Message | null> {
   let latest: Message | null;
   try {
     latest = (await channel.messages.fetch({ limit: 1 })).first() ?? null;
   } catch {
     return null;
   }
-  if (latest) return { message: latest, seeded: false };
-  const placeholder = await seedTurnAnchor(channel, "a Natural Nudges idle nudge");
-  return placeholder ? { message: placeholder, seeded: true } : null;
-}
-
-function isNewerThan(messageId: string, recordedMessageId: string | null): boolean {
-  return recordedMessageId === null || BigInt(messageId) > BigInt(recordedMessageId);
+  if (latest) return latest;
+  return seedTurnAnchor(channel, "a Natural Nudges idle nudge");
 }
 
 async function findOpenerAfter(
@@ -314,15 +363,12 @@ export async function runIdleNudgeAttempt(attempt: IdleNudgeAttempt): Promise<At
     return "aborted";
   }
 
-  const resolvedAnchor = await resolveAnchorMessage(target.channel);
-  // Compared by order rather than equality, because the gateway keeps a deleted newest message as `lastMessageId`.
-  if (!resolvedAnchor || (!resolvedAnchor.seeded && isNewerThan(resolvedAnchor.message.id, target.lastMessageId))) {
-    const reason = resolvedAnchor ? "channel_activity" : "anchor_unavailable";
-    sample(attempt, { outcome: "aborted", phase: "c", reason, plannerModel, ...usage });
+  const anchor = await resolveAnchorMessage(target.channel);
+  if (!anchor) {
+    sample(attempt, { outcome: "aborted", phase: "c", reason: "anchor_unavailable", plannerModel, ...usage });
     return "aborted";
   }
 
-  const anchor = resolvedAnchor.message;
   const idleNudgeTools = availableIdleNudgeTools(attempt.idleNudge, attempt.availableTools);
   const personaId = attempt.persona.persona_id as number;
   let outcome: AttemptResult | null = null;

@@ -26,5 +26,3 @@ aiGenerated: false
 選用模組（本機 LLM、ComfyUI、SearXNG、Crawl4AI、本機 TTS/STT、ChatMock、本機 MCP
 伺服器）各自有獨立頁面，完整目錄請看
 [`local-endpoints`](./local-endpoints)。
-
-等她跑起來之後，[`maintenance`](./maintenance) 會介紹主機端指令稿、更新，以及資料庫的備份與還原。

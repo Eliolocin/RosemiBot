@@ -1,6 +1,6 @@
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import type { AnyThreadChannel, ChatInputCommandInteraction, Client, Message } from "discord.js";
-import { BaseGuildTextChannel, EmbedBuilder, MessageFlags, type SlashCommandSubcommandBuilder } from "discord.js";
+import { BaseGuildTextChannel, MessageFlags, type SlashCommandSubcommandBuilder } from "discord.js";
 import { tomoriChat, suppressNextSelfReply } from "@/events/messageCreate/tomoriChat";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import { getCachedAllPersonas, getCachedMainPersona } from "@/utils/cache/tomoriStateCache";
@@ -16,7 +16,6 @@ import { findLastPersonaTurnBlock } from "@/utils/discord/personaTurnDetection";
 import { resolveManagedWebhookForChannel } from "@/utils/discord/webhook/fallback";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { localizer } from "@/utils/text/localizer";
-import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 /** Module-level lock set keyed by channelId, so prevents double-invocation. */
 const activeDeleteLocks = new Set<string>();
@@ -491,8 +490,8 @@ export async function execute(
             await message.replace(
               buildPersonaWorkflowNotice({
                 locale,
-                titleKey: "general.errors.unexpected_title",
-                descriptionKey: "general.errors.unexpected_description",
+                titleKey: "general.errors.unknown_error_title",
+                descriptionKey: "general.errors.unknown_error_description",
                 color: ColorCode.ERROR,
               }),
             );
@@ -505,14 +504,7 @@ export async function execute(
     }
 
     await performDeletion(null, async (status) => {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, status.titleKey, status.color))
-            .setDescription(localizer(locale, status.descriptionKey, status.descriptionVars))
-            .setColor(status.color),
-        ],
-      });
+      await replyInfoEmbed(interaction, locale, status);
     });
   } catch (error) {
     log.error("[deleteTurn] Unexpected error during turn deletion", error, {
@@ -526,13 +518,10 @@ export async function execute(
     if (personaWorkflowStarted) return;
 
     try {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unexpected_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unexpected_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "general.errors.unknown_error_title",
+        descriptionKey: "general.errors.unknown_error_description",
+        color: ColorCode.ERROR,
       });
     } catch {
       // Interaction may have already expired, so nothing we can do

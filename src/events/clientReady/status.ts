@@ -128,7 +128,7 @@ const handler = async (client: Client): Promise<void> => {
 
       const normalStatus: ActivityOptions[] = [
         {
-          name: `Locketober Update! /update`,
+          name: `Natural Nudges Update! /update`,
           type: ActivityType.Playing,
         },
         {
