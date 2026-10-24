@@ -5,6 +5,7 @@ import {
   decodeSpeechAudio,
   HostedSpeechError,
   readSpeechJson,
+  speechErrorBody,
   speechUsageSchema,
   validateSpeechAudio,
   type SpeechOperation,
@@ -110,7 +111,7 @@ export function createGoogleSpeechTransport(provider: "google" | "vertex", apiKe
       .object({ usage: speechUsageSchema.optional(), usageMetadata: speechUsageSchema.optional() })
       .safeParse(json);
     if (usage.success) record.usage = usage.data.usage ?? usage.data.usageMetadata;
-    checkSpeechStatus(response);
+    if (!response.ok) checkSpeechStatus(response, speechErrorBody(json, apiKey));
     if (operation === "lookup") record.success = true;
     return json;
   }

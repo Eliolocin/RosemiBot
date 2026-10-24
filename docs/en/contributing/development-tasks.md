@@ -40,6 +40,8 @@ bun run vl > /tmp/vl.log 2>&1; echo "VL_EXIT=$?" >> /tmp/vl.log
 - `camelCase` file names, `@/*` imports for `src/*`, and `node:` imports for Node built-ins.
 - Comments follow the [comment policy](/contributing/policies/comments/). JSDoc on exported functions
   only where behavior is not obvious from the name and types.
+- **Workspace**: in code and contributor docs, a workspace is a Discord server or a DM scope.
+  User-facing text says "server", or "your DMs" where the DM case matters.
 - Log with `log` from `src/utils/misc/logger.ts`, with context such as `errorType` and IDs. Handle
   startup-critical failures differently from recoverable ones. Pick the level by reader:
   - `log.error`: a failure the hoster must act on. It reaches production and `error_logs`, so keep
@@ -51,6 +53,10 @@ bun run vl > /tmp/vl.log 2>&1; echo "VL_EXIT=$?" >> /tmp/vl.log
     a metric plus a warn, never an error. The development console hides metric lines unless
     `LOG_LEVEL=debug`, so do not remove a metric to quiet it. A sample Grafana should graph also goes
     to `metricSampleRepository.recordSample`, which records in every environment.
+  - Where a provider failure becomes a result object, a reply, or a tool error, call
+    `reportProviderFailure` (`src/utils/provider/providerErrorMetrics.ts`). It picks the error or the
+    metric plus warn from `expected`, and writes the provider detail into the message unchanged so the
+    record matches what **Show Full Error** displays.
 - Slash commands only. Every user-facing string goes through `localizer()`. Follow the interaction
   timing rules in [Command System](/architecture/subsystems/command-system/).
 - Query with Bun SQL template literals, and write idempotent migrations (`IF NOT EXISTS`, guarded

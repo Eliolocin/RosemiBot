@@ -11,7 +11,7 @@ sidebar:
 
 Tất cả các lệnh slash hiện được TomoriBot đăng ký, được tạo từ cùng trình xây dựng lệnh và mô tả tiếng Việt dùng để đăng ký trên Discord (mô tả chưa được dịch sẽ hiển thị bằng tiếng Anh).
 
-Các nhóm lệnh cấp cao nhất: **41**. Các lệnh slash có thể thực thi: **86**.
+Các nhóm lệnh cấp cao nhất: **42**. Các lệnh slash có thể thực thi: **89**.
 
 ## `/comment`
 
@@ -208,6 +208,14 @@ Các lệnh và cài đặt giới hạn độ tuổi.
 | `/nsfw persona default` | Áp dụng cấu hình preset persona NSFW |
 | `/nsfw persona import` | Nhập persona từ tệp PNG, JSON hoặc CHARX, bao gồm cả persona NSFW |
 
+## `/nudge-studio`
+
+Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn.
+
+| Lệnh | Tóm tắt |
+|---|---|
+| `/nudge-studio` | Chọn gợi ý nhàn rỗi mình sẽ dùng trong máy chủ này và tự viết gợi ý của bạn. |
+
 ## `/nuke`
 
 Xóa sạch toàn bộ dữ liệu máy chủ. Yêu cầu chạy lại /setup sau đó.
@@ -339,7 +347,9 @@ Xem thống kê sử dụng
 
 | Lệnh | Tóm tắt |
 |---|---|
-| `/stats generate` | Tạo thẻ ảnh thống kê có thể chia sẻ. |
+| `/stats generate persona` | Tạo thẻ Độ thân thiết persona với một persona. |
+| `/stats generate personal` | Tạo thẻ Tổng kết cá nhân của bạn. |
+| `/stats generate server` | Tạo thẻ Bảng xếp hạng máy chủ của máy chủ này. |
 | `/stats persona` | Xem thống kê sử dụng của persona trên máy chủ này. |
 | `/stats personal` | Xem thống kê sử dụng của bạn. |
 | `/stats server` | Xem thống kê sử dụng trên toàn máy chủ. |

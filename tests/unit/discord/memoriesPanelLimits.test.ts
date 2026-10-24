@@ -13,8 +13,8 @@ import {
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createPersona } from "../../helpers/fixtures";
-import { RUNTIME_LOCALES } from "../../helpers/localeCases";
-import { expectSafePanelPayload } from "../../helpers/panelLimits";
+import { RUNTIME_LOCALES, localizedProse } from "../../helpers/localeCases";
+import { collectTextDisplays, expectSafePanelPayload } from "../../helpers/panelLimits";
 
 beforeAll(async () => initializeLocalizer());
 
@@ -34,6 +34,8 @@ function makeMemory(id: number, overrides: Partial<ServerMemoryRow> = {}): Serve
     user_id: 1,
     content: `Server memory sample content #${id} with realistic length and context.`,
     tags: ["important", "guidelines"],
+    channel_disc_ids: [],
+    channel_scope_pending: false,
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -45,6 +47,8 @@ function makeDocument(id: number, overrides: Partial<DocumentListRow> = {}): Doc
     document_id: id,
     document_name: `Document ${id}.pdf`,
     first_chunk: `First chunk preview of document #${id}`,
+    channel_disc_ids: [],
+    channel_scope_pending: false,
     isHistory: false,
     ...overrides,
   };
@@ -389,5 +393,58 @@ describe("MemoriesPanel Limits & Boundary Sweeps", () => {
 
       expectSafePanelPayload(memoryPayload(content, { kind: "main" }), `server memories astral emoji (len ${len})`);
     }
+  });
+});
+
+describe("Legacy channel scope notice", () => {
+  const personas = [createPersona({ persona_nickname: "Main Persona" })];
+
+  function memoryPanel(memories: ServerMemoryRow[], selectedMemoryId?: number) {
+    return buildMemoriesPanelPayload({
+      locale: "en-US",
+      category: "memories",
+      selectedLineageId: 100,
+      personas,
+      memories,
+      canManage: true,
+      readStatus: "fresh",
+      page: selectedMemoryId === undefined ? { kind: "main" } : { kind: "main", selectedMemoryId },
+    });
+  }
+
+  function documentPanel(documents: DocumentListRow[]) {
+    return buildMemoriesPanelPayload({
+      locale: "en-US",
+      category: "documents",
+      selectedLineageId: 100,
+      personas,
+      memories: [],
+      documents,
+      documentChunks: [],
+      canManage: true,
+      readStatus: "fresh",
+      page: { kind: "documents" },
+    });
+  }
+
+  it("marks a pending memory in the header and in its detail", () => {
+    const payload = memoryPanel([makeMemory(1), makeMemory(2, { channel_scope_pending: true })], 2);
+    expectSafePanelPayload(payload, "pending memory detail");
+    const contents = collectTextDisplays(payload).join("\n");
+    expect(contents).toMatch(localizedProse("en-US", "commands.memories.channel_scope_legacy_notice"));
+    expect(contents).toMatch(localizedProse("en-US", "commands.memories.channel_scope_unresolved_line"));
+  });
+
+  it("marks a pending document in the header", () => {
+    const payload = documentPanel([makeDocument(1, { channel_scope_pending: true })]);
+    expectSafePanelPayload(payload, "pending document detail");
+    const contents = collectTextDisplays(payload).join("\n");
+    expect(contents).toMatch(localizedProse("en-US", "commands.memories.channel_scope_legacy_notice"));
+  });
+
+  it("omits the header notice when nothing is pending", () => {
+    const contents = collectTextDisplays(memoryPanel([makeMemory(1), makeMemory(2)])).join("\n");
+    expect(contents).not.toMatch(localizedProse("en-US", "commands.memories.channel_scope_legacy_notice"));
+    expect(contents).not.toMatch(localizedProse("en-US", "commands.memories.channel_scope_unresolved_line"));
   });
 });

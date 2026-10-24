@@ -274,11 +274,8 @@ export default {
       error_download_timeout: `头像下载超时，请重试。`,
       error_download_failed: `头像图片下载失败。`,
       processing_title: `正在生成人格……`,
-      processing_description: `这可能需要 1-2 分钟。请稍等，我正在生成角色……
-
-结果可能不符合预期，需要的话可以重新生成。`,
-      captioning_title: `正在描述你的头像...`,
-      captioning_description: `你的主模型无法识别图片，所以我会先请视觉模型（**{model_name}**）描述你上传的头像。然后主模型会根据这段描述来生成人格。这可能需要 1-2 分钟。`,
+      processing_description: `这可能需要 1-2 分钟。请稍等，我正在生成角色……`,
+      processing_footer: `这可能会产生意料之外的结果。如有需要，你可以重新生成。`,
       generation_failed_title: `🔴 生成失败`,
       generation_failed_description: `人格生成失败：{error}
 

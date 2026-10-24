@@ -125,8 +125,9 @@ and chunk counts, uploads, document browsing, and removal:
 - Upload text, PDF, or Markdown files as server knowledge. The scope picks whether it is
   tied to just this persona (the default) or server-wide for every persona to reference.
 - `/learn history`: extract channel history into searchable knowledge.
-- Browse stored documents chunk by chunk. Server admins can edit individual chunks, update
-  document channel tags, or delete a single chunk without removing the whole document.
+- Browse stored documents chunk by chunk. Server admins can edit individual chunks, change
+  which channels a document is limited to, or delete a single chunk without removing the whole
+  document.
 - Remove stored documents or individual chunks directly from the panel.
 
 #### History Import Prompts
@@ -181,12 +182,20 @@ a keyword or only in one channel. Turn it on with `/config` > Engine > Memory & 
   context.
 - Use `/tool prompt snapshot` to see which memories are currently activating.
 
-### Channel Tags
+### Channels
 
-- Memories with a `#channel` tag activate only in that channel.
-- Channel tags combine with keyword tags.
-- If you use the document knowledge base (RAG), channel tags also apply to documents and
-  extracted histories.
+- A server memory can be limited to channels you pick in its add or edit form. It then
+  activates only in those channels and in their threads. Leave the picker empty for every
+  channel.
+- A personal memory uses a `#channel` tag instead, which activates it only in that channel.
+- Channel limits combine with keyword tags. On server memories, a tag starting with `#` is an
+  ordinary keyword.
+- Server memories and documents that used older `#channel` tags were converted to channels
+  automatically. If an old tag named a channel that no longer exists, the item stays active in
+  every channel and `/memories` says so; edit it and pick channels to limit it again.
+- If you use the document knowledge base (RAG), documents and extracted histories can be
+  limited to channels the same way. The `channels` option on `/learn history` takes channel
+  names or mentions.
 
 In `/help`, choose `Memory`, then `Memory Tagging`, for the same summary in Discord.
 
@@ -236,8 +245,8 @@ Anyone can run `/config` > Persona > Memories, `/personal config`, and `/persona
 
 ### STM Configuration
 
-Workspace managers can tune short-term memory from `/config` → `Behavior` → `Memory & STM`.
-These settings apply to the workspace's active STM records:
+Server managers can tune short-term memory from `/config` → `Behavior` → `Memory & STM`.
+These settings apply to the server's active STM records:
 
 - **Refresh cadence** controls how many bot turns pass between refresh nudges. The allowed range is 1-100.
 - **Render mode** chooses whether category values supersede recent turns or appear as a crude summary.

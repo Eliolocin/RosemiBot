@@ -90,6 +90,7 @@ describe("Encryption secret initialization", () => {
     });
     const warn = spyOn(log, "warn").mockImplementation(() => undefined);
     try {
+      warn.mockClear();
       keyManager.initialize();
       const warnings = warn.mock.calls.map(([message]) => String(message));
       expect(warnings.filter((message) => message.includes("shorter than"))).toHaveLength(1);

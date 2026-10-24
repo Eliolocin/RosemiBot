@@ -3,6 +3,7 @@ import { ComponentType, MessageFlags, type ComponentInContainerData, type TextDi
 import { validateComponentsV2MessageLimits } from "@/utils/discord/ui/componentsV2Limits";
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { formatPanelComponentTree, formatPanelProse, measurePanelProseWidth } from "@/utils/discord/ui/panelProse";
+import { collectCaseFailures } from "../../helpers/localeCases";
 
 function textDisplay(content: string): TextDisplayComponentData {
   return { type: ComponentType.TextDisplay, content };
@@ -78,6 +79,22 @@ describe("panel prose formatter", () => {
     for (const token of tokens) expect(output).toContain(token);
     expect(measurePanelProseWidth(tokens[0])).toBe("documentation".length);
     expect(measurePanelProseWidth(tokens[2])).toBe("inline code stays whole".length);
+  });
+
+  it("keeps Discord timestamps intact across prose layouts and scripts", () => {
+    const timestamps = ["", ":t", ":T", ":d", ":D", ":f", ":F", ":R"].map((style) => `<t:1769904000${style}>`);
+    const cases = collectCaseFailures();
+    for (const prefix of ["Access ends ", "利用は", "访问将在"]) {
+      for (const padding of [1, 7, 20]) {
+        for (const besideThumbnail of [false, true]) {
+          cases.check(`${prefix}/${padding}/${besideThumbnail}`, () => {
+            const output = formatPanelProse(`${prefix.repeat(padding)}${timestamps.join(" / ")}`, besideThumbnail);
+            for (const timestamp of timestamps) expect(output).toContain(timestamp);
+          });
+        }
+      }
+    }
+    cases.expectNoFailures();
   });
 
   it("repeats subtext and quote markers on continuations", () => {

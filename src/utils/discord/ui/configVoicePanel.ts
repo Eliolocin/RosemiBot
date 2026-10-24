@@ -485,7 +485,7 @@ export function buildConfigVoiceBody(input: ConfigVoicePanelInput): ComponentInC
           ? "commands.config.panel.voice_page_no_usable_source"
           : "commands.config.panel.voice_page_no_model_notice",
         {
-          providers: commandRegistry.getCommandMention("providers"),
+          models: `${commandRegistry.getCommandMention("config")} > ${localizer(input.locale, "commands.config.panel.category_models")}`,
         },
       )}`,
     });

@@ -148,6 +148,7 @@ describe("v2 config export projections", () => {
       "media",
       "speech",
       "access",
+      "nudges",
     ]);
     expect(result.data.data.chat?.system_prompt).toBe("Portable system prompt");
     expect(result.data.data.capabilities?.self_debug_enabled).toBe(true);
@@ -203,12 +204,14 @@ describe("v2 config export projections", () => {
     const result = await freshRepository().exportWorkspaceConfig("workspace-disc-id");
 
     expect(result.success).toBe(true);
-    expect(queryLog).toHaveLength(2);
+    expect(queryLog).toHaveLength(4);
     expect(queryLog.join("\n")).not.toContain("FROM personas");
     expect(queryLog.join("\n")).not.toContain("FROM server_memories");
     expect(queryLog.join("\n")).not.toContain("FROM personal_memories");
     expect(queryLog.join("\n")).toContain("LEFT JOIN server_stm_configs");
     expect(queryLog.join("\n")).toContain("FROM stm_categories");
+    expect(queryLog.join("\n")).toContain("FROM server_natural_nudge_configs");
+    expect(queryLog.join("\n")).toContain("FROM server_natural_nudge_custom_idle_nudges");
   });
 
   it("tolerates jsonb columns that hold a JSON string instead of the value", async () => {

@@ -17,6 +17,7 @@ import {
   type VisionImage,
 } from "@/utils/provider/visionCaption";
 import { downloadDiscoveredImage, resolveMessageImageUrls } from "@/utils/image/imageExtractor";
+import { notifyProviderToolFailure } from "@/utils/provider/providerUsage";
 
 export { resolveVisionApiModelName } from "@/utils/provider/visionCaption";
 
@@ -162,6 +163,9 @@ export class AnalyzeImageTool extends BaseTool {
           timeoutMs: VISION_ANALYSIS_TIMEOUT_MS,
         });
 
+        if (result.requestDenied) {
+          return { success: false, error: await notifyProviderToolFailure(context, result.requestDenied) };
+        }
         if (!result.ok) {
           return {
             success: false,

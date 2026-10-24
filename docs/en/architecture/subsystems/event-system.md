@@ -29,6 +29,8 @@ The gateway event `interactionCreate` routes to `src/events/interactionCreate/ha
 
 The `messageCreate` event routes to `src/events/messageCreate/tomoriChat.ts`. The handler normalizes incoming messages, evaluates server admission and ignore rules, manages per-channel execution queues, and runs turn planning and generation. See [Normalize Invocation](/architecture/pipelines/chat/01-normalize-invocation/) for chat normalization and admission details.
 
+`src/events/messageCreate/activeNudge.ts` sorts first and feeds the Natural Nudges active-nudge counter. It starts the counter without awaiting it, because handlers run one after another and a cold settings read must never delay `tomoriChat`. A tripped check runs detached as well. See [Natural Nudges](/architecture/subsystems/natural-nudges/#active-nudges).
+
 ### Startup initialization
 
 The `clientReady` event runs startup initialization tasks, including registering application slash commands with Discord (`src/events/clientReady/01_registercommands.ts`) and initializing Model Context Protocol (MCP) servers.
@@ -41,6 +43,7 @@ The `guildMemberAdd` event routes to `src/events/guildMemberAdd/newUser.ts`:
 - Evaluates guild welcome configuration. If the server has Membership Screening or Onboarding enabled, `helpers/welcomeGate.ts` retains an in-memory waiter per member until screening clears and onboarding completes (`CompletedOnboarding` flag on `guildMemberUpdate`).
 - If the member leaves before clearing screening, `guildMemberRemove` cancels the waiter. Waiters that never resolve are dropped after one hour (`WELCOME_GATE_MAX_WAIT_MS`).
 - Once screening clears, the handler verifies the member is still in the guild and invokes the welcome greeting through the standard chat coordinator pipeline. The greeting anchors on the channel's latest message only for placement: like other system triggers (`textQuotaSource: "system"`), it gets no reply directive or native reply to that message when it waits in a busy channel's queue (`answersQueuedTriggerMessage()` in `src/utils/chat/contextDirectives.ts`).
+- While the greeting is being prepared, `src/utils/chat/welcomeHandoff.ts` holds a handoff window keyed by welcome channel and member. If the member triggers Tomori in that channel first, chat admission injects the welcome context into their own turn and the standalone greeting is skipped, so they get one reply instead of two. Once the greeting turn claims the window, a member turn for its anchor message is dropped, and later member messages queue behind the greeting as usual.
 
 ## Extending event handling
 
@@ -51,5 +54,6 @@ Adding a new event handler or mapping a new Discord event is documented in the c
 - `src/handlers/eventHandler.ts`: single event dispatcher and listener setup.
 - `src/events/interactionCreate/handleCommands.ts`: slash command, autocomplete, and interaction dispatch.
 - `src/events/messageCreate/tomoriChat.ts`: chat pipeline entry point.
+- `src/events/messageCreate/activeNudge.ts`: Natural Nudges active-nudge counter.
 - `src/events/guildMemberAdd/newUser.ts`: member registration and welcome gate runner.
 - `src/utils/misc/healthTracker.ts`: liveness tracking.

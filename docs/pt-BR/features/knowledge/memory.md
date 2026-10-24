@@ -119,8 +119,8 @@ e fragmentos ao vivo, uploads, navegação de documentos e remoção:
 - Envie arquivos de texto, PDF ou Markdown como conhecimento do servidor. O escopo define se ele é
   vinculado apenas a esta persona (o padrão) ou ao servidor inteiro para que todas as personas possam referenciá-lo.
 - `/learn history`: extrai o histórico do canal em conhecimento pesquisável.
-- Navegue pelos documentos armazenados fragmento por fragmento. Administradores do servidor podem editar fragmentos individuais, atualizar
-  tags de canal dos documentos ou excluir um único fragmento sem remover o documento inteiro.
+- Navegue pelos documentos armazenados fragmento por fragmento. Administradores do servidor podem editar fragmentos individuais, alterar
+  a quais canais um documento é limitado ou excluir um único fragmento sem remover o documento inteiro.
 - Remova documentos armazenados ou fragmentos individuais diretamente do painel.
 
 #### Prompts de Importação de Histórico
@@ -175,12 +175,18 @@ uma palavra-chave ou apenas em um canal. Ative com `/config` > Engine > Memory &
   contexto visível.
 - Use `/tool prompt snapshot` para ver quais memórias estão ativando no momento.
 
-### Tags de Canal
+### Canais
 
-- Memórias com uma tag `#canal` são ativadas apenas naquele canal.
-- Tags de canal se combinam com tags de palavra-chave.
-- Se você usa a base de conhecimento de documentos (RAG), tags de canal também se aplicam a documentos e
-  históricos extraídos.
+- Uma memória do servidor pode ser limitada aos canais que você escolher em seu formulário de adição ou edição. Ela é
+  ativada apenas nesses canais e em suas threads. Deixe a seleção vazia para todos os canais.
+- Uma memória pessoal usa uma tag `#canal` em vez disso, ativando-a apenas naquele canal.
+- Limites de canais combinam com tags de palavra-chave. Em memórias do servidor, uma tag iniciada com `#` é uma
+  palavra-chave comum.
+- Memórias do servidor e documentos que usavam tags `#canal` antigas foram convertidos em canais
+  automaticamente. Se uma tag antiga indicava um canal que não existe mais, o item permanece ativo em
+  todos os canais e `/memories` informa isso; edite-o e escolha os canais para limitá-lo novamente.
+- Se você usa a base de conhecimento de documentos (RAG), documentos e históricos extraídos podem ser
+  limitados a canais da mesma forma. A opção `channels` em `/learn history` aceita nomes de canais ou menções.
 
 Em `/help`, escolha `Memória`, depois `Marcação de Memória`, para o mesmo resumo no Discord.
 
@@ -230,8 +236,8 @@ Qualquer pessoa pode executar `/config` > Persona > Memories, `/personal config`
 
 ### Configuração da STM
 
-Gerentes do workspace podem ajustar a memória de curto prazo em `/config` → `Comportamento` → Memory & STM.
-Essas configurações se aplicam aos registros de STM ativos do workspace:
+Administradores do servidor podem ajustar a memória de curto prazo em `/config` → `Comportamento` → Memory & STM.
+Essas configurações se aplicam aos registros de STM ativos do servidor:
 
 - Frequência de atualização controla quantos turnos do bot passam entre os empurrões de atualização. O intervalo permitido é 1-100.
 - Modo de renderização escolhe se os valores das categorias substituem os turnos recentes ou aparecem como um resumo bruto.

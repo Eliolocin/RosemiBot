@@ -507,8 +507,8 @@ Enter \`{project_id}::{location}\` using {configSetup} or {configApikeySet}
       memory_tagging: {
         title: `Memory Tagging (Advanced)`,
         description:
-          "By default every memory in scope is sent with every message. Tagging narrows that down.\n> **Keyword tags**: a tagged memory wakes up only when its keyword appears in the conversation. An untagged memory is always active.\n> **Channel tags**: a `#channel` tag limits a memory to that channel, and combines with keyword tags.\n\nTurn both on in {configAdvancedMemory}, then use {toolPromptSnapshot} to see exactly which memories are active right now.",
-        footer: "Uploaded documents and extracted history can carry channel tags too.",
+          "By default every memory in scope is sent with every message. Tagging narrows that down.\n> **Keyword tags**: a tagged memory wakes up only when its keyword appears in the conversation. An untagged memory is always active.\n> **Channels**: a server memory can be limited to channels you pick in its form (their threads included), and a personal memory to a `#channel` tag. Both combine with keyword tags.\n\nTurn both on in {configAdvancedMemory}, then use {toolPromptSnapshot} to see exactly which memories are active right now.",
+        footer: "Uploaded documents and extracted history can be limited to channels too.",
       },
     },
     scheduled_tasks: {

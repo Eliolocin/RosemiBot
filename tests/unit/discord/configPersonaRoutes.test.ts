@@ -74,6 +74,10 @@ import {
 import { initializeLocalizer, localizer } from "@/utils/text/localizer";
 import { createPersona, type PersonaFixtureOverrides } from "../../helpers/fixtures";
 import { localizedCopy, localizedProse } from "../../helpers/localeCases";
+import { naturalNudgePanelDependencies } from "@/modules/natural-nudges/discord/operations";
+import type { PersonaNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
+
+let nudgeOverrideClears = 0;
 import {
   createInteractionRecorder,
   createRouteInteraction,
@@ -194,6 +198,7 @@ interface HarnessOptions {
   spriteOperations?: Partial<ConfigRouteDependencies["spriteOperations"]>;
   getPersonaAvatarReferenceData?: ConfigRouteDependencies["getPersonaAvatarReferenceData"];
   preset?: TomoriPresetRow | null;
+  nudgeConfig?: PersonaNaturalNudgeConfig | null;
 }
 
 interface Harness {
@@ -257,6 +262,17 @@ function makeHarness(options: HarnessOptions = {}): Harness {
       loadPersonaMemoryView: async () => options.personaMemoryView ?? makeMemoryView(),
       loadPersonaPreset: async () => options.preset ?? null,
       loadPresetSprites: async () => [],
+      naturalNudges: {
+        ...naturalNudgePanelDependencies,
+        loadPersonaConfig: async () => options.nudgeConfig ?? null,
+        operations: {
+          ...naturalNudgePanelDependencies.operations,
+          clearPersonaOverride: async () => {
+            nudgeOverrideClears++;
+            return options.nudgeConfig?.has_override ? "success" : "stale";
+          },
+        },
+      },
       openServerMemoryPanel: async () => ({ components: [], flags: 32768 }),
       openPersonalMemoryPanel: async () => ({ components: [], flags: 32768 }),
       createGuildIdentity: () => ({
@@ -346,7 +362,15 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "persona-page-select", locale: "en-US", category: "persona", page: "general", personaId: 55 },
   ],
   ["config:v2:persona-select:en-US:55", { action: "persona-select", locale: "en-US", personaId: 55 }],
+  [
+    "config:v2:persona-select:en-US:55:sprites",
+    { action: "persona-select", locale: "en-US", personaId: 55, page: "sprites" },
+  ],
   ["config:v2:persona-page:en-US:55:25", { action: "persona-page", locale: "en-US", personaId: 55, start: 25 }],
+  [
+    "config:v2:persona-page:en-US:55:25:memories",
+    { action: "persona-page", locale: "en-US", personaId: 55, start: 25, page: "memories" },
+  ],
   ["config:v2:voice-select:en-US:55", { action: "voice-select", locale: "en-US", personaId: 55 }],
   ["config:v2:voice-page:en-US:55:25", { action: "voice-page", locale: "en-US", personaId: 55, start: 25 }],
   ["config:v2:voice-choose-cancel:en-US:55", { action: "voice-chooser-cancel", locale: "en-US", personaId: 55 }],
@@ -1018,6 +1042,48 @@ const WIRE_CONTRACT_V2: ReadonlyArray<readonly [string, ConfigPanelRoute]> = [
     { action: "voice-sample-remove-confirm", locale: "en-US", index: 3, fp: "abcd1234", nonce: "nonce1234567" },
   ],
   ["config:v2:vsample-rem-cancel:en-US", { action: "voice-sample-remove-cancel", locale: "en-US" }],
+  ["config:v2:nn-talk:en-US:55", { action: "nudge-talk-select", locale: "en-US", personaId: 55 }],
+  ["config:v2:nn-int-select:en-US:55", { action: "nudge-interest-select", locale: "en-US", personaId: 55 }],
+  [
+    "config:v2:nn-int-add:en-US:55:nonce1234567",
+    { action: "nudge-interest-add-submit", locale: "en-US", personaId: 55, nonce: "nonce1234567" },
+  ],
+  [
+    "config:v2:nn-int-edit:en-US:55:2:abcd1234:nonce1234567",
+    {
+      action: "nudge-interest-edit-submit",
+      locale: "en-US",
+      personaId: 55,
+      index: 2,
+      fp: "abcd1234",
+      nonce: "nonce1234567",
+    },
+  ],
+  ["config:v2:nn-int-rem-open:en-US:55", { action: "nudge-interest-remove-open", locale: "en-US", personaId: 55 }],
+  ["config:v2:nn-int-gen:en-US:55", { action: "nudge-interest-generate", locale: "en-US", personaId: 55 }],
+  [
+    "config:v2:nn-int-rem:en-US:55:abcd1234:nonce1234567",
+    { action: "nudge-interest-remove-submit", locale: "en-US", personaId: 55, fp: "abcd1234", nonce: "nonce1234567" },
+  ],
+  ["config:v2:nn-idle-set:en-US:1", { action: "nudge-idle-nudges-set", locale: "en-US", enabled: true }],
+  ["config:v2:nn-channels:en-US", { action: "nudge-channels-select", locale: "en-US" }],
+  ["config:v2:nn-provider:en-US", { action: "nudge-provider", locale: "en-US" }],
+  [
+    "config:v2:nn-model:en-US:openrouter:nonce1234567",
+    { action: "nudge-model-submit", locale: "en-US", provider: "openrouter", nonce: "nonce1234567" },
+  ],
+  ["config:v2:nn-checker:en-US", { action: "nudge-checker-provider", locale: "en-US" }],
+  [
+    "config:v2:nn-checker-model:en-US:google:nonce1234567",
+    { action: "nudge-checker-model-submit", locale: "en-US", provider: "google", nonce: "nonce1234567" },
+  ],
+  [
+    "config:v2:nn-checker-decision:en-US:custom~12:nonce1234567",
+    { action: "nudge-checker-decision-submit", locale: "en-US", provider: "custom:12", nonce: "nonce1234567" },
+  ],
+  ["config:v2:nn-idle-frequency:en-US", { action: "nudge-idle-nudges-frequency-select", locale: "en-US" }],
+  ["config:v2:nn-active-set:en-US:0", { action: "nudge-active-nudges-set", locale: "en-US", enabled: false }],
+  ["config:v2:nn-active-frequency:en-US", { action: "nudge-active-nudges-frequency-select", locale: "en-US" }],
 ];
 
 describe("config route wire contract", () => {
@@ -1053,6 +1119,7 @@ describe("config route wire contract", () => {
     ["config:v2:persona-select:en-US:abc", "a non-numeric persona id"],
     ["config:v2:page:en-US:models:general", "`general` is a Behavior page, so it must decode against its own category"],
     ["config:v2:persona-page-select:en-US:models:switch:55", "a persona page paired with the models category"],
+    ["config:v2:persona-select:en-US:55:switch", "a carried page outside the persona category"],
     ["config:v2:naming-open:en-US:55:androgynous", "a naming style outside the accepted set"],
     ["config:v2:not-a-token:en-US:55", "an action that no codec declares"],
   ];
@@ -1434,6 +1501,47 @@ describe("config route write behavior", () => {
     expect(memories).toContain(buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 56 }));
     expect(memories).not.toContain(
       buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 55 }),
+    );
+  });
+
+  it("keeps the current Persona page when switching or paging personas", async () => {
+    const personas = [
+      MAIN,
+      ...Array.from({ length: 25 }, (_, index) =>
+        makePersona({ persona_id: 100 + index, persona_nickname: `Alter ${index + 1}`, is_alter: true }),
+      ),
+    ];
+    const harness = makeHarness({ personas });
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        customId: buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 55, page: "sprites" }),
+        kind: "select",
+        values: ["101"],
+        harness,
+      }),
+    );
+    expect(JSON.stringify(harness.edits.at(-1))).toContain(
+      buildConfigRouteId({ action: "sprite-select", locale: "en-US", personaId: 101 }),
+    );
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        customId: buildConfigRouteId({
+          action: "persona-page",
+          locale: "en-US",
+          personaId: 101,
+          start: 25,
+          page: "memories",
+        }),
+        kind: "button",
+        harness,
+      }),
+    );
+    expect(JSON.stringify(harness.edits.at(-1))).toContain(
+      buildConfigRouteId({ action: "server-memory-open", locale: "en-US", personaId: 101 }),
     );
   });
 
@@ -4805,6 +4913,8 @@ const RESYNC_PRESET: TomoriPresetRow = {
   preset_trigger_words: ["mirri"],
   preset_naming_config: { prefixes: {}, suffixes: {}, addressTerms: {} },
   is_nsfw: false,
+  natural_nudge_interests: [],
+  natural_nudge_talkativeness: 2,
 };
 
 const RESYNC_PERSONA = makePersona({
@@ -4883,6 +4993,49 @@ describe("config persona preset resync", () => {
         );
       }
     }
+  });
+
+  it("resyncs an unforked pointer by clearing only its Nudges override", async () => {
+    nudgeOverrideClears = 0;
+    let fullResyncs = 0;
+    const harness = makeHarness({
+      personas: [makePersona({ is_pointer: true, preset_lineage_id: 4, preset_language: "en-US" })],
+      preset: RESYNC_PRESET,
+      sprites: [],
+      nudgeConfig: { persona_id: 55, talkativeness: 4, interests: [], has_override: true },
+      operations: {
+        resyncToPreset: async () => {
+          fullResyncs++;
+          return { status: "success", avatarSynced: true };
+        },
+      },
+    });
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({ action: "resync-view", locale: "en-US", personaId: 55 }),
+      }),
+    );
+    const preview = JSON.stringify(harness.edits.at(-1));
+    expect(preview).toMatch(localizedProse("en-US", "commands.config.panel.resync_nudges_diff"));
+    expect(preview).not.toMatch(localizedProse("en-US", "commands.config.panel.resync_main_avatar_detail"));
+
+    await dispatch(
+      harness,
+      makeInteraction({
+        harness,
+        customId: buildConfigRouteId({
+          action: "resync-confirm",
+          locale: "en-US",
+          personaId: 55,
+          nonce: "nonce1234567",
+        }),
+      }),
+    );
+    expect(nudgeOverrideClears).toBe(1);
+    expect(fullResyncs).toBe(0);
+    expect(harness.telemetry).toEqual(["server-config.workspace.persona.resync"]);
   });
 
   it("allows a zero-difference relink and omits unchanged details", async () => {

@@ -2,8 +2,14 @@ import {
   responseReviewItemsSchema,
   responseRuleCheckerRefSchema,
   responseReviewerPromptSchema,
+  utcOffsetSchema,
 } from "@/types/db/schema";
 import { z } from "zod";
+import {
+  CUSTOM_IDLE_NUDGE_LIMIT,
+  customIdleNudgeInputSchema,
+  serverNaturalNudgeConfigSchema,
+} from "@/modules/natural-nudges/db/types";
 import { SUPPORTED_PARAM_VALUES } from "@/constants/supportedParams";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
 import { NOTICE_VERBOSITY_LEVELS } from "@/constants/toolNotices";
@@ -97,7 +103,8 @@ export const personalSettingsExportDataSchema = z.object({
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).optional(),
   personal_server_fallback_enabled: z.boolean().optional(),
   shortterm_cache_crossserver_opt_in: z.boolean().optional(),
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
+  natural_nudge_opt_out: z.boolean().optional(),
+  timezone_offset: utcOffsetSchema.nullable().optional(),
   message_proxy_service: z.string().nullable().optional(),
   prefix_override: z.string().max(100).nullable().optional(),
   suffix_override: z.string().max(100).nullable().optional(),
@@ -189,7 +196,7 @@ const serverChatConfigExportSchema = z.object({
   llm_stop_strings: z.array(z.string()).default([]),
   llm_stop_speaker_pattern_enabled: z.boolean().default(false),
   humanizer_degree: z.number().int().min(0).max(3),
-  timezone_offset: z.number().int().min(-12).max(14),
+  timezone_offset: utcOffsetSchema,
   message_fetch_limit: z.number().int().min(20).max(100).default(80),
   system_prompt: z.string().nullable().default(null),
   cascade_limit: z.number().int().min(0).max(10).optional(),
@@ -403,6 +410,21 @@ const workspaceSpeechConfigSectionSchema = serverSpeechConfigExportSchema.strict
 
 const workspaceAccessConfigSectionSchema = serverByokConfigExportSchema.strict();
 
+/**
+ * Natural Nudges settings and custom idle nudges. Allowed channels are server-specific and stay
+ * behind; the planner and checker models travel by ID and are checked against the target workspace on import.
+ */
+const workspaceNudgesConfigSectionSchema = serverNaturalNudgeConfigSchema
+  .omit({ server_id: true, channel_disc_ids: true })
+  .partial()
+  .extend({
+    llm_id: z.number().int().positive().nullable().optional(),
+    checker_llm_id: z.number().int().positive().nullable().optional(),
+    checker_decision_model_id: z.number().int().positive().nullable().optional(),
+    custom_idle_nudges: z.array(customIdleNudgeInputSchema.strict()).max(CUSTOM_IDLE_NUDGE_LIMIT).optional(),
+  })
+  .strict();
+
 const personalProfileConfigSectionSchema = personalSettingsExportDataSchema
   .pick({
     user_nickname: true,
@@ -417,7 +439,12 @@ const personalProfileConfigSectionSchema = personalSettingsExportDataSchema
   .strict();
 
 const personalPrivacyConfigSectionSchema = personalSettingsExportDataSchema
-  .pick({ privacy_level: true, shortterm_cache_crossserver_opt_in: true, message_proxy_service: true })
+  .pick({
+    privacy_level: true,
+    shortterm_cache_crossserver_opt_in: true,
+    natural_nudge_opt_out: true,
+    message_proxy_service: true,
+  })
   .strict();
 
 const personalAppearanceConfigSectionSchema = personalSettingsExportDataSchema
@@ -438,6 +465,7 @@ export const workspaceConfigExportDataSchema = z
     media: workspaceMediaConfigSectionSchema.optional(),
     speech: workspaceSpeechConfigSectionSchema.optional(),
     access: workspaceAccessConfigSectionSchema.optional(),
+    nudges: workspaceNudgesConfigSectionSchema.optional(),
   })
   .strict();
 
@@ -524,6 +552,7 @@ export const V1_CONFIG_FIELD_SECTION_OVERRIDES = {
     personal_deliberate_tool_mode: "response_modes",
     personal_server_fallback_enabled: null,
     shortterm_cache_crossserver_opt_in: "privacy",
+    natural_nudge_opt_out: "privacy",
     message_proxy_service: "privacy",
     timezone_offset: "profile",
     prefix_override: "profile",
@@ -573,6 +602,7 @@ export const V2_CONFIG_SECTION_SCHEMAS = {
   media: workspaceMediaConfigSectionSchema,
   speech: workspaceSpeechConfigSectionSchema,
   access: workspaceAccessConfigSectionSchema,
+  nudges: workspaceNudgesConfigSectionSchema,
   profile: personalProfileConfigSectionSchema,
   privacy: personalPrivacyConfigSectionSchema,
   appearance: personalAppearanceConfigSectionSchema,

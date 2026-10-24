@@ -1,3 +1,4 @@
+import { reportProviderUsage, type ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Hidden Image Agent Turn
  *
@@ -152,6 +153,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     return { success: false, error: "Failed to decrypt API key." };
   }
 
+  let usageContext: ProviderUsageContext | undefined;
   const rawMessages = await channel.messages.fetch({
     limit: BOT_GENERATE_IMAGE_HISTORY_LIMIT,
   });
@@ -303,6 +305,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
   const targetToolName = backend === "current_provider" ? "generate_image" : "generate_image_nai";
 
   const streamingContext: StreamingContext = {
+    usageContext,
     disableYouTubeProcessing: true,
     disableProfilePictureProcessing: true,
     disableGifProcessing: true,
@@ -361,6 +364,7 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     locale,
     provider: provider.getInfo().name,
     streamContext: streamingContext,
+    usageContext,
     suppressProgressNotices: true, // Keep the hidden turn quiet
     // Persona identity for webhook-based image posting (set by /generate image Auto mode).
     // When absent, the image tool falls back to a direct bot message.
@@ -405,6 +409,13 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
       });
       return { success: false, error: `Streaming error: ${msg}` };
     }
+
+    reportProviderUsage(usageContext, {
+      modelCodename: tomoriState.llm.llm_codename,
+      costUsd: streamResult.usage?.costUsd,
+      inputTokens: streamResult.usage?.inputTokens,
+      outputTokens: streamResult.usage?.outputTokens,
+    });
 
     if (streamResult.status === "function_call") {
       if (!streamResult.data) {

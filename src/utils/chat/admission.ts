@@ -20,9 +20,15 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdentity";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
-import { isActiveNaturalStopTurn, selfReplySuppressionUntil } from "@/utils/chat/channelQueue";
+import {
+  interruptNudgeScene,
+  isActiveNaturalStopTurn,
+  isNudgeOutputActive,
+  selfReplySuppressionUntil,
+} from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
+import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 import {
   applyMessageProxyReference,
   cancelPendingMessageProxyExpectation,
@@ -105,6 +111,9 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     systemTriggerIdentity: input.systemTriggerIdentity,
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
+    naturalNudge: input.naturalNudge,
+    nudgeSceneCatcherPersonaId: input.nudgeSceneCatcherPersonaId,
+    borrowsTriggerMessage: input.borrowsTriggerMessage,
     carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
     onQueueDiscard: input.onQueueDiscard,
@@ -124,6 +133,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   const { client, message } = incoming;
   const channel = message.channel;
+  // discord.js resolves message.channel from the cache on every access, so a delayed retry or queue replay
+  // sees null once the channel is deleted or no longer visible, despite the non-null typing.
+  if (!channel) {
+    return { incoming, disposition: "ignore", locale: "en-US", reason: "channel_unavailable" };
+  }
   await verifyMessageWebhook(message);
   let referencedMessagePromise: Promise<Message | null> | undefined;
   const getReferencedMessage = () => (referencedMessagePromise ??= resolveReferencedMessage(message));
@@ -185,6 +199,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     return ignored("self_reply_suppressed");
   }
 
+  if (!incoming.isManuallyTriggered && isLikelySelfMessage && isNudgeOutputActive(channel.id)) {
+    updateSelfReplyChainState(channel.id, false);
+    return ignored("nudge_output");
+  }
+
   if (!incoming.isManuallyTriggered && isLikelySelfMessage && message.reference?.messageId) {
     const referencedMessage = await getReferencedMessage();
     if (
@@ -198,6 +217,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   if (isRealUserMessage && !isActiveNaturalStopMessage && !incoming.isPersonaJob) {
     updateSelfReplyChainState(channel.id, false);
+    // Before every gate below, so a member the trigger checks would ignore still ends the scene.
+    if (!incoming.isManuallyTriggered && !incoming.isFromQueue) {
+      incoming.nudgeSceneCatcherPersonaId = interruptNudgeScene(channel.id);
+    }
   }
 
   if (channel.type === ChannelType.DM && isBotAuthor && !incoming.isManuallyTriggered) {
@@ -279,6 +302,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   if (
     !channelScope.isDMChannel &&
     !incoming.isStopResponse &&
+    !incoming.borrowsTriggerMessage &&
     (await getCachedBlacklistStatus(channelScope.serverDiscId, userDiscId))
   ) {
     return blocked("server_blacklisted_user");
@@ -359,6 +383,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   });
   if (queueDisposition) {
     return queueDisposition;
+  }
+
+  if (!applyWelcomeHandoff(incoming, userDiscId)) {
+    return ignored("answered_by_welcome");
   }
 
   return {
@@ -582,7 +610,16 @@ async function evaluateAudioTranscriptionAdmission(args: {
   log.warn(
     `Audio transcription failed for message ${message.id}: ${transcriptionResult.failureReason ?? "unknown"}${transcriptionResult.failureDetails ? ` (${transcriptionResult.failureDetails})` : ""}`,
   );
-  if (message.content.trim().length === 0) {
+  const hasVisualMedia = message.attachments
+    ? [...message.attachments.values()].some((att) => {
+        const mime = att.contentType?.toLowerCase() ?? "";
+        if (mime.startsWith("video/") || mime.startsWith("image/")) {
+          return true;
+        }
+        return /\.(png|jpe?g|webp|gif|heic|heif|mp4|webm|mov|mpeg|avi)$/i.test(att.name ?? "");
+      })
+    : false;
+  if (message.content.trim().length === 0 && !hasVisualMedia) {
     const shouldSurfaceTranscriptionFailure =
       incoming.shouldSurfaceUserErrors ??
       (Boolean(incoming.manualTriggerInvoker || incoming.reminderRecipientID || incoming.reminderData?.self_reminder) ||

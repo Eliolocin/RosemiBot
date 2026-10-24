@@ -1,16 +1,32 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import type { AssembledServerConfig, LlmRow, TomoriState, UserSavedProviderConfigUpsert } from "@/types/db/schema";
+import { join } from "node:path";
+import type {
+  AssembledServerConfig,
+  FallbackModelRef,
+  LlmRow,
+  TomoriState,
+  UserSavedProviderConfigUpsert,
+} from "@/types/db/schema";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
-import { buildUserSavedProviderConfigFromExistingOrDefaults } from "@/utils/provider/savedProviderConfig";
-import { DB_TESTS_AVAILABLE, setupTestDb, testSql } from "./setup/testDb";
+import {
+  buildSavedProviderConfigFromExistingOrDefaults,
+  buildUserSavedProviderConfigFromExistingOrDefaults,
+} from "@/utils/provider/savedProviderConfig";
+import { DB_TESTS_AVAILABLE, executeTestSqlFile, setupTestDb, testSql } from "./setup/testDb";
 import { createPersona } from "../../helpers/fixtures";
 
 const USER_DISC_A = "_rt_randomizer_user_a";
 const USER_DISC_B = "_rt_randomizer_user_b";
+const BACKFILL_DISC_ACTIVE = "_rt_fallback_backfill_active";
+const BACKFILL_DISC_STORED = "_rt_fallback_backfill_stored";
+const BACKFILL_DISC_NONE = "_rt_fallback_backfill_none";
 const SERVER_DISC = "_rt_randomizer_server";
+const ALL_USER_DISCS = [USER_DISC_A, USER_DISC_B, BACKFILL_DISC_ACTIVE, BACKFILL_DISC_STORED, BACKFILL_DISC_NONE];
 
-describe.skipIf(!DB_TESTS_AVAILABLE)("Personal model randomizer data layer (migration 076)", () => {
+const MIGRATIONS_DIR = join(import.meta.dir, "..", "..", "..", "src", "db", "migrations");
+
+describe.skipIf(!DB_TESTS_AVAILABLE)("Personal fallback chain and randomizer data layer (migration 116)", () => {
   let userAId: number;
   let userBId: number;
   let serverId: number;
@@ -20,7 +36,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Personal model randomizer data layer (migr
     await setupTestDb();
 
     // Clean up any stale fixtures from prior interrupted runs.
-    await testSql`DELETE FROM users WHERE user_disc_id IN (${USER_DISC_A}, ${USER_DISC_B})`;
+    await testSql`DELETE FROM users WHERE user_disc_id = ANY(${testSql.array(ALL_USER_DISCS, "TEXT")})`;
     await testSql`DELETE FROM servers WHERE server_disc_id = ${SERVER_DISC}`;
 
     const [serverRow] = await testSql<[{ server_id: number }]>`
@@ -46,7 +62,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Personal model randomizer data layer (migr
   });
 
   afterAll(async () => {
-    await testSql`DELETE FROM users WHERE user_disc_id IN (${USER_DISC_A}, ${USER_DISC_B})`;
+    await testSql`DELETE FROM users WHERE user_disc_id = ANY(${testSql.array(ALL_USER_DISCS, "TEXT")})`;
     await testSql`DELETE FROM servers WHERE server_disc_id = ${SERVER_DISC}`;
   });
 
@@ -83,207 +99,278 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Personal model randomizer data layer (migr
     });
   }
 
-  it("overrides server true with personal false when an active personal text route has randomizer disabled", async () => {
-    // Clear user provider rows before testing overlay.
-    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id = ${userAId}`;
-
-    const initialConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig: makeBaseConfig({ model_randomizer_enabled: true }),
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
-    });
-
-    const inserted = await llmProviderRepo.upsertUserSavedProviderConfig(userAId, initialConfig);
-    expect(inserted).toBe(true);
-
-    const serverState = makeState(true);
-    const result = await applyPersonalProviderSelectionsToTomoriState(serverState, userAId);
-
-    expect(result.activeConfigs.text?.model_randomizer_enabled).toBe(false);
-    expect(result.tomoriState.config.model_randomizer_enabled).toBe(false);
-  });
-
-  it("overrides server false with personal true when an active personal text route has randomizer enabled", async () => {
-    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id = ${userAId}`;
-
-    const initialConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig: makeBaseConfig({ model_randomizer_enabled: false }),
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
-    });
-
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, initialConfig);
-    const updated = await llmProviderRepo.updatePersonalModelRandomizer(userAId, "google", true);
-    expect(updated).toBe(true);
-
-    const serverState = makeState(false);
-    const result = await applyPersonalProviderSelectionsToTomoriState(serverState, userAId);
-
-    expect(result.activeConfigs.text?.model_randomizer_enabled).toBe(true);
-    expect(result.tomoriState.config.model_randomizer_enabled).toBe(true);
-  });
-
-  it("obeys server flag when no personal text route is active", async () => {
-    // Case 1: No personal rows exist for user.
-    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id = ${userAId}`;
-
-    const serverTrueState = makeState(true);
-    const resultNoRowsTrue = await applyPersonalProviderSelectionsToTomoriState(serverTrueState, userAId);
-    expect(resultNoRowsTrue.tomoriState.config.model_randomizer_enabled).toBe(true);
-
-    const serverFalseState = makeState(false);
-    const resultNoRowsFalse = await applyPersonalProviderSelectionsToTomoriState(serverFalseState, userAId);
-    expect(resultNoRowsFalse.tomoriState.config.model_randomizer_enabled).toBe(false);
-
-    // Case 2: Personal row exists with randomizer enabled, but text capability is NOT enabled.
-    const nonTextConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
+  async function savePersonalTextRow(
+    userId: number,
+    provider: string,
+    enabledCapabilities: UserSavedProviderConfigUpsert["enabled_capabilities"],
+  ): Promise<UserSavedProviderConfigUpsert> {
+    const config = await buildUserSavedProviderConfigFromExistingOrDefaults({
+      userId,
+      provider,
       apiKey: null,
       keyVersion: 1,
       baseConfig: makeBaseConfig(),
       llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["image"],
+      enabledCapabilities,
     });
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, nonTextConfig);
-    await llmProviderRepo.updatePersonalModelRandomizer(userAId, "google", true);
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userId, config)).toBe(true);
+    return config;
+  }
+
+  async function resetPersonalState(userIds: number[]): Promise<void> {
+    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id = ANY(${testSql.array(userIds, "INT")})`;
+    await testSql`DELETE FROM user_personalization_configs WHERE user_id = ANY(${testSql.array(userIds, "INT")})`;
+  }
+
+  it("preserves saved sampler settings when rebuilding personal and server provider snapshots", async () => {
+    const savedParameters = {
+      llm_temperature: 0.5,
+      llm_top_p: 0.75,
+      llm_top_k: 32,
+      llm_frequency_penalty: 0.25,
+      llm_presence_penalty: 0.5,
+      llm_min_p: 0.125,
+      llm_max_output_tokens: 1_024,
+      thinking_level: "low" as const,
+    };
+    const baseConfig = makeBaseConfig({ llm_max_output_tokens: 8_192 });
+    const personal = await buildUserSavedProviderConfigFromExistingOrDefaults({
+      userId: userAId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      llmId: sampleLlm.llm_id,
+    });
+    const server = await buildSavedProviderConfigFromExistingOrDefaults({
+      serverId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      llmId: sampleLlm.llm_id,
+    });
+    expect(personal.llm_max_output_tokens).toBe(baseConfig.llm_max_output_tokens);
+    expect(server.llm_max_output_tokens).toBe(baseConfig.llm_max_output_tokens);
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, { ...personal, ...savedParameters })).toBe(
+      true,
+    );
+    expect(await llmProviderRepo.upsertSavedProviderConfig(serverId, { ...server, ...savedParameters })).toBe(true);
+
+    const rebuiltPersonal = await buildUserSavedProviderConfigFromExistingOrDefaults({
+      userId: userAId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      existingConfig: await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google"),
+    });
+    const rebuiltServer = await buildSavedProviderConfigFromExistingOrDefaults({
+      serverId,
+      provider: "google",
+      apiKey: null,
+      keyVersion: 1,
+      baseConfig,
+      existingConfig: await llmProviderRepo.loadSavedProviderConfig(serverId, "google"),
+    });
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, rebuiltPersonal)).toBe(true);
+    expect(await llmProviderRepo.upsertSavedProviderConfig(serverId, rebuiltServer)).toBe(true);
+
+    expect(await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google")).toMatchObject(savedParameters);
+    expect(await llmProviderRepo.loadSavedProviderConfig(serverId, "google")).toMatchObject(savedParameters);
+  });
+
+  it("overrides server true with personal false when an active personal text route has randomizer disabled", async () => {
+    await resetPersonalState([userAId]);
+    await savePersonalTextRow(userAId, "google", ["text"]);
+
+    const result = await applyPersonalProviderSelectionsToTomoriState(makeState(true), userAId);
+
+    expect(result.activeConfigs.text?.provider).toBe("google");
+    expect(result.tomoriState.config.model_randomizer_enabled).toBe(false);
+  });
+
+  it("overrides server false with personal true when an active personal text route has randomizer enabled", async () => {
+    await resetPersonalState([userAId]);
+    await savePersonalTextRow(userAId, "google", ["text"]);
+    expect(await llmProviderRepo.updatePersonalModelRandomizer(userAId, true)).toBe(true);
+
+    const result = await applyPersonalProviderSelectionsToTomoriState(makeState(false), userAId);
+
+    expect(result.tomoriState.config.model_randomizer_enabled).toBe(true);
+  });
+
+  it("obeys server flag when no personal text route is active", async () => {
+    await resetPersonalState([userAId]);
+
+    const resultNoRowsTrue = await applyPersonalProviderSelectionsToTomoriState(makeState(true), userAId);
+    expect(resultNoRowsTrue.tomoriState.config.model_randomizer_enabled).toBe(true);
+    const resultNoRowsFalse = await applyPersonalProviderSelectionsToTomoriState(makeState(false), userAId);
+    expect(resultNoRowsFalse.tomoriState.config.model_randomizer_enabled).toBe(false);
+
+    const nonTextConfig = await savePersonalTextRow(userAId, "google", ["image"]);
+    await llmProviderRepo.updatePersonalModelRandomizer(userAId, true);
 
     const nonTextResult = await applyPersonalProviderSelectionsToTomoriState(makeState(false), userAId);
     expect(nonTextResult.activeConfigs.text).toBeUndefined();
     expect(nonTextResult.tomoriState.config.model_randomizer_enabled).toBe(false);
 
-    // Case 3: Personal row exists with text capability enabled and randomizer enabled, but llm_id is null.
-    const nullModelConfig: UserSavedProviderConfigUpsert = {
+    // Text is enabled but the row has no model, so personal text is still not active.
+    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, {
       ...nonTextConfig,
       llm_id: null,
       enabled_capabilities: ["text"],
       assigned_capabilities: ["text"],
-    };
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, nullModelConfig);
-    await llmProviderRepo.updatePersonalModelRandomizer(userAId, "google", true);
+    });
 
     const nullModelResult = await applyPersonalProviderSelectionsToTomoriState(makeState(false), userAId);
     expect(nullModelResult.activeConfigs.text).toBeUndefined();
     expect(nullModelResult.tomoriState.config.model_randomizer_enabled).toBe(false);
   });
 
-  it("does not reset the model randomizer flag during an unrelated upsert", async () => {
-    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id = ${userAId}`;
+  it("keeps the chain and randomizer when provider rows are rewritten or the text provider changes", async () => {
+    await resetPersonalState([userAId]);
+    const google = await savePersonalTextRow(userAId, "google", ["text"]);
+    const openrouter = await savePersonalTextRow(userAId, "openrouter", []);
+    const chain = [
+      { type: "llm" as const, id: 900_001 },
+      { type: "custom_endpoint" as const, id: 900_002 },
+    ];
+    expect(await llmProviderRepo.updatePersonalFallbackModelRefs(userAId, chain)).toBe(true);
+    expect(await llmProviderRepo.updatePersonalModelRandomizer(userAId, true)).toBe(true);
 
-    const baseConfig = makeBaseConfig({ llm_temperature: 0.7 });
+    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, { ...google, llm_temperature: 0.25 })).toBe(
+      true,
+    );
+    expect(
+      await llmProviderRepo.upsertUserSavedProviderConfig(userAId, {
+        ...google,
+        enabled_capabilities: [],
+        assigned_capabilities: [],
+      }),
+    ).toBe(true);
+    expect(
+      await llmProviderRepo.upsertUserSavedProviderConfig(userAId, {
+        ...openrouter,
+        enabled_capabilities: ["text"],
+        assigned_capabilities: ["text"],
+      }),
+    ).toBe(true);
 
-    const initial = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig,
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userAId)).toEqual({
+      fallback_model_refs: chain,
+      model_randomizer_enabled: true,
     });
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, initial);
-
-    // Explicitly enable randomizer through focused setter.
-    const enabledOk = await llmProviderRepo.updatePersonalModelRandomizer(userAId, "google", true);
-    expect(enabledOk).toBe(true);
-
-    const rowBeforeSave = await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google");
-    expect(rowBeforeSave?.model_randomizer_enabled).toBe(true);
-
-    // Simulate an unrelated parameter change or model save through buildUserSavedProviderConfigFromExistingOrDefaults.
-    const modifiedConfig = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig,
-      existingConfig: rowBeforeSave,
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
-    });
-    modifiedConfig.llm_temperature = 0.25;
-
-    const upsertOk = await llmProviderRepo.upsertUserSavedProviderConfig(userAId, modifiedConfig);
-    expect(upsertOk).toBe(true);
-
-    // Assert the randomizer preference was not clobbered by the general upsert.
-    const rowAfterSave = await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google");
-    expect(rowAfterSave?.model_randomizer_enabled).toBe(true);
-    expect(rowAfterSave?.llm_temperature).toBeCloseTo(0.25, 2);
-
-    // The assertion above passes on the builder's threading alone, so it cannot tell whether the
-    // ON CONFLICT list is safe. Upserting a payload that explicitly carries false is what proves the
-    // general upsert structurally cannot touch the column, which is the guarantee a future caller
-    // built without the existing row depends on.
-    const hostilePayload: UserSavedProviderConfigUpsert = { ...modifiedConfig, model_randomizer_enabled: false };
-    expect(await llmProviderRepo.upsertUserSavedProviderConfig(userAId, hostilePayload)).toBe(true);
-
-    const rowAfterHostileSave = await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google");
-    expect(rowAfterHostileSave?.model_randomizer_enabled).toBe(true);
   });
 
-  it("scopes the setter so updates affect only the targeted user and provider", async () => {
-    await testSql`DELETE FROM user_saved_provider_configs WHERE user_id IN (${userAId}, ${userBId})`;
+  it("scopes the user-level setters to one user and creates a missing personalization row", async () => {
+    await resetPersonalState([userAId, userBId]);
 
-    const baseConfig = makeBaseConfig();
+    expect(await llmProviderRepo.updatePersonalModelRandomizer(userAId, true)).toBe(true);
+    expect(await llmProviderRepo.updatePersonalFallbackModelRefs(userAId, [{ type: "llm", id: 900_003 }])).toBe(true);
 
-    // User A: provider google and openrouter
-    const userAGoogle = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig,
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userAId)).toEqual({
+      fallback_model_refs: [{ type: "llm", id: 900_003 }],
+      model_randomizer_enabled: true,
     });
-    const userAOpenrouter = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userAId,
-      provider: "openrouter",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig,
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userBId)).toEqual({
+      fallback_model_refs: [],
+      model_randomizer_enabled: false,
     });
 
-    // User B: provider google
-    const userBGoogle = await buildUserSavedProviderConfigFromExistingOrDefaults({
-      userId: userBId,
-      provider: "google",
-      apiKey: null,
-      keyVersion: 1,
-      baseConfig,
-      llmId: sampleLlm.llm_id,
-      enabledCapabilities: ["text"],
+    // The model-reference check reads the chain in SQL, so it must be stored as a JSONB array rather
+    // than the scalar string Bun produces for a bound `JSON.stringify(...)::jsonb`.
+    const [stored] = await testSql<[{ shape: string }]>`
+      SELECT jsonb_typeof(fallback_model_refs) AS shape FROM user_personalization_configs WHERE user_id = ${userAId}
+    `;
+    expect(stored.shape).toBe("array");
+
+    expect(await llmProviderRepo.updatePersonalModelRandomizer(999_999_999, true)).toBe(false);
+  });
+
+  it("backfills from the active text row, else the stored text row, and leaves users without one at defaults", async () => {
+    const userIds: Record<string, number> = {};
+    for (const disc of [BACKFILL_DISC_ACTIVE, BACKFILL_DISC_STORED, BACKFILL_DISC_NONE]) {
+      const [row] = await testSql<[{ user_id: number }]>`
+        INSERT INTO users (user_disc_id) VALUES (${disc}) RETURNING user_id
+      `;
+      userIds[disc] = Number(row.user_id);
+    }
+
+    const activeChain: FallbackModelRef[] = [{ type: "llm", id: 900_010 }];
+    const storedChain: FallbackModelRef[] = [{ type: "llm", id: 900_020 }];
+    const ignoredChain: FallbackModelRef[] = [{ type: "llm", id: 900_099 }];
+
+    // Every DB regression file shares one disposable database, so the up migration is re-applied
+    // from `finally` to keep a failed assertion here from breaking later suites.
+    await executeTestSqlFile(join(MIGRATIONS_DIR, "116_personal_fallback_chain_user_level.down.sql"));
+    try {
+      // `stringEncoded` reproduces the old per-provider writer, whose bound `JSON.stringify(...)::jsonb`
+      // Bun stored as a scalar JSONB string; the other rows hold a real array.
+      const insertRow = async (
+        userId: number,
+        provider: string,
+        llmId: number | null,
+        capabilities: { enabled: string[]; assigned: string[] },
+        refs: FallbackModelRef[],
+        randomizer: boolean,
+        stringEncoded = false,
+      ) => {
+        await testSql`
+          INSERT INTO user_saved_provider_configs
+            (user_id, provider, llm_id, enabled_capabilities, assigned_capabilities, fallback_model_refs, model_randomizer_enabled)
+          VALUES (
+            ${userId}, ${provider}, ${llmId},
+            ${`{${capabilities.enabled.join(",")}}`}::text[], ${`{${capabilities.assigned.join(",")}}`}::text[],
+            ${stringEncoded ? JSON.stringify(refs) : refs}, ${randomizer}
+          )
+        `;
+      };
+      const llmId = sampleLlm.llm_id as number;
+      const noCapabilities = { enabled: [], assigned: [] };
+
+      // `anthropic` sorts first, so only the capability ordering can pick `deepseek`.
+      const active = userIds[BACKFILL_DISC_ACTIVE];
+      await insertRow(active, "anthropic", llmId, noCapabilities, ignoredChain, false);
+      await insertRow(active, "deepseek", llmId, { enabled: ["text"], assigned: ["text"] }, activeChain, true, true);
+
+      const stored = userIds[BACKFILL_DISC_STORED];
+      await insertRow(stored, "anthropic", llmId, noCapabilities, ignoredChain, false);
+      await insertRow(stored, "deepseek", llmId, { enabled: [], assigned: ["text"] }, storedChain, true);
+
+      const none = userIds[BACKFILL_DISC_NONE];
+      await insertRow(none, "novelai", null, { enabled: ["image"], assigned: ["image"] }, ignoredChain, true);
+
+      const [encoded] = await testSql<[{ shape: string }]>`
+        SELECT jsonb_typeof(fallback_model_refs) AS shape
+        FROM user_saved_provider_configs
+        WHERE user_id = ${active} AND provider = 'deepseek'
+      `;
+      expect(encoded.shape).toBe("string");
+    } finally {
+      await executeTestSqlFile(join(MIGRATIONS_DIR, "116_personal_fallback_chain_user_level.sql"));
+    }
+
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userIds[BACKFILL_DISC_ACTIVE])).toEqual({
+      fallback_model_refs: activeChain,
+      model_randomizer_enabled: true,
+    });
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userIds[BACKFILL_DISC_STORED])).toEqual({
+      fallback_model_refs: storedChain,
+      model_randomizer_enabled: true,
+    });
+    expect(await llmProviderRepo.loadPersonalFallbackSettings(userIds[BACKFILL_DISC_NONE])).toEqual({
+      fallback_model_refs: [],
+      model_randomizer_enabled: false,
     });
 
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, userAGoogle);
-    await llmProviderRepo.upsertUserSavedProviderConfig(userAId, userAOpenrouter);
-    await llmProviderRepo.upsertUserSavedProviderConfig(userBId, userBGoogle);
-
-    // Update only User A's google provider.
-    const updated = await llmProviderRepo.updatePersonalModelRandomizer(userAId, "google", true);
-    expect(updated).toBe(true);
-
-    const reloadedUserAGoogle = await llmProviderRepo.loadUserSavedProviderConfig(userAId, "google");
-    const reloadedUserAOpenrouter = await llmProviderRepo.loadUserSavedProviderConfig(userAId, "openrouter");
-    const reloadedUserBGoogle = await llmProviderRepo.loadUserSavedProviderConfig(userBId, "google");
-
-    expect(reloadedUserAGoogle?.model_randomizer_enabled).toBe(true);
-    expect(reloadedUserAOpenrouter?.model_randomizer_enabled).toBe(false);
-    expect(reloadedUserBGoogle?.model_randomizer_enabled).toBe(false);
-
-    // Non-existent row update returns false.
-    const nonExistent = await llmProviderRepo.updatePersonalModelRandomizer(999999, "google", true);
-    expect(nonExistent).toBe(false);
+    const [leftover] = await testSql<[{ count: number }]>`
+      SELECT COUNT(*)::int AS count
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'user_saved_provider_configs'
+        AND column_name IN ('fallback_model_refs', 'model_randomizer_enabled')
+    `;
+    expect(leftover.count).toBe(0);
   });
 });

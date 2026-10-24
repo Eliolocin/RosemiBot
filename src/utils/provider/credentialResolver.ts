@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type {
   CustomEndpointRow,
   PersonalProviderCapability,
@@ -17,6 +18,7 @@ import { getStaticProviderInfo } from "@/utils/provider/providerInfoRegistry";
 export type Capability = "text" | "embedding" | "image-standard" | "image-nai" | "video" | "vision";
 
 export interface ResolvedCredentials {
+  usageContext?: ProviderUsageContext;
   provider: string;
   apiKey: string;
   keyVersion: number;

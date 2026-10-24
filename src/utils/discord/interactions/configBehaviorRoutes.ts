@@ -62,7 +62,8 @@ import {
 import { HUMANIZER_DEFAULT, HUMANIZER_MAX, HUMANIZER_MIN, getHumanizerLabel } from "@/utils/discord/humanizerOptions";
 import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/contextBuilder";
 import { combineModalPromptParts } from "@/utils/text/modalPromptParts";
-import { formatUTCOffset, UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/utils/text/timezoneHelper";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/constants/utcOffset";
+import { formatUTCOffset, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { localizer } from "@/utils/text/localizer";
 import { getShortTermMemoriesForServer } from "@/utils/cache/shortTermMemoryCache";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
@@ -758,8 +759,8 @@ async function runGeneralWrite(
     };
   }
   if (route.action === "behavior-timezone-submit" && modalInteraction) {
-    const value = Number(getText(modalInteraction, BEHAVIOR_TIMEZONE_FIELD, route.nonce).trim());
-    if (!Number.isFinite(value) || value < UTC_OFFSET_MIN || value > UTC_OFFSET_MAX)
+    const value = parseUtcOffsetInput(getText(modalInteraction, BEHAVIOR_TIMEZONE_FIELD, route.nonce));
+    if (value === null)
       return {
         receipt: invalid(locale, "commands.config.panel.timezone_invalid_detail", {
           min: UTC_OFFSET_MIN,
@@ -926,10 +927,10 @@ async function runTriggerWrite(
   }
   if (route.action === "behavior-random-add-submit") {
     const submitted = modal(interaction);
-    const channelId = dependencies.takeSelectValue(
+    const channelId = dependencies.takeChannelSelectValues(
       submitted.id,
       buildConfigModalFieldId(BEHAVIOR_RANDOM_CHANNEL_FIELD, route.nonce),
-    );
+    )?.[0];
     const personaValue = dependencies.takeSelectValue(
       submitted.id,
       buildConfigModalFieldId(BEHAVIOR_RANDOM_PERSONA_FIELD, route.nonce),

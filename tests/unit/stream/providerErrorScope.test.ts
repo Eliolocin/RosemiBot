@@ -12,12 +12,14 @@ function makeContext(
   send: SendMock,
   textCredentialSource: StreamContext["textCredentialSource"],
   fallbackChain: unknown[] = [],
+  inGuild = true,
 ): StreamContext {
   return {
-    channel: { id: "channel_1", send } as unknown as TextChannel,
+    channel: { id: "channel_1", send, ...(inGuild ? { guild: { id: "guild_1" } } : {}) } as unknown as TextChannel,
     client: {} as Client,
     tomoriState: {
       server_id: 1,
+      llm: { llm_provider: "openrouter" },
       persona_nickname: "Tomori",
       trigger_words: [],
       config: {},
@@ -177,5 +179,49 @@ describe("provider error tips resolve against the credential source", () => {
 
     expect(tips).toContain("/config");
     expect(tips).not.toContain("/personal");
+  });
+});
+
+describe("error embeds name where the failure came from", () => {
+  beforeAll(async () => {
+    await initializeLocalizer();
+  });
+
+  async function renderFooter(
+    send: (ui: StreamErrorUi, context: StreamContext) => Promise<void>,
+    textCredentialSource: StreamContext["textCredentialSource"],
+    inGuild: boolean,
+  ): Promise<string | undefined> {
+    const channelSend = mock(async (_payload: unknown) => ({ createMessageComponentCollector: () => ({ on() {} }) }));
+    await send(new StreamErrorUi(), makeContext(channelSend, textCredentialSource, [], inGuild));
+    const payload = channelSend.mock.calls[0]?.[0] as { embeds: Array<{ toJSON(): { footer?: { text: string } } }> };
+    return payload.embeds[0]?.toJSON().footer?.text;
+  }
+
+  const providerFailure = (ui: StreamErrorUi, context: StreamContext) =>
+    ui.handleProviderError(API_ERROR, makeProvider(), context);
+
+  it("attributes provider failures to the provider and the credential that failed", async () => {
+    const vars = { provider: "OpenRouter" };
+    const cases = [
+      { source: "server", inGuild: true, key: "genai.stream.error_footer_server_provider" },
+      { source: undefined, inGuild: false, key: "genai.stream.error_footer_dm_provider" },
+      { source: "personal", inGuild: true, key: "genai.stream.error_footer_personal_provider" },
+      { source: "personal", inGuild: false, key: "genai.stream.error_footer_personal_provider" },
+    ] as const;
+
+    for (const { source, inGuild, key } of cases) {
+      expect(await renderFooter(providerFailure, source, inGuild)).toBe(localizedCopy("en-US", key, vars));
+    }
+  });
+
+  it("attributes unhandled stream failures to TomoriBot", async () => {
+    const footer = await renderFooter(
+      (ui, context) => ui.handleStreamError(new Error("boom"), context),
+      "server",
+      true,
+    );
+
+    expect(footer).toBe(localizedCopy("en-US", "genai.stream.error_footer_tomoribot"));
   });
 });

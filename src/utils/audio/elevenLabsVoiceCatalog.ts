@@ -1,4 +1,9 @@
-import { ELEVENLABS_API_BASE_URL, getElevenLabsTtsConfig } from "@/utils/audio/elevenLabsShared";
+import {
+  ELEVENLABS_API_BASE_URL,
+  getElevenLabsTtsConfig,
+  readElevenLabsErrorDetail,
+  reportElevenLabsFailure,
+} from "@/utils/audio/elevenLabsShared";
 
 type ElevenLabsVoiceCatalogErrorKind = "missing_api_key" | "timeout" | "request_failed" | "invalid_response";
 
@@ -17,9 +22,19 @@ export interface ElevenLabsVoiceCatalogResult {
   errorKind?: ElevenLabsVoiceCatalogErrorKind;
   statusCode?: number;
   details?: string;
+  /** ElevenLabs' status and response body, for the operator log. */
+  providerDetail?: string;
 }
 
 export async function fetchElevenLabsVoiceCatalog(apiKey: string): Promise<ElevenLabsVoiceCatalogResult> {
+  const result = await requestElevenLabsVoiceCatalog(apiKey);
+  if (!result.success) await reportElevenLabsFailure("voice-catalog", result);
+  return result;
+}
+
+async function requestElevenLabsVoiceCatalog(
+  apiKey: string,
+): Promise<ElevenLabsVoiceCatalogResult & { providerDetail?: string }> {
   if (!apiKey.trim()) {
     return {
       success: false,
@@ -44,20 +59,21 @@ export async function fetchElevenLabsVoiceCatalog(apiKey: string): Promise<Eleve
 
     clearTimeout(timeoutId);
 
-    let responseJson: Record<string, unknown> | null = null;
-    try {
-      responseJson = (await response.json()) as Record<string, unknown>;
-    } catch {
-      responseJson = null;
-    }
-
     if (!response.ok) {
       return {
         success: false,
         errorKind: "request_failed",
         statusCode: response.status,
-        details: typeof responseJson?.detail === "string" ? responseJson.detail : `HTTP ${response.status}`,
+        details: `HTTP ${response.status}`,
+        providerDetail: await readElevenLabsErrorDetail(response, apiKey),
       };
+    }
+
+    let responseJson: Record<string, unknown> | null = null;
+    try {
+      responseJson = (await response.json()) as Record<string, unknown>;
+    } catch {
+      responseJson = null;
     }
 
     const rawVoices = responseJson?.voices;

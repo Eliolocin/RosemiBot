@@ -8,6 +8,7 @@ const SUPPORTED_VIDEO_MIME_TYPES = [
   "video/mp4",
   "video/mpeg",
   "video/mov",
+  "video/quicktime",
   "video/avi",
   "video/x-flv",
   "video/mpg",

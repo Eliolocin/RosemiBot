@@ -158,6 +158,7 @@ describe("config page filtering", () => {
       "memories",
       "naming",
       "sprites",
+      "nudges",
     ]);
     expect(visibleConfigPages("persona", GUILD_MANAGER)).toContain("voice");
     expect(visibleConfigPages("persona", GUILD_MANAGER).at(-1)).toBe("advanced");
@@ -804,6 +805,12 @@ describe("isConfigRouteAuthorized", () => {
         GUILD_MEMBER,
       ),
     ).toBe(false);
+    expect(
+      isConfigRouteAuthorized(
+        { action: "persona-select", locale: "en-US", personaId: 5, page: "advanced" },
+        GUILD_MEMBER,
+      ),
+    ).toBe(false);
   });
 
   it("keeps Persona Voice routes manager-only in guilds while allowing the DM owner", () => {
@@ -886,6 +893,40 @@ describe("isConfigRouteAuthorized", () => {
     { action: "draft-model-submit", locale: "en-US", provider: "openrouter", nonce: "nonce123" },
     { action: "draft-checker-select", locale: "en-US", start: 0, fp: "abcdefgh" },
   ];
+  const nudgeRoutes: ConfigPanelRoute[] = [
+    { action: "nudge-talk-select", locale: "en-US", personaId: 1 },
+    { action: "nudge-interest-select", locale: "en-US", personaId: 1 },
+    { action: "nudge-interest-add-submit", locale: "en-US", personaId: 1, nonce: "nonce123" },
+    {
+      action: "nudge-interest-edit-submit",
+      locale: "en-US",
+      personaId: 1,
+      index: 0,
+      fp: "abcdefgh",
+      nonce: "nonce123",
+    },
+    { action: "nudge-interest-remove-open", locale: "en-US", personaId: 1 },
+    { action: "nudge-interest-generate", locale: "en-US", personaId: 1 },
+    { action: "nudge-interest-remove-submit", locale: "en-US", personaId: 1, fp: "abcdefgh", nonce: "nonce123" },
+    { action: "nudge-idle-nudges-set", locale: "en-US", enabled: true },
+    { action: "nudge-channels-select", locale: "en-US" },
+    { action: "nudge-provider", locale: "en-US" },
+    { action: "nudge-model-submit", locale: "en-US", provider: "openrouter", nonce: "nonce123" },
+    { action: "nudge-checker-provider", locale: "en-US" },
+    { action: "nudge-checker-model-submit", locale: "en-US", provider: "google", nonce: "nonce123" },
+    { action: "nudge-checker-decision-submit", locale: "en-US", provider: "openrouter", nonce: "nonce123" },
+    { action: "nudge-idle-nudges-frequency-select", locale: "en-US" },
+    { action: "nudge-active-nudges-set", locale: "en-US", enabled: true },
+    { action: "nudge-active-nudges-frequency-select", locale: "en-US" },
+  ];
+  it("keeps Natural Nudges routes for guild managers only, since nudges never run in DMs", () => {
+    for (const route of nudgeRoutes) {
+      expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
+      expect(isConfigRouteAuthorized(route, GUILD_MEMBER)).toBe(false);
+      expect(isConfigRouteAuthorized(route, DM_OWNER)).toBe(false);
+    }
+  });
+
   it("keeps all Response Drafting routes for managers and DM owners", () => {
     for (const route of draftRoutes) {
       expect(isConfigRouteAuthorized(route, GUILD_MANAGER)).toBe(true);
@@ -899,6 +940,7 @@ describe("isConfigRouteAuthorized", () => {
     // above actually names each action rather than leaving new ones silently denied and untested.
     const covered = new Set<string>([
       ...draftRoutes.map((route) => route.action),
+      ...nudgeRoutes.map((route) => route.action),
       ...personaWriteRoutes.map((route) => route.action),
       ...triggerRoutes.map((route) => route.action),
       "attribute-select",

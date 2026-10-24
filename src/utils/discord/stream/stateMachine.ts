@@ -1,3 +1,4 @@
+import { findProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import type { Client, Message } from "discord.js";
 import type { StreamResult } from "@/types/provider/interfaces";
 import type {
@@ -153,7 +154,11 @@ export class StreamOrchestrator implements IStreamOrchestrator {
 
         if (context.abortSignal?.aborted) {
           log.warn(`Stream loop breaking due to external abort signal for channel ${context.channel.id}.`);
-          return { status: "error", data: new Error("Stream aborted by SDK call timeout"), usage: state.usage };
+          return {
+            status: "error",
+            data: new Error("Stream aborted by SDK call timeout"),
+            ...this.collectDeliveredOutput(state),
+          };
         }
 
         this.notifyStreamProgress(context);
@@ -223,13 +228,15 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         },
       });
 
-      if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+      const deferredDenialNotice =
+        findProviderRequestDeniedError(lastError, context.usageContext)?.deferNotice ?? false;
+      if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
         await this.errorUi.handleStreamError(lastError, context);
       } else {
         log.warn("Stream: Suppressing stream error embed due to retryable failure", lastError);
       }
 
-      return { status: "error", data: lastError, usage: state.usage };
+      return { status: "error", data: lastError, ...this.collectDeliveredOutput(state) };
     }
   }
 
@@ -324,6 +331,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         : undefined,
       stopReason,
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
       spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -358,6 +366,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
             data: chunk.functionCall,
             pendingResponse: this.collectPendingResponse(state, textConfig, context, typingConfig),
             accumulatedText: state.accumulatedText,
+            firstMessageId: state.firstMessageId,
             detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
             thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
             spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -405,7 +414,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       return { status: "continue" };
     }
 
-    if (state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state)) {
+    // A suppressed error may be retried by an attempt that continues the delivered text, so flushing
+    // an unfinished clause here would post a fragment the continuation then repeats.
+    if (!context.suppressUserErrors && (state.buffer.length > 0 || this.delivery.hasPendingAggregatedText(state))) {
       log.info(
         `Stream: Flushing ${state.buffer.length} chars of buffered text before error handling` +
           `${this.delivery.hasPendingAggregatedText(state) ? ` (queued aggregate: ${state.pendingAggregatedText.length})` : ""}`,
@@ -419,12 +430,26 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       }
     }
 
-    if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+    const deferredDenialNotice =
+      findProviderRequestDeniedError(chunk.error, context.usageContext)?.deferNotice ?? false;
+    if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
       await this.errorUi.handleProviderError(chunk.error, provider, context);
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);
     }
-    return { status: "error", data: chunk.error, usage: state.usage };
+    return { status: "error", data: chunk.error, ...this.collectDeliveredOutput(state) };
+  }
+
+  /** What a failed stream already posted, which the next attempt continues instead of regenerating. */
+  private collectDeliveredOutput(
+    state: StreamState,
+  ): Pick<StreamResult, "accumulatedText" | "detailsContent" | "spritesShown" | "usage"> {
+    return {
+      accumulatedText: state.accumulatedText,
+      detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
+      spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
+      usage: state.usage,
+    };
   }
 
   private async completeStreamAfterProviderEnd(
@@ -455,6 +480,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       messageSentCount: state.messageSentCount,
 
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, metrics.endTime - metrics.startTime),
       data: terminalDoneMetadata,
@@ -519,6 +545,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           status,
           stopReason,
           accumulatedText: state.accumulatedText,
+          firstMessageId: state.firstMessageId,
           spritesShown: state.spritesShown.length ? state.spritesShown : undefined,
         };
       },

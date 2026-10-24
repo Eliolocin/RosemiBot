@@ -25,7 +25,7 @@ Em `/personal config` > `Perfil` > Preferências Gerais, a seção **Sobre você
 
 TomoriBot nunca infere um campo de outro. Os campos em branco são limpos e omitidos do contexto de prompt. Os campos de perfil bruto são expostos à IA somente quando seu nível de privacidade está definido como `Nenhum`.
 
-A seção **Interface** permite definir o deslocamento numérico UTC (-12 a +14) ou corresponder ao padrão do servidor. TomoriBot armazena apenas esse deslocamento numérico, nunca uma localização geográfica ou fuso horário da IANA.
+A seção **Interface** permite definir o deslocamento numérico UTC (-12 a +14) ou corresponder ao padrão do servidor. Frações de meia hora e quarto de hora também funcionam: digite `5:30` ou `5.5` para a Índia, `5:45` para o Nepal. O TomoriBot armazena apenas esse deslocamento numérico, nunca uma localização geográfica ou fuso horário da IANA, portanto não acompanha mudanças de horário de verão por conta própria.
 
 ### Herança de nomenclatura
 
@@ -83,7 +83,7 @@ Um servidor pode exigir que os membros forneçam suas próprias chaves API por m
 Use `/personal config` para personalizar recursos adicionais:
 
 - **Aparência** (`Perfil` > `Aparência`): salve tags de aparência no estilo booru usadas sempre que uma [geração de imagem](/pt-BR/features/capabilities/media-generation/image-generation/#tag-customization) fizer referência a você. Envie uma caixa vazia para limpá-los.
-- **Controles de privacidade** (`Privacidade` > `Controles de Privacidade`): escolha seu nível de visibilidade (`Nenhum`, `Parcial` ou `Completo`) ou alterne o compartilhamento de memória de curto prazo entre servidores.
+- **Controles de privacidade** (`Privacidade` > `Controles de Privacidade`): escolha seu nível de visibilidade (`Nenhum`, `Parcial` ou `Completo`), alterne o compartilhamento de memória de curto prazo entre servidores, ou desative as [Menções de Personas](/features/chatting-personality/natural-nudges/#ping-user) para que as personas nunca mencionem você para iniciar uma conversa.
 - **Modos de resposta** (`Avançado` > `Modos de Resposta`): alterne sua substituição pessoal para [Modo de disparo deliberado](/pt-BR/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Personificação** (`Avançado` > `Personificação`): defina um prompt reutilizável usado quando alguém invoca `/impersonate user` para você.
 

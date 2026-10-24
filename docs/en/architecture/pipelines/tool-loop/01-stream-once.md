@@ -15,7 +15,8 @@ cancellation:
 
 1. **Context and prefill preparation:**
    `foldPrefillIntoToolHistory` merges any assistant output prefill into `functionHistory` so the model
-   receives required formatting or continuation tokens. For queued messages, `replyToMessage` is set to
+   receives required formatting or continuation tokens. Request-only notices, such as the one naming
+   tool calls an earlier attempt completed, go before a native prefill so it stays the last item. For queued messages, `replyToMessage` is set to
    the trigger message, except for scene turns (`incoming.sceneTurn`). In multi-persona scene turns,
    every persona turn shares the same trigger message; suppressing `replyToMessage` allows scene dialogue
    to render as free-standing back-and-forth messages.
@@ -51,15 +52,17 @@ When the rolling inactivity timeout triggers:
 2. **Settling in-flight sends:**
    If the timeout is genuine, `settleAbandonedStream` waits up to 5 seconds (`STREAM_ABANDONED_SETTLE_TIMEOUT_MS`)
    for the aborted provider generator to settle. `Promise.race` drops the aborted promise, but an in-flight
-   Discord message send might still be on the wire. This gives in-flight sends time to register their
-   IDs in `deliveredMessageRefs` before superseded-message cleanup. A send that outlives the bounded
-   wait can still arrive after cleanup; the wait reduces this race without blocking fallback indefinitely.
+   Discord message send might still be on the wire. This gives an in-flight send time to land in the
+   settled `accumulatedText` that the fallback attempt continues from. A send that outlives the bounded
+   wait stays visible but is missing from the continuation; the wait reduces this race without
+   blocking fallback indefinitely.
 
 3. **Notice dispatch and status return:**
    The stage logs the `stream_sdk_timeout` metric. If user errors are enabled, it sends the inactivity
    embed via `sendStreamTimeoutNotice`. When errors are temporarily suppressed because a fallback model is
    pending, it stashes `deferredTimeoutNotice` on `streamingContext` so `runGenerationTurn` can post the
-   notice if all subsequent fallback attempts fail. The stage then returns `{ status: "timeout", data: error }`.
+   notice if all subsequent fallback attempts fail. The stage then returns `status: "timeout"` with the
+   settled stream's delivered text, `<details>` metadata, sprites, and usage.
 
 ## Constraints and cleanup
 <!-- anchor: constraints-and-cleanup -->

@@ -54,21 +54,27 @@ function toPgNumericArrayLiteral(values: number[]): string {
  */
 class LlmModelRepository {
   async loadAvailableSpeechModels(provider: string, scope: OpenRouterModelScope): Promise<SpeechModelRow[]> {
-    const rows = await sql`
-      SELECT m.* FROM speech_models m
-      WHERE m.provider = ${provider} AND NOT m.is_deprecated AND (
-        NOT m.is_scoped_registration OR EXISTS (
-          SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
-            AND ((${scope.kind} = 'server' AND r.server_id = ${scope.ownerId} AND r.user_id IS NULL)
-              OR (${scope.kind} = 'personal' AND r.user_id = ${scope.ownerId} AND r.server_id IS NULL))
-        )
-      ) ORDER BY m.is_default DESC, m.speech_model_id
-    `;
+    const rows = await withTransientDbRetry(
+      () => sql`
+        SELECT m.* FROM speech_models m
+        WHERE m.provider = ${provider} AND NOT m.is_deprecated AND (
+          NOT m.is_scoped_registration OR EXISTS (
+            SELECT 1 FROM scoped_model_registrations r WHERE r.speech_model_id = m.speech_model_id
+              AND ((${scope.kind} = 'server' AND r.server_id = ${scope.ownerId} AND r.user_id IS NULL)
+                OR (${scope.kind} = 'personal' AND r.user_id = ${scope.ownerId} AND r.server_id IS NULL))
+          )
+        ) ORDER BY m.is_default DESC, m.speech_model_id
+      `,
+      "load available speech models",
+    );
     return speechModelSchema.array().parse(rows);
   }
 
   async loadSpeechModelById(speechModelId: number): Promise<SpeechModelRow | null> {
-    const rows = await sql`SELECT * FROM speech_models WHERE speech_model_id = ${speechModelId}`;
+    const rows = await withTransientDbRetry(
+      () => sql`SELECT * FROM speech_models WHERE speech_model_id = ${speechModelId}`,
+      "load speech model by id",
+    );
     return rows.length ? speechModelSchema.parse(rows[0]) : null;
   }
 
@@ -175,7 +181,7 @@ class LlmModelRepository {
       codename: params.codename,
       input_token_limit: params.inputTokenLimit,
       sees_images: params.seesImages ?? false,
-      supported_primitives: ["predicate"],
+      supported_primitives: ["predicate", "choice"],
       input_price_per_million: params.inputPricePerMillion,
       output_price_per_million: params.outputPricePerMillion,
     });
@@ -1511,8 +1517,8 @@ class LlmModelRepository {
 
   /**
    * Returns true when any config row (server_model_configs, persona_configs,
-   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs)
-   * still references the given LLM ID.
+   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs,
+   * user_personalization_configs) still references the given LLM ID.
    *
    * @param llmId - Internal LLM ID
    */
@@ -1553,10 +1559,12 @@ class LlmModelRepository {
         SELECT 1 FROM user_saved_provider_configs
         WHERE llm_id = ${llmId}
            OR vision_llm_id = ${llmId}
-           OR EXISTS (
+        UNION ALL
+        SELECT 1 FROM user_personalization_configs
+        WHERE EXISTS (
               SELECT 1 FROM jsonb_array_elements(
-                CASE WHEN jsonb_typeof(COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)) = 'array'
-                  THEN COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)
+                CASE WHEN jsonb_typeof(user_personalization_configs.fallback_model_refs) = 'array'
+                  THEN user_personalization_configs.fallback_model_refs
                   ELSE '[]'::JSONB END
               ) AS ref
               WHERE ref ->> 'type' = 'llm' AND ref ->> 'id' = ${String(llmId)}

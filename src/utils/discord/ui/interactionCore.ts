@@ -64,6 +64,12 @@ const modalFileUploadValues = new Map<string, Record<string, string[]>>();
 // Storage for checkbox group selected values keyed by modal component custom ID
 const modalCheckboxGroupValues = new Map<string, Record<string, string[]>>();
 
+// Separate from the scalar store because a channel select submits several IDs and `[]` must stay distinct from a missing entry.
+const modalChannelSelectValues = new Map<string, Record<string, string[]>>();
+
+// Every value of a string select, for multi-pick fields; the scalar store keeps only the first.
+const modalStringSelectValues = new Map<string, Record<string, string[]>>();
+
 // Storage for resolved attachments from modal file uploads (Discord.js doesn't expose these)
 const modalResolvedAttachments = new Map<string, Record<string, APIAttachment>>();
 
@@ -234,6 +240,8 @@ function setupWebSocketInterception(client: unknown) {
               const selectValues: Record<string, string> = {};
               const fileUploadValues: Record<string, string[]> = {};
               const checkboxGroupValues: Record<string, string[]> = {};
+              const channelSelectValues: Record<string, string[]> = {};
+              const stringSelectValues: Record<string, string[]> = {};
 
               for (const comp of packet.d.data.components) {
                 if (comp.type !== 18 || !comp.component?.custom_id) continue;
@@ -241,12 +249,18 @@ function setupWebSocketInterception(client: unknown) {
                 // Narrowed above: custom_id is guaranteed to be a non-empty string
                 const customId = inner.custom_id as string;
 
-                // Native select fields share one store because these routed fields accept one value each.
-                if (
-                  (inner.type === 3 || inner.type === 5 || inner.type === 6 || inner.type === 8) &&
-                  inner.values?.[0]
-                ) {
+                // String, user, and role selects share the scalar store because their routed fields accept one value each.
+                if ((inner.type === 3 || inner.type === 5 || inner.type === 6) && inner.values?.[0]) {
                   selectValues[customId] = inner.values[0];
+                }
+
+                // A submitted select left empty may arrive without `values`, so it records as `[]`; only an uncaptured submission reads as missing.
+                if (inner.type === 8) {
+                  channelSelectValues[customId] = Array.isArray(inner.values) ? inner.values : [];
+                }
+
+                if (inner.type === 3) {
+                  stringSelectValues[customId] = Array.isArray(inner.values) ? inner.values : [];
                 }
 
                 // File Upload (type 19): store all attachment IDs
@@ -283,6 +297,17 @@ function setupWebSocketInterception(client: unknown) {
                 modalCheckboxGroupValues.set(interactionId, checkboxGroupValues);
                 log.info(
                   `Stored ${Object.keys(checkboxGroupValues).length} checkbox group value set(s) for interaction`,
+                );
+              }
+
+              if (Object.keys(stringSelectValues).length > 0) {
+                modalStringSelectValues.set(interactionId, stringSelectValues);
+              }
+
+              if (Object.keys(channelSelectValues).length > 0) {
+                modalChannelSelectValues.set(interactionId, channelSelectValues);
+                log.info(
+                  `Stored ${Object.keys(channelSelectValues).length} channel select value set(s) for interaction`,
                 );
               }
 
@@ -347,15 +372,8 @@ import {
   isModalRoleSelectField,
   isModalChannelSelectField,
 } from "../../../types/discord/modal";
-import {
-  createStandardEmbed,
-  createSummaryEmbed,
-  createTipText,
-  TIP_BUTTON_TIMEOUT_MS,
-  TIP_DETAILS_BUTTON_ID,
-} from "../embedHelper";
+import { createStandardEmbed, createSummaryEmbed, prepareEmbedModalButtons } from "../embedHelper";
 import { buildDocsLinkRow } from "@/utils/discord/docsLinks";
-import { attachTextDisplayModalCollector, buildTextDisplayModalButton } from "@/utils/discord/textDisplayModal";
 
 const PROMPT_TIMEOUT = 60000; // 60 seconds
 const MODAL_DESCRIPTION_MAX_LENGTH = 99; // Discord modal description limit
@@ -449,6 +467,7 @@ export async function showRoutedRawModal(
 }
 
 export function takeRawModalSelectValue(interactionId: string, customId: string): string | undefined {
+  consumeStoredValue(modalStringSelectValues, interactionId, customId);
   const storedValues = modalSelectValues.get(interactionId);
   if (!storedValues) return undefined;
   const val = storedValues[customId];
@@ -459,6 +478,28 @@ export function takeRawModalSelectValue(interactionId: string, customId: string)
   return val;
 }
 
+function consumeStoredValue<T>(
+  store: Map<string, Record<string, T>>,
+  interactionId: string,
+  customId: string,
+): T | undefined {
+  const storedValues = store.get(interactionId);
+  if (!storedValues) return undefined;
+  const val = storedValues[customId];
+  delete storedValues[customId];
+  if (Object.keys(storedValues).length === 0) store.delete(interactionId);
+  return val;
+}
+
+/**
+ * Consumes every value submitted for one String Select.
+ * @returns `undefined` when the submission is missing or already consumed; `[]` when submitted empty.
+ */
+export function takeRawModalStringSelectValues(interactionId: string, customId: string): string[] | undefined {
+  consumeStoredValue(modalSelectValues, interactionId, customId);
+  return consumeStoredValue(modalStringSelectValues, interactionId, customId);
+}
+
 export function takeRawModalUserSelectValue(interactionId: string, customId: string): string | undefined {
   return takeRawModalSelectValue(interactionId, customId);
 }
@@ -467,8 +508,19 @@ export function takeRawModalRoleSelectValue(interactionId: string, customId: str
   return takeRawModalSelectValue(interactionId, customId);
 }
 
-export function takeRawModalChannelSelectValue(interactionId: string, customId: string): string | undefined {
-  return takeRawModalSelectValue(interactionId, customId);
+/**
+ * Consumes the channel IDs submitted for one Channel Select.
+ * @returns `undefined` when the submission is missing or already consumed; `[]` when submitted empty.
+ */
+export function takeRawModalChannelSelectValues(interactionId: string, customId: string): string[] | undefined {
+  const storedValues = modalChannelSelectValues.get(interactionId);
+  if (!storedValues) return undefined;
+  const val = storedValues[customId];
+  delete storedValues[customId];
+  if (Object.keys(storedValues).length === 0) {
+    modalChannelSelectValues.delete(interactionId);
+  }
+  return val;
 }
 
 export function takeRawModalCheckboxGroupValues(interactionId: string, customId: string): string[] | undefined {
@@ -982,30 +1034,15 @@ export async function replyInfoEmbed(
   }
 
   const embed = createStandardEmbed(locale, finalOptions);
-  const tipText = finalOptions.tipKeys?.length
-    ? createTipText(locale, finalOptions.tipKeys, finalOptions.tipVars)
-    : null;
-  const activeTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"))
-    : undefined;
-  const disabledTipRow = tipText
-    ? buildTextDisplayModalButton(TIP_DETAILS_BUTTON_ID, localizer(locale, "genai.tips.button"), true)
-    : undefined;
-  const components = activeTipRow ? [activeTipRow] : [];
+  const modalButtons = prepareEmbedModalButtons(locale, finalOptions, "Interaction error");
+  const { components } = modalButtons;
   const embeds = [embed];
 
-  const attachTipCollector = (message: Message): void => {
-    if (!tipText || !disabledTipRow) return;
-    attachTextDisplayModalCollector({
-      message,
-      customId: TIP_DETAILS_BUTTON_ID,
-      title: localizer(locale, "genai.tips.title"),
-      content: tipText,
-      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
-      logLabel: "Interaction error tips",
-      onExpire: async () => {
-        await interaction.webhook.editMessage(message.id, { embeds, components: [disabledTipRow] });
-      },
+  const attachModalCollectors = (message: Message): void => {
+    const { disabledRow } = modalButtons;
+    if (!disabledRow) return;
+    modalButtons.attach(message, async () => {
+      await interaction.webhook.editMessage(message.id, { embeds, components: [disabledRow] });
     });
   };
 
@@ -1034,7 +1071,7 @@ export async function replyInfoEmbed(
         files: finalOptions.files,
         flags: flags || MessageFlags.Ephemeral,
       });
-      attachTipCollector(message);
+      attachModalCollectors(message);
       return;
     } catch (webhookError) {
       log.error("webhook.send failed for raw-modal-acknowledged interaction:", webhookError);
@@ -1044,10 +1081,10 @@ export async function replyInfoEmbed(
   try {
     if (interaction.deferred || interaction.replied) {
       const message = await interaction.editReply({ embeds, components, files: finalOptions.files });
-      attachTipCollector(message);
+      attachModalCollectors(message);
     } else {
       await interaction.reply({ embeds, components, files: finalOptions.files, flags });
-      attachTipCollector(await interaction.fetchReply());
+      attachModalCollectors(await interaction.fetchReply());
     }
   } catch (error) {
     log.warn("Failed to show info embed via primary method:", error);
@@ -1066,7 +1103,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
-        attachTipCollector(message);
+        attachModalCollectors(message);
       } else if (errorMessage.includes("not been sent or deferred")) {
         // Interaction wasn't properly acknowledged - try reply without flags first
         log.info("Attempting basic reply due to no prior acknowledgment");
@@ -1076,7 +1113,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: MessageFlags.Ephemeral,
         });
-        attachTipCollector(await interaction.fetchReply());
+        attachModalCollectors(await interaction.fetchReply());
       } else {
         // Other error - try webhook.send as last resort (avoids followUp guard)
         log.info("Attempting webhook.send as last resort fallback");
@@ -1086,7 +1123,7 @@ export async function replyInfoEmbed(
           files: finalOptions.files,
           flags: flags || MessageFlags.Ephemeral,
         });
-        attachTipCollector(message);
+        attachModalCollectors(message);
       }
     } catch (fallbackError) {
       await log.error("All interaction methods failed for replyInfoEmbed:", error, {
@@ -3437,12 +3474,14 @@ export async function promptWithRawModal(
         } else if (isModalChannelSelectField(component)) {
           try {
             const cs = component as ModalChannelSelectField;
-            const storedValues = modalSelectValues.get(submitted.id);
-            const channelValue = storedValues?.[nonceCustomId(cs.customId)];
-            if (channelValue !== undefined) {
-              values[cs.customId] = channelValue;
-            } else {
+            const storedValues = modalChannelSelectValues.get(submitted.id);
+            const channelValues = storedValues?.[nonceCustomId(cs.customId)];
+            if (channelValues === undefined) {
               log.warn(`Could not extract channel select value for ${cs.customId}`);
+            } else if ((cs.maxValues ?? 1) > 1) {
+              multiValues[cs.customId] = channelValues;
+            } else if (channelValues[0] !== undefined) {
+              values[cs.customId] = channelValues[0];
             }
           } catch (error) {
             log.warn(`Failed to get channel select value for component: ${error}`);
@@ -3508,6 +3547,8 @@ export async function promptWithRawModal(
       modalSelectValues.delete(submitted.id);
       modalFileUploadValues.delete(submitted.id);
       modalCheckboxGroupValues.delete(submitted.id);
+      modalChannelSelectValues.delete(submitted.id);
+      modalStringSelectValues.delete(submitted.id);
       modalResolvedAttachments.delete(submitted.id);
 
       // Auto-defer reply if requested to prevent 3-second interaction timeout

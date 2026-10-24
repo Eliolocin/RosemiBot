@@ -52,6 +52,8 @@ Check wasEmptyStreamResponse()
 The orchestrator inspects the stop registry (`src/utils/discord/stream/stopRequests.ts`) before
 processing each chunk and again immediately after delivery writes. The post-write check resolves
 delivery caps (such as message limits) without awaiting another token from the provider.
+Every registered stop and follow-up emits a `stream_stop_requested` metric with the channel, type, and
+reason, so production logs at the `error` level still show which interrupts a turn received.
 
 Stop handling distinguishes these cases:
 

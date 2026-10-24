@@ -7,6 +7,7 @@ import type {
 } from "@/types/db/schema";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { hasConfiguredPersonalModel } from "@/utils/provider/personalProviderHelpers";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
 import { log } from "@/utils/misc/logger";
 
 export interface PersonalProviderOverlayResult {
@@ -88,7 +89,15 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     };
   }
 
-  const rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  const loaded = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  const eligible = await Promise.all(
+    loaded.map(async (row) => {
+      const option = findProviderOption(row.provider);
+      if (!option) return row;
+      return (await option.availability({ kind: "personal", ownerId: userId })).eligible ? row : null;
+    }),
+  );
+  const rows = eligible.filter((row): row is UserSavedProviderConfigRow => row !== null);
   if (rows.length === 0) {
     return {
       tomoriState,
@@ -98,8 +107,9 @@ export async function applyPersonalProviderSelectionsToTomoriState(
 
   const activeConfigs = collectActiveConfigs(rows);
   const nextConfig = { ...tomoriState.config };
+  const fallbackSettings = activeConfigs.text ? await llmProviderRepo.loadPersonalFallbackSettings(userId) : null;
 
-  if (activeConfigs.text) {
+  if (activeConfigs.text && fallbackSettings) {
     nextConfig.llm_id = activeConfigs.text.llm_id ?? nextConfig.llm_id;
     nextConfig.api_key = activeConfigs.text.api_key;
     nextConfig.key_version = activeConfigs.text.key_version ?? nextConfig.key_version;
@@ -109,13 +119,12 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     nextConfig.llm_frequency_penalty = activeConfigs.text.llm_frequency_penalty ?? nextConfig.llm_frequency_penalty;
     nextConfig.llm_presence_penalty = activeConfigs.text.llm_presence_penalty ?? nextConfig.llm_presence_penalty;
     nextConfig.llm_min_p = activeConfigs.text.llm_min_p ?? nextConfig.llm_min_p;
+    nextConfig.llm_max_output_tokens = activeConfigs.text.llm_max_output_tokens ?? nextConfig.llm_max_output_tokens;
     nextConfig.llm_disabled_params = activeConfigs.text.llm_disabled_params ?? nextConfig.llm_disabled_params;
     nextConfig.llm_logit_biases = activeConfigs.text.llm_logit_biases ?? nextConfig.llm_logit_biases;
     nextConfig.thinking_level = activeConfigs.text.thinking_level ?? nextConfig.thinking_level;
-    nextConfig.model_randomizer_enabled = activeConfigs.text.model_randomizer_enabled;
-    const personalFallbackIds = (activeConfigs.text.fallback_model_refs ?? [])
-      .filter((r) => r.type === "llm")
-      .map((r) => r.id);
+    nextConfig.model_randomizer_enabled = fallbackSettings.model_randomizer_enabled;
+    const personalFallbackIds = fallbackSettings.fallback_model_refs.filter((r) => r.type === "llm").map((r) => r.id);
     nextConfig.fallback_llm_ids = personalFallbackIds;
     // custom_endpoint_url/name/ctx are no longer on user saved configs; resolved from custom_endpoints at runtime
   }
@@ -161,8 +170,8 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     }
   }
 
-  const personalFallbackChain = activeConfigs.text
-    ? await resolvePersonalFallbackChain(activeConfigs.text.fallback_model_refs ?? [], userId)
+  const personalFallbackChain = fallbackSettings
+    ? await resolvePersonalFallbackChain(fallbackSettings.fallback_model_refs, userId)
     : null;
   const nextFallbackChain = activeConfigs.text
     ? personalFallbackChain && personalFallbackChain.length > 0

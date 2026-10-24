@@ -40,16 +40,19 @@ export function localizedCopy(locale: string, key: string, variables: CopyVariab
  * pin, which also lets an absence assertion cover every value of that placeholder.
  */
 export function localizedProse(locale: string, key: string, variables: CopyVariables = {}): RegExp {
-  const words = localizedCopy(locale, key, variables)
-    .trim()
-    .split(/\s+/)
-    .map((word) =>
-      word
-        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-        .replace(/\\\{\w+\\\}/g, ".+?")
-        .replace(/"/g, String.raw`\\?"`),
-    );
+  const words = localizedCopy(locale, key, variables).trim().split(/\s+/).map(proseWordPattern);
   return new RegExp(words.join(WRAPPED_WHITESPACE), "u");
+}
+
+/** Japanese and Chinese have no spaces, so `formatPanelProse` may wrap between any two of their characters. */
+const UNSPACED_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const OPTIONAL_WRAP = String.raw`(?:(?:\n|\\n)(?:(?:-# |> )(?:\s)*)?)?`;
+
+function proseWordPattern(word: string): string {
+  const parts = (word.match(/\{\w+\}|./gsu) ?? []).map((part) =>
+    /^\{\w+\}$/.test(part) ? ".+?" : part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/"/g, String.raw`\\?"`),
+  );
+  return parts.join(UNSPACED_SCRIPT.test(word) ? OPTIONAL_WRAP : "");
 }
 
 /**

@@ -71,7 +71,6 @@ type DiagnosticEvent =
       toolIteration?: number;
     }
   | { kind: "send_failed"; reason: "missing_access" | "missing_permissions" | "channel_gone" | "other" }
-  | { kind: "messages_purge_requested"; count: number }
   | { kind: "invocation_finished"; disposition: ChatAdmissionDisposition }
   | { kind: "uncaught_error" };
 

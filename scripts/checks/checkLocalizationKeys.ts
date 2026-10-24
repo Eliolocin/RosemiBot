@@ -277,7 +277,7 @@ function isValidLocalizationKey(key: string): boolean {
     // known panel list because "workspace|personal" alone also matches real keys such as
     // "commands.personal.memories.description", which would exempt the whole commands.personal namespace from
     // validation. A new panel surface that omits itself here fails loudly as a missing key.
-    /^(?:mcps|st-presets|providers|moderation|expressions|personal-memories|personal-config|server-config|memories|setup)\.(?:workspace|personal)\.[a-z0-9-]+\.[a-z0-9-]+$/,
+    /^(?:mcps|st-presets|providers|moderation|expressions|nudge-studio|personal-memories|personal-config|server-config|memories|setup)\.(?:workspace|personal)\.[a-z0-9-]+\.[a-z0-9-]+$/,
   ];
 
   for (const pattern of falsePositives) {

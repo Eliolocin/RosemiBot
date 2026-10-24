@@ -24,6 +24,10 @@ The returned `ProcessedChunk` carries one of four primary types:
 Any chunk variant may attach `thoughts` (`ThoughtLogEntry[]`) for chain-of-thought capture and
 `servingProvider` to track upstream backends on routed endpoints.
 
+Token usage can arrive in a trailing chunk with empty `choices`. OpenRouter preserves its metadata
+on an empty text chunk, so the orchestrator carries the counts into `StreamResult.usage` for
+statistics and quotas. Reported `usage.cost` is preserved alongside the token counts.
+
 ## Reasoning extraction and spill guards
 
 Reasoning content travels through dedicated fields or in-band tags:
@@ -101,5 +105,5 @@ or `"personal"`) governs the troubleshooting tips displayed in error embeds:
 - `src/providers/utils/toolCallArguments.ts`: `parseAccumulatedToolArguments` and truncation flags.
 - `src/utils/text/jsonRepair.ts`: `tryRepairIncompleteJson`.
 - `src/utils/provider/providerErrorClassification.ts`: error classification helpers.
-- `src/utils/discord/stream/errorUi.ts`: error embed presentation and credential-scoped tips.
+- `src/utils/discord/stream/errorUi.ts`: error embed presentation, credential-scoped tips, and the footer naming whether the provider or TomoriBot failed.
 - `src/providers/custom/customStreamAdapter.ts`: verbatim tool parsing integration.

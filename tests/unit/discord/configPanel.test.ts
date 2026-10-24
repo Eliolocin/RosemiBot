@@ -337,6 +337,7 @@ describe("config panel shell", () => {
       "available-tools",
       "context-additions",
       "response-drafting",
+      "natural-nudges",
       "mcp-servers",
       "sillytavern-presets",
       "nsfw-jailbreaks",
@@ -437,6 +438,7 @@ describe("config panel shell", () => {
       "memories",
       "naming",
       "sprites",
+      "nudges",
     ]);
   });
 
@@ -467,6 +469,7 @@ describe("config panel shell", () => {
       "sprites",
       "appearance",
       "voice",
+      "nudges",
       "overrides",
       "advanced",
     ]);
@@ -518,7 +521,7 @@ describe("config persona selector", () => {
       (component) => component.type === STRING_SELECT && component.options?.some((option) => option.value === "56"),
     );
     expect(personaSelect?.customId).toBe(
-      buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 56 }),
+      buildConfigRouteId({ action: "persona-select", locale: "en-US", personaId: 56, page: "general" }),
     );
     expect(personaSelect?.options?.map((option) => option.value)).toEqual(["55", "56"]);
   });
@@ -2066,13 +2069,13 @@ describe("config preset resync panels", () => {
   it("renders all persona states and confirmation within Discord limits across locales", () => {
     expectForEveryLocale((locale) => {
       for (const isAlter of [false, true]) {
-        for (const state of ["custom", "fork", "pointer"] as const) {
+        for (const state of ["custom", "fork", "pointer", "override"] as const) {
           for (const stale of [false, true]) {
             const persona = makePersona({
               persona_id: 55,
               persona_nickname: "M".repeat(32),
               is_alter: isAlter,
-              is_pointer: state === "pointer",
+              is_pointer: state === "pointer" || state === "override",
               preset_lineage_id: state === "custom" ? null : 4,
               preset_language: state === "custom" ? null : "en-US",
               attribute_list: Array.from({ length: 30 }, (_, index) => `Attribute ${index}`),
@@ -2084,6 +2087,10 @@ describe("config preset resync panels", () => {
               personas: [persona],
               readStatus: stale ? "stale" : "fresh",
               selectedAttributeIndex: 0,
+              naturalNudges:
+                state === "override"
+                  ? { personaConfig: { persona_id: 55, talkativeness: 2, interests: [], has_override: true } }
+                  : undefined,
               receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
             });
             const limits = validateComponentsV2MessageLimits(payload);
@@ -2113,6 +2120,7 @@ describe("config preset resync panels", () => {
                     promptChanged: true,
                     customAvatar: true,
                     addedSprites: 99,
+                    nudgesChanged: true,
                   },
                 },
                 receipt: { tone: "warning", heading: "Saved", detail: "Avatar pending." },
@@ -2123,6 +2131,7 @@ describe("config preset resync panels", () => {
               for (const [key, visible] of [
                 ["commands.config.panel.resync_main_avatar_detail", !isAlter],
                 ["commands.config.panel.resync_avatar_diff", isAlter],
+                ["commands.config.panel.resync_nudges_diff", true],
               ] as const) {
                 const copy = localizedProse(hasLocaleKey(locale, key) ? locale : "en-US", key);
                 if (visible) expect(rendered).toMatch(copy);

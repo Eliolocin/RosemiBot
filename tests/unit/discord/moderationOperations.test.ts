@@ -31,7 +31,8 @@ import {
   updateMemberPermissions,
   updateQuotaSettings,
   updateServerModelAccess,
-  upsertWhitelistChannel,
+  upsertWhitelistChannels,
+  type WhitelistChannelOperationsDependencies,
   type ModerationDataDependencies,
   type ModerationMemberAccessDataDependencies,
   type ModerationUserBlacklistAddDataDependencies,
@@ -1118,194 +1119,165 @@ describe("loadModerationWhitelistChannelAddData", () => {
   });
 });
 
-describe("upsertWhitelistChannel", () => {
+describe("upsertWhitelistChannels", () => {
+  function recordingDeps(log: string[], existing: ChannelWhitelistRow[] = []): WhitelistChannelOperationsDependencies {
+    return {
+      getAllWhitelistChannels: async () => existing,
+      upsertChannelWhitelists: async (serverId, writes) => {
+        for (const write of writes) {
+          log.push(`upsert:${serverId}:${write.channelId}:${write.cooldownType}:${write.cooldownLength}`);
+        }
+      },
+      invalidateCache: (guildId) => {
+        log.push(`invalidate:${guildId}`);
+      },
+    };
+  }
+
   it("stores null/null (inherited) when both cooldown fields are omitted", async () => {
     const log: string[] = [];
-    const result = await upsertWhitelistChannel(
+    const result = await upsertWhitelistChannels(
       {
         guildId: "1001",
         serverId: 10,
-        channelId: "987654321",
+        channelIds: ["987654321"],
         requestedCooldownType: null,
         requestedCooldownLength: null,
       },
-      {
-        getChannelWhitelist: async () => null,
-        upsertChannelWhitelist: async (serverId, channelId, type, length) => {
-          log.push(`upsert:${serverId}:${channelId}:${type}:${length}`);
-          return {
-            server_id: serverId,
-            channel_disc_id: channelId,
-            cooldown_type: type,
-            cooldown_length: length,
-          } as ChannelWhitelistRow;
-        },
-        invalidateCache: (guildId) => {
-          log.push(`invalidate:${guildId}`);
-        },
-      },
+      recordingDeps(log),
     );
 
     expect(result).toEqual({
       status: "success",
-      channelId: "987654321",
-      cooldownType: null,
-      cooldownLength: null,
-      isUpdate: false,
+      written: [{ channelId: "987654321", cooldownType: null, cooldownLength: null }],
+      unchangedChannelIds: [],
     });
     expect(log).toEqual(["upsert:10:987654321:null:null", "invalidate:1001"]);
   });
 
   it("resolves fallback chain when only cooldown length is provided", async () => {
     const log: string[] = [];
-    const result = await upsertWhitelistChannel(
+    const result = await upsertWhitelistChannels(
       {
         guildId: "1001",
         serverId: 10,
-        channelId: "987654321",
+        channelIds: ["987654321"],
         requestedCooldownLength: 20,
         serverConfig: {
           cooldown_type: CooldownType.SERVER_WIDE,
           cooldown_length: 10,
         },
       },
-      {
-        getChannelWhitelist: async () => null,
-        upsertChannelWhitelist: async (serverId, channelId, type, length) => {
-          log.push(`upsert:${serverId}:${channelId}:${type}:${length}`);
-          return {
-            server_id: serverId,
-            channel_disc_id: channelId,
-            cooldown_type: type,
-            cooldown_length: length,
-          } as ChannelWhitelistRow;
-        },
-        invalidateCache: (guildId) => {
-          log.push(`invalidate:${guildId}`);
-        },
-      },
+      recordingDeps(log),
     );
 
-    expect(result).toEqual({
-      status: "success",
-      channelId: "987654321",
-      cooldownType: CooldownType.SERVER_WIDE,
-      cooldownLength: 20,
-      isUpdate: false,
-    });
+    expect(result.status).toBe("success");
     expect(log).toEqual(["upsert:10:987654321:3:20", "invalidate:1001"]);
   });
 
-  it("uses existing channel override as fallback before server config", async () => {
+  it("uses each channel's existing override as fallback before server config", async () => {
     const log: string[] = [];
-    const existing: ChannelWhitelistRow = {
-      server_id: 10,
-      channel_disc_id: "987654321",
-      cooldown_type: CooldownType.PER_USER,
-      cooldown_length: 30,
-    } as ChannelWhitelistRow;
+    const existing = [
+      {
+        server_id: 10,
+        channel_disc_id: "987654321",
+        cooldown_type: CooldownType.PER_USER,
+        cooldown_length: 30,
+      } as ChannelWhitelistRow,
+    ];
 
-    const result = await upsertWhitelistChannel(
+    await upsertWhitelistChannels(
       {
         guildId: "1001",
         serverId: 10,
-        channelId: "987654321",
+        channelIds: ["987654321", "123456789"],
         requestedCooldownLength: 45,
         serverConfig: {
           cooldown_type: CooldownType.SERVER_WIDE,
           cooldown_length: 10,
         },
       },
+      recordingDeps(log, existing),
+    );
+
+    expect(log).toEqual(["upsert:10:987654321:1:45", "upsert:10:123456789:3:45", "invalidate:1001"]);
+  });
+
+  it("writes only the channels whose stored override differs", async () => {
+    const log: string[] = [];
+    const existing = [
       {
-        getChannelWhitelist: async () => existing,
-        upsertChannelWhitelist: async (serverId, channelId, type, length) => {
-          log.push(`upsert:${serverId}:${channelId}:${type}:${length}`);
-          return {
-            server_id: serverId,
-            channel_disc_id: channelId,
-            cooldown_type: type,
-            cooldown_length: length,
-          } as ChannelWhitelistRow;
-        },
-        invalidateCache: (guildId) => {
-          log.push(`invalidate:${guildId}`);
-        },
+        server_id: 10,
+        channel_disc_id: "987654321",
+        cooldown_type: CooldownType.PER_CHANNEL,
+        cooldown_length: 15,
+      } as ChannelWhitelistRow,
+    ];
+
+    const result = await upsertWhitelistChannels(
+      {
+        guildId: "1001",
+        serverId: 10,
+        channelIds: ["987654321", "123456789"],
+        requestedCooldownType: CooldownType.PER_CHANNEL,
+        requestedCooldownLength: 15,
       },
+      recordingDeps(log, existing),
     );
 
     expect(result).toEqual({
       status: "success",
-      channelId: "987654321",
-      cooldownType: CooldownType.PER_USER,
-      cooldownLength: 45,
-      isUpdate: true,
+      written: [{ channelId: "123456789", cooldownType: CooldownType.PER_CHANNEL, cooldownLength: 15 }],
+      unchangedChannelIds: ["987654321"],
     });
-    expect(log).toEqual(["upsert:10:987654321:1:45", "invalidate:1001"]);
+    expect(log).toEqual(["upsert:10:123456789:2:15", "invalidate:1001"]);
   });
 
-  it("returns unchanged without writing to DB or invalidating cache when entry matches exactly", async () => {
+  it("returns unchanged without writing to DB or invalidating cache when every entry matches exactly", async () => {
     const log: string[] = [];
-    const existing: ChannelWhitelistRow = {
-      server_id: 10,
-      channel_disc_id: "987654321",
-      cooldown_type: CooldownType.PER_CHANNEL,
-      cooldown_length: 15,
-    } as ChannelWhitelistRow;
+    const existing = [
+      {
+        server_id: 10,
+        channel_disc_id: "987654321",
+        cooldown_type: CooldownType.PER_CHANNEL,
+        cooldown_length: 15,
+      } as ChannelWhitelistRow,
+    ];
 
-    const result = await upsertWhitelistChannel(
+    const result = await upsertWhitelistChannels(
       {
         guildId: "1001",
         serverId: 10,
-        channelId: "987654321",
+        channelIds: ["987654321"],
         requestedCooldownType: CooldownType.PER_CHANNEL,
         requestedCooldownLength: 15,
       },
-      {
-        getChannelWhitelist: async () => existing,
-        upsertChannelWhitelist: async () => {
-          log.push("upsert");
-          return existing;
-        },
-        invalidateCache: () => {
-          log.push("invalidate");
-        },
-      },
+      recordingDeps(log, existing),
     );
 
-    expect(result).toEqual({
-      status: "unchanged",
-      channelId: "987654321",
-      cooldownType: CooldownType.PER_CHANNEL,
-      cooldownLength: 15,
-    });
+    expect(result).toEqual({ status: "unchanged", unchangedChannelIds: ["987654321"] });
     expect(log).toEqual([]);
   });
 
-  it("returns failure when repository throws", async () => {
+  it("returns failure without invalidating when the repository throws", async () => {
     const log: string[] = [];
-    const result = await upsertWhitelistChannel(
+    const result = await upsertWhitelistChannels(
       {
         guildId: "1001",
         serverId: 10,
-        channelId: "987654321",
+        channelIds: ["987654321"],
         requestedCooldownType: CooldownType.OFF,
         requestedCooldownLength: 0,
       },
       {
-        getChannelWhitelist: async () => null,
-        upsertChannelWhitelist: async () => {
+        ...recordingDeps(log),
+        upsertChannelWhitelists: async () => {
           throw new Error("DB write error");
-        },
-        invalidateCache: () => {
-          log.push("invalidate");
         },
       },
     );
 
-    expect(result).toEqual({
-      status: "failure",
-      channelId: "987654321",
-    });
+    expect(result).toEqual({ status: "failure" });
     expect(log).toEqual([]);
   });
 });

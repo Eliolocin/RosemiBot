@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { GoogleGenAI, type CountTokensParameters } from "@google/genai";
 import type { ChatInputCommandInteraction, Client, SlashCommandSubcommandBuilder } from "discord.js";
@@ -23,7 +29,13 @@ import { resolveModelPricing } from "@/utils/provider/modelPricing";
 import { applyProviderContextTruncation } from "@/utils/provider/contextBudget";
 import { normalizeMessageFetchLimit } from "@/utils/discord/messageFetchLimit";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import { charsToTokensJson, charsToTokensText, estimateContextItemsTokens } from "@/utils/text/tokenEstimate";
+import {
+  charsToTokensJson,
+  charsToTokensText,
+  estimateContextItemsTokens,
+  normalizeProviderUsage,
+  type TokenUsage,
+} from "@/utils/text/tokenEstimate";
 import { getCachedBlacklistStatus, getCachedPrivacyLevel } from "@/utils/cache/userCache";
 import { GoogleProvider, type GoogleProviderConfig } from "@/providers/google/googleProvider";
 import { GoogleStreamAdapter } from "@/providers/google/googleStreamAdapter";
@@ -51,7 +63,9 @@ import {
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAuthor";
 import { llmSections } from "@/db/seed/catalog/models";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 // Char-per-token ratios and the primitive estimators live in @/utils/text/tokenEstimate
 // so this command and the post-turn stat recorder share one source of truth. The
@@ -1065,6 +1079,7 @@ export async function measureOpenRouterInputTokens(
   tomoriState: TomoriState,
   apiKey: string,
   contextItems: StructuredContextItem[],
+  onUsage?: (usage: TokenUsage) => void,
 ): Promise<LiveCostMeasurement> {
   const provider = new OpenrouterProvider();
   const providerConfig = (await provider.createConfig(tomoriState, apiKey)) as OpenrouterProviderConfig;
@@ -1076,7 +1091,7 @@ export async function measureOpenRouterInputTokens(
   );
   const requestBody = buildOpenRouterProbeRequest(providerConfig, messages);
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -1089,10 +1104,14 @@ export async function measureOpenRouterInputTokens(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenRouter probe failed (${response.status}): ${errorText.slice(0, 400)}`);
+    throw new Error(`OpenRouter probe failed (${response.status}): ${errorText.slice(0, 400)}`, {
+      cause: readOpenRouterLimitError(response.status, response.headers, errorText) ?? undefined,
+    });
   }
 
   const data = (await response.json()) as OpenRouterProbeResponse;
+  const reportedUsage = normalizeProviderUsage(data.usage);
+  if (reportedUsage) onUsage?.(reportedUsage);
   const usagePromptTokens = parseOpenRouterPromptTokens(data.usage);
   const nativePromptTokens = await fetchOpenRouterNativePromptTokens(data.id, apiKey);
   const measuredPromptTokens = nativePromptTokens ?? usagePromptTokens;
@@ -1327,7 +1346,12 @@ async function measureAnthropicInputTokens(
 
 const liveTokenCounters: Record<
   LiveProvider,
-  (tomoriState: TomoriState, apiKey: string, contextItems: StructuredContextItem[]) => Promise<LiveCostMeasurement>
+  (
+    tomoriState: TomoriState,
+    apiKey: string,
+    contextItems: StructuredContextItem[],
+    onUsage?: (usage: TokenUsage) => void,
+  ) => Promise<LiveCostMeasurement>
 > = {
   google: measureGoogleInputTokens,
   vertex: measureVertexInputTokens,
@@ -1700,10 +1724,19 @@ export async function execute(
     }
 
     let decryptedApiKey = "";
+    let usageContext: ProviderUsageContext | undefined;
     try {
       const keyVersion = tomoriState.config.key_version || 1;
       decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
     } catch (decryptError) {
+      const denied = findProviderRequestDeniedError(decryptError, usageContext);
+      if (denied) {
+        await replyInfoEmbed(interaction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
       await log.error(
         "/tool estimate cost failed to decrypt API key for live counting",
         decryptError as Error,
@@ -1737,9 +1770,22 @@ export async function execute(
     const sampleOutputTokens = resolveSampleOutputTokens(tomoriState, personaReplyCharLengths);
 
     try {
-      const measurement = await liveTokenCounters[provider](tomoriState, decryptedApiKey, contextItems);
+      const measurement = await liveTokenCounters[provider](
+        tomoriState,
+        decryptedApiKey,
+        contextItems,
+        createProviderUsageRecorder(usageContext, tomoriState.llm.llm_codename),
+      );
       await sendLiveEstimateEmbed(interaction, locale, measurement, sampleOutputTokens);
     } catch (countError) {
+      const denied = findProviderRequestDeniedError(countError, usageContext);
+      if (denied) {
+        await replyInfoEmbed(interaction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
       await log.error(
         "/tool estimate cost live provider token counting failed; reporting live-count unavailability",
         countError as Error,

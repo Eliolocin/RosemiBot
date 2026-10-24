@@ -45,6 +45,7 @@ export type StreamSendPayload = {
   /** The persona's base appearance under an identity override, which is not a copied identity. */
   isNeutralAppearance?: boolean;
   allowedMentions?: {
+    users?: string[];
     parse?: Array<"users" | "roles" | "everyone">;
     repliedUser?: boolean;
   };
@@ -257,13 +258,18 @@ export class StreamUiUpdater {
     const strictUserImpersonation = isUserImpersonationStreamContext(context);
     let replyNoticeMessage: Message | null = null;
     const threadId = resolveWebhookThreadId(context.channel);
-    const webhookAllowedMentions = payload.allowedMentions ?? {
-      parse: ["users", "roles"] as Array<"users" | "roles">,
-      repliedUser: false,
-    };
-    const regularAllowedMentions = payload.allowedMentions ?? {
-      repliedUser: false,
-    };
+    const restrictedMentions = context.mentionableUserIds
+      ? { users: [...context.mentionableUserIds], parse: [], repliedUser: false }
+      : null;
+    const webhookAllowedMentions = payload.allowedMentions ??
+      restrictedMentions ?? {
+        parse: ["users", "roles"] as Array<"users" | "roles">,
+        repliedUser: false,
+      };
+    const regularAllowedMentions = payload.allowedMentions ??
+      restrictedMentions ?? {
+        repliedUser: false,
+      };
 
     if (context.abortSignal?.aborted || this.deps.hasStopRequest(context.channel.id)) {
       log.info("Stream Send: Stop request detected before Discord API call, skipping message send");
@@ -561,6 +567,9 @@ export class StreamUiUpdater {
     if (!state.firstReplyUrl && sentMessage?.url) {
       state.firstReplyUrl = sentMessage.url;
     }
+    if (!state.firstMessageId && sentMessage) {
+      state.firstMessageId = sentMessage.id;
+    }
 
     // Remember what Discord will group against, so artifacts that follow (expressions, the
     // "Fallback Used" notice) can reuse the same author instead of splitting off under a
@@ -613,9 +622,8 @@ export class StreamUiUpdater {
     if (textForState) {
       state.accumulatedText += textForState;
     }
-    // Record the committed message so a later fallback attempt can delete this attempt's partial
-    // output if it turns out to be superseded (see runGenerationTurn). The array is a shared
-    // reference off StreamingContext, so appends survive an abandoned (timed-out) stream promise.
+    // The array is a shared reference off StreamingContext, so appends survive an abandoned
+    // (timed-out) stream promise.
     if (context.deliveredMessageRefs && sentMessage) {
       context.deliveredMessageRefs.push({
         messageId: sentMessage.id,

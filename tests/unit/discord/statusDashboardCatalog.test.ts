@@ -58,6 +58,24 @@ describe("status dashboard route catalog", () => {
     });
   });
 
+  it("parses Persona routes with and without the carried page index", () => {
+    for (const [customId, expected] of [
+      ["status:v1:persona-select:en-US:42", { action: "persona-select", locale: "en-US", personaId: 42 }],
+      ["status:v1:persona-select:en-US:42:3", { action: "persona-select", locale: "en-US", personaId: 42, page: 3 }],
+      ["status:v1:persona-page:en-US:42:25", { action: "persona-page", locale: "en-US", personaId: 42, start: 25 }],
+      [
+        "status:v1:persona-page:en-US:42:25:3",
+        { action: "persona-page", locale: "en-US", personaId: 42, start: 25, page: 3 },
+      ],
+      ["status:v1:persona-select:en-US:42:-1", null],
+    ] as const) {
+      const parsed = parseInteractionRoute(customId);
+      expect(parsed).not.toBeNull();
+      if (!parsed) continue;
+      expect(parseStatusDashboardRoute(parsed)).toEqual(expected);
+    }
+  });
+
   it("rejects unknown fields and parses selected page values separately", () => {
     const unknownCategory = parseInteractionRoute("status:v1:category:en-US:unknown");
     const extraField = parseInteractionRoute("status:v1:category:en-US:models:extra");
@@ -136,13 +154,13 @@ describe("status dashboard route catalog", () => {
     };
     const range = rowComponents(components[3])[2] as { customId: string };
 
-    expect(selector.customId).toBe(buildStatusPersonaSelectorId("en-US", 40));
+    expect(selector.customId).toBe(buildStatusPersonaSelectorId("en-US", 40, 0));
     expect(selector.options).toHaveLength(25);
     expect(selector.options.some((option) => option.value === "40")).toBe(false);
     expect(selector.options.some((option) => option.default)).toBe(false);
     expect(selector.placeholder).toContain("Persona 40");
     expect(range.customId).toBe(
-      buildStatusDashboardRouteId({ action: "persona-page", locale: "en-US", personaId: 40, start: 25 }),
+      buildStatusDashboardRouteId({ action: "persona-page", locale: "en-US", personaId: 40, start: 25, page: 0 }),
     );
     expect(JSON.stringify(payload)).not.toContain("status-test");
   });

@@ -3,14 +3,13 @@ import type { FallbackEntry, LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import type { LLMProvider, ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { ProviderError } from "@/types/stream/interfaces";
-import type { DeliveredStreamMessage, ToolContext } from "@/types/tool/interfaces";
+import type { ToolContext } from "@/types/tool/interfaces";
 import { getCachedChannelLlm } from "@/utils/cache/channelLlmCache";
 import { llmProviderRepo } from "@/utils/db/repositories";
 import { type FallbackNoticeAttempt, sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import type { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { classifySendFailure } from "@/utils/discord/stream/sendFailureCache";
-import { deleteSupersededStreamMessages } from "@/utils/discord/stream/supersededMessageCleanup";
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { getProviderForTomori, ProviderFactory } from "@/utils/provider/providerFactory";
@@ -42,7 +41,14 @@ import {
 } from "@/utils/chat/diagnosticTimeline";
 import { applyAssistantPrefill } from "@/utils/chat/assistantPrefill";
 import type { ChatResponseSink, ChatTurnContext, GenerationTurnResult } from "@/utils/chat/types";
-import { providerIsApiFamily, runToolLoop, sendStreamTimeoutNotice } from "@/utils/chat/toolLoop";
+import {
+  carryDeliveredOutput,
+  type DeliveredTurnOutput,
+  prependDeliveredOutput,
+  providerIsApiFamily,
+  runToolLoop,
+  sendStreamTimeoutNotice,
+} from "@/utils/chat/toolLoop";
 import {
   VERBATIM_TOOL_CALLING_CONTEXT_DEPTH,
   VERBATIM_TOOL_CALLING_NUDGE,
@@ -118,10 +124,10 @@ async function runGenerationAttempts(
     const failures: FallbackNoticeAttempt[] = [];
     const baseContextItems = context.contextItems;
 
-    // Sink the streaming layer appends every committed message to. Initialized here (once per turn)
-    // so a superseded attempt's partial output can be deleted when a later attempt supersedes it.
+    // Initialized once per turn so expression delivery sees text any attempt of this turn posted.
     context.streamingContext.deliveredMessageRefs ??= [];
-    const deliveredMessageRefs = context.streamingContext.deliveredMessageRefs;
+    const carried: DeliveredTurnOutput = { text: "", details: "", streamResults: [] };
+    let supersededResult: GenerationTurnResult | undefined;
     // Index the server route's attempts start at, null until that route contributes any. Only the
     // receipt needs it: a success on the server route of a personal turn has an opt-out to name.
     let serverRouteStartIndex: number | null = null;
@@ -140,29 +146,12 @@ async function runGenerationAttempts(
       // planned attempt keeps its errors suppressed while a later model may yet answer.
       const hasPendingModelFallback = index < attempts.length - 1 || plan.extendWithServerRoute !== null;
       context.tomoriState = attempt.tomoriState;
-      context.contextItems = await prepareProviderContextItems({
+      const attemptContextItems = await prepareProviderContextItems({
         contextItems: baseContextItems,
         userId: context.streamingContext.triggererUserId,
         tomoriState: attempt.tomoriState,
         deliberateToolAllowedNames: context.streamingContext.deliberateToolAllowedNames,
-        serverDiscId: context.serverDiscId,
-        emptyResponseFinishReason: context.turn.lockedTurn.admission.incoming.emptyResponseFinishReason,
-        retryCount: context.turn.lockedTurn.admission.incoming.retryCount,
       });
-      const prefilled = await applyAssistantPrefill({
-        contextItems: context.contextItems,
-        prefill: context.assistantPrefill,
-        tomoriState: attempt.tomoriState,
-        forceReason: context.streamingContext.forceReason,
-      });
-      context.contextItems = prefilled.contextItems;
-      context.streamingContext.outputPrefill = prefilled.outputPrefill;
-      recordChatProviderContext(
-        index + 1,
-        context.contextItems.flatMap((item) =>
-          item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item.messageId ? [item.messageId] : [],
-        ),
-      );
 
       // Key rotation inner loop: try multiple keys for this attempt before giving up.
       let rotationKeyId = attempt.rotationKeyId;
@@ -170,9 +159,6 @@ async function runGenerationAttempts(
       let result!: GenerationTurnResult;
       let keyAttemptCount = 0;
       context.streamingContext.rotationKeyRetriesUsed = false;
-      // Index into deliveredMessageRefs marking where the current runToolLoop invocation's
-      // committed messages begin, so a superseded invocation's partials can be sliced out.
-      let invocationStart = deliveredMessageRefs.length;
 
       while (true) {
         keyAttemptCount++;
@@ -188,8 +174,39 @@ async function runGenerationAttempts(
         setStreamUserErrorSuppression(context, hasFallbackKey || hasPendingModelFallback);
         context.streamingContext.forceModelFallback = hasPendingModelFallback;
 
-        if (context.responseReview) context.responseReview.pending = [];
-        invocationStart = deliveredMessageRefs.length;
+        if (context.responseReview) {
+          context.responseReview.pending = [];
+        } else if (supersededResult) {
+          carryDeliveredOutput(carried, supersededResult);
+        }
+        supersededResult = undefined;
+        // Rebuilt per key attempt because a key-rotation retry continues what the failed key posted.
+        const prefilled = await applyAssistantPrefill({
+          contextItems: attemptContextItems,
+          prefill: carried.text ? { text: carried.text, source: "continuation" } : context.assistantPrefill,
+          tomoriState: attempt.tomoriState,
+          forceReason: context.streamingContext.forceReason,
+        });
+        // applyAssistantPrefill only appends, so this is exactly the prefill turn or directive.
+        const prefillItems = prefilled.contextItems.slice(attemptContextItems.length);
+        context.contextItems = [
+          ...(await fitProviderContextBudget({
+            contextItems: attemptContextItems,
+            reservedTailItems: prefillItems,
+            tomoriState: attempt.tomoriState,
+            serverDiscId: context.serverDiscId,
+            emptyResponseFinishReason: context.turn.lockedTurn.admission.incoming.emptyResponseFinishReason,
+            retryCount: context.turn.lockedTurn.admission.incoming.retryCount,
+          })),
+          ...prefillItems,
+        ];
+        context.streamingContext.outputPrefill = prefilled.outputPrefill;
+        recordChatProviderContext(
+          index + 1,
+          context.contextItems.flatMap((item) =>
+            item.metadataTag === ContextItemTag.DIALOGUE_HISTORY && item.messageId ? [item.messageId] : [],
+          ),
+        );
         result = await runWithChatDiagnosticStage({ attempt: index + 1, keyAttempt: keyAttemptCount }, () =>
           runToolLoop({
             context,
@@ -198,6 +215,10 @@ async function runGenerationAttempts(
             tomoriState: attempt.tomoriState,
           }),
         );
+        supersededResult = result;
+        if (carried.text && result.status === "empty_response" && !isRetryableEmptyResponse(result)) {
+          result = { ...result, status: "completed" };
+        }
 
         if (result.status !== "error") {
           // Don't credit a timed-out key as successful : a timeout is not a clean completion.
@@ -218,9 +239,6 @@ async function runGenerationAttempts(
         const nextKey = await selectApiKey(attempt.tomoriState, [...Array.from(excludedKeyIds)]);
         if (!nextKey) break;
 
-        // A key-rotation retry supersedes this invocation: delete its partial output before the
-        // retry so the eventual response is not stacked on top of a truncated first attempt.
-        await purgeSupersededDeliveries(context, deliveredMessageRefs, invocationStart);
         attempt.providerConfig.apiKey = nextKey.apiKey;
         rotationKeyId = nextKey.rotationKeyId;
         log.warn(
@@ -288,14 +306,13 @@ async function runGenerationAttempts(
         if (result.status === "error") {
           await emitStreamErrors(responseSink, result.streamResults);
         }
-        if (context.responseReview) result.usageEntries = context.responseReview.usage;
-        await responseSink.finalize(result);
-        return result;
+        // After the errors are emitted, because a carried attempt's error was suppressed for the
+        // retry and must not surface as a second embed.
+        const finalResult = prependDeliveredOutput(result, context, carried);
+        if (context.responseReview) finalResult.usageEntries = context.responseReview.usage;
+        await responseSink.finalize(finalResult);
+        return finalResult;
       }
-
-      // A model fallback supersedes this attempt: delete the partial output it committed (e.g. text
-      // flushed before an SDK-call timeout) so only the fallback model's response remains visible.
-      await purgeSupersededDeliveries(context, deliveredMessageRefs, invocationStart);
 
       failures.push({
         modelCodename: attempt.tomoriState.llm.llm_codename,
@@ -330,36 +347,6 @@ async function runGenerationAttempts(
 
 function setStreamUserErrorSuppression(context: ChatTurnContext, temporarySuppressed: boolean): void {
   context.streamingContext.suppressUserErrors = temporarySuppressed || !context.shouldSurfaceUserErrors;
-}
-
-/**
- * Deletes and forgets the messages a superseded generation invocation committed to Discord.
- *
- * Slices off every delivered-message ref from `fromIndex` onward (this invocation's output plus any
- * stragglers an abandoned timeout stream flushed after it), removing them from the shared sink so
- * later attempts start clean, then best-effort deletes them from the channel. Called at each point
- * `runGenerationTurn` decides not to keep an invocation's result (key-rotation retry, model
- * fallback), so only the surviving attempt's messages remain visible.
- *
- * @param context - Active chat turn context (supplies the channel and persona webhook).
- * @param deliveredMessageRefs - The shared delivered-message sink for this turn.
- * @param fromIndex - First index belonging to the superseded invocation.
- */
-async function purgeSupersededDeliveries(
-  context: ChatTurnContext,
-  deliveredMessageRefs: DeliveredStreamMessage[],
-  fromIndex: number,
-): Promise<void> {
-  if (deliveredMessageRefs.length <= fromIndex) {
-    return;
-  }
-  const superseded = deliveredMessageRefs.splice(fromIndex);
-  recordChatDiagnostic({ kind: "messages_purge_requested", count: superseded.length });
-  log.info(`Deleting ${superseded.length} superseded partial message(s) from a failed generation attempt.`);
-  await deleteSupersededStreamMessages(superseded, {
-    channel: context.channel,
-    webhook: context.responseTarget?.webhook,
-  });
 }
 
 async function buildGenerationPlan(context: ChatTurnContext): Promise<GenerationPlan> {
@@ -628,6 +615,20 @@ function isUnreachableDestinationResult(result: GenerationTurnResult): boolean {
       streamResult.stopReason === "missing_access"
     );
   });
+}
+
+/**
+ * Whether an empty continuation is a failure the turn-level retry repairs (output-token cap,
+ * speaker-guard discard, held NovelAI fragment) rather than the model having nothing to add.
+ */
+function isRetryableEmptyResponse(result: GenerationTurnResult): boolean {
+  const streamResult = result.streamResults.at(-1);
+  const data = streamResult?.data as { finishReason?: unknown; emptyResponseReason?: unknown } | undefined;
+  return (
+    Boolean(streamResult?.naiContinuationPrefill) ||
+    data?.finishReason === "length" ||
+    data?.emptyResponseReason === "speaker_guard"
+  );
 }
 
 async function emitStreamErrors(responseSink: ChatResponseSink, streamResults: StreamResult[]): Promise<void> {
@@ -939,9 +940,6 @@ async function prepareProviderContextItems(args: {
   contextItems: StructuredContextItem[];
   tomoriState: TomoriState;
   deliberateToolAllowedNames: string[] | undefined;
-  serverDiscId: string;
-  emptyResponseFinishReason: string | null | undefined;
-  retryCount: number;
 }): Promise<StructuredContextItem[]> {
   let contextItems = await resolveMediaForModel(args.contextItems, args.tomoriState, args.deliberateToolAllowedNames);
 
@@ -976,8 +974,28 @@ async function prepareProviderContextItems(args: {
     // verbatim parser to execute whatever the model then writes into chat.
     contextItems = stripAllVerbatimItems(contextItems);
   }
+  return contextItems;
+}
 
-  contextItems = await applyProviderContextTruncation(contextItems, args.tomoriState, args.serverDiscId);
+/**
+ * Trims history to the attempt's budget with the prefill's tokens reserved. The prefill is left out
+ * of the list itself because an instruction-mode directive is a dialogue user turn, which the
+ * truncator would protect as the newest request in place of the real trigger.
+ */
+async function fitProviderContextBudget(args: {
+  contextItems: StructuredContextItem[];
+  reservedTailItems: StructuredContextItem[];
+  tomoriState: TomoriState;
+  serverDiscId: string;
+  emptyResponseFinishReason: string | null | undefined;
+  retryCount: number;
+}): Promise<StructuredContextItem[]> {
+  let contextItems = await applyProviderContextTruncation(
+    args.contextItems,
+    args.tomoriState,
+    args.serverDiscId,
+    args.reservedTailItems,
+  );
   if (
     shouldApplyLengthEmptyRetryTrim(args.tomoriState.llm.llm_provider, args.emptyResponseFinishReason, args.retryCount)
   ) {

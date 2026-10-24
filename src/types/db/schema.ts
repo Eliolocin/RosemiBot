@@ -19,6 +19,15 @@ import {
 } from "@/types/personaNaming";
 import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/utils/image/tagDefaults";
 import { logitBiasEntrySchema, normalizeLogitBiasEntries } from "@/types/provider/logitBias";
+import {
+  DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+  naturalNudgeInterestsSchema,
+  naturalNudgeTalkativenessSchema,
+} from "@/modules/natural-nudges/db/types";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN, UTC_OFFSET_STEP_HOURS } from "@/constants/utcOffset";
+
+/** A UTC offset in hours on a quarter-hour mark, such as 5.5 for UTC+5:30. */
+export const utcOffsetSchema = z.number().min(UTC_OFFSET_MIN).max(UTC_OFFSET_MAX).multipleOf(UTC_OFFSET_STEP_HOURS);
 
 export enum HumanizerDegree {
   NONE = 0,
@@ -60,7 +69,8 @@ export const userSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"), // Added April 2026 - User-scoped DTM tri-state: 'off' (always disabled), 'follow' (server setting), 'on' (always enabled)
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
+  natural_nudge_opt_out: z.boolean().default(false),
+  timezone_offset: utcOffsetSchema.nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
   message_proxy_service: z.string().nullable().default(null),
   message_proxy_instance_id: z.string().nullable().default(null),
   prefix_override: z.string().nullable().optional(),
@@ -389,7 +399,10 @@ export const decisionModelSchema = z.object({
   is_deprecated: z.boolean().default(false),
   input_token_limit: z.number().int().min(512).max(10_000_000),
   sees_images: z.boolean().default(false),
-  supported_primitives: z.array(z.literal("predicate")).length(1),
+  supported_primitives: z.union([
+    z.tuple([z.literal("predicate")]),
+    z.tuple([z.literal("predicate"), z.literal("choice")]),
+  ]),
   input_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
   output_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
 });
@@ -739,16 +752,29 @@ const userPersonalizationConfigsSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"),
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"),
   personal_server_fallback_enabled: z.boolean().default(true),
-  timezone_offset: z.number().int().min(-12).max(14).nullable().optional(),
+  natural_nudge_opt_out: z.boolean().default(false),
+  timezone_offset: utcOffsetSchema.nullable().optional(),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),
   gender_identity: z.string().nullable().optional(),
   pronouns: z.string().nullable().optional(),
   addressing_style: addressingStyleSchema.nullable().optional(),
+  fallback_model_refs: z.preprocess(
+    (value) => normalizeFallbackModelRefs(value),
+    fallbackModelRefSchema.array().default([]),
+  ),
+  model_randomizer_enabled: z.boolean().default(false),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
 export type UserPersonalizationConfigsRow = z.infer<typeof userPersonalizationConfigsSchema>;
+
+/** The personal text fallback chain and its randomizer, shared by every saved personal provider. */
+export const personalFallbackSettingsSchema = userPersonalizationConfigsSchema.pick({
+  fallback_model_refs: true,
+  model_randomizer_enabled: true,
+});
+export type PersonalFallbackSettings = z.infer<typeof personalFallbackSettingsSchema>;
 
 const serverModelConfigSchema = z.object({
   server_id: z.number().int(),
@@ -824,7 +850,7 @@ const serverChatConfigSchema = z.object({
   send_message_limit: z.number().int().default(0),
   match_limit: z.number().int().default(3),
   cascade_limit: z.number().int().default(3),
-  timezone_offset: z.number().int().default(0),
+  timezone_offset: z.number().default(0),
   self_debug_enabled: z.boolean().default(false),
   model_randomizer_enabled: z.boolean().default(false),
   system_prompt: z.string().nullable().optional(),
@@ -1194,6 +1220,8 @@ const tomoriPresetSchema = z.object({
     }
   }, personaNamingConfigSchema.default(EMPTY_PERSONA_NAMING_CONFIG)),
   is_nsfw: z.boolean().default(false),
+  natural_nudge_interests: naturalNudgeInterestsSchema.default([]),
+  natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.default(DEFAULT_NATURAL_NUDGE_TALKATIVENESS),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
@@ -1323,6 +1351,10 @@ export const serverMemorySchema = z.object({
   user_id: z.number().nullable(), // Nullable - set to NULL if user deleted
   content: z.string(),
   tags: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(z.string().max(32)).max(5)),
+  /** Discord channel IDs the memory is limited to; empty means every channel. */
+  channel_disc_ids: z.preprocess((v) => (Array.isArray(v) ? v : []), z.array(z.string())),
+  /** True while the row's legacy `#name` scope from migration 111 is unresolved. */
+  channel_scope_pending: z.boolean().default(false),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
@@ -1447,6 +1479,7 @@ export const reminderSchema = z.object({
   reminder_time: z.date(), // When to trigger the reminder (TIMESTAMP WITH TIME ZONE)
   next_attempt_at: z.date().nullable().optional(), // Retry lease; canonical cadence stays in reminder_time
   delivery_retry_count: z.number().int().nonnegative().default(0),
+  failed_occurrence_count: z.number().int().nonnegative().default(0),
   repetition_interval_hours: z.number().int().nullable().optional(), // Optional: repeat interval in hours
   self_reminder: z.boolean().nullable().optional(), // Optional: reminder targets the bot itself
   created_by_user_id: z.number().nullable(), // Who requested the reminder (nullable - set to NULL if user deleted)
@@ -1776,10 +1809,17 @@ const setupProviderAccessUserByokSchema = z
     mode: z.literal("user-byok"),
   })
   .strict();
+const setupProviderAccessOptionSchema = z
+  .object({
+    mode: z.literal("option"),
+    value: z.string().min(1).max(40),
+  })
+  .strict();
 const setupProviderAccessSchema = z.discriminatedUnion("mode", [
   setupProviderAccessCatalogSchema,
   setupProviderAccessCustomEndpointSchema,
   setupProviderAccessUserByokSchema,
+  setupProviderAccessOptionSchema,
 ]);
 export type SetupProviderAccess = z.infer<typeof setupProviderAccessSchema>;
 
@@ -1792,7 +1832,7 @@ export const setupConfigSchema = z
     presetId: z.number(),
     humanizer: z.number().default(1),
     tomoriName: z.string(),
-    timezoneOffset: z.number().int().min(-12).max(14).default(0), // Timezone offset in hours
+    timezoneOffset: utcOffsetSchema.default(0),
     locale: z.string(),
     registrationLocale: z.string().nullable(), // Analytics-only locale captured at setup; not used for functionality
     // The sole provider-selection field, and the only place a credential and its key version live.
@@ -1939,7 +1979,6 @@ export const userSavedProviderConfigSchema = z.object({
     z.array(logitBiasEntrySchema).default([]),
   ),
   thinking_level: z.enum(THINKING_LEVEL_VALUES).default(DEFAULT_THINKING_LEVEL),
-  model_randomizer_enabled: z.boolean().default(false),
   // Which of this row's assigned capabilities are currently switched on.
   // Always a subset of assigned_capabilities; see migration 060 for why the two are separate.
   enabled_capabilities: z.preprocess(
@@ -1951,10 +1990,6 @@ export const userSavedProviderConfigSchema = z.object({
   assigned_capabilities: z.preprocess(
     (value) => normalizeEnabledCapabilities(value),
     z.array(personalProviderCapabilitySchema).default([]),
-  ),
-  fallback_model_refs: z.preprocess(
-    (value) => normalizeFallbackModelRefs(value),
-    fallbackModelRefSchema.array().default([]),
   ),
   saved_at: z.coerce.date().optional(),
   updated_at: z.coerce.date().optional(),

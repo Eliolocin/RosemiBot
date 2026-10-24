@@ -1,6 +1,7 @@
 import {
   ComponentType,
   MessageFlags,
+  PermissionsBitField,
   type ButtonInteraction,
   type ChatInputCommandInteraction,
   type InteractionEditReplyOptions,
@@ -46,12 +47,17 @@ import {
   buildEditEndpointModalFieldId,
   offeredChatCompatFlags,
   parseModelSelectionValue,
-  PROVIDERS_ENTRIES_PER_SELECTOR_PAGE,
+  providersEntriesPerPage,
   type EditEndpointModalContext,
   type ProviderModelModalDefaults,
   type ProvidersPanelPage,
   UNLOAD_DURING_COMFYUI_BEHAVIOR,
 } from "@/utils/discord/ui/providersPanel";
+import {
+  findProviderOption,
+  providerOptionActionOption,
+  type ProviderOptionScope,
+} from "@/utils/provider/providerOptionRegistry";
 import { buildPanelContainer } from "@/utils/discord/ui/panel";
 import { getDefaultImageEndpointSupports } from "@/utils/provider/customImageEndpointSupport";
 import { getDefaultSpeechEndpointSettings } from "@/utils/provider/customSpeechEndpointSettings";
@@ -160,6 +166,12 @@ function terminalPayload(locale: string, key: string): InteractionEditReplyOptio
     },
     locale,
   );
+}
+
+function providersNotSetupKey(interaction: {
+  guildId: string | null;
+}): "commands.providers.not_setup" | "commands.providers.not_setup_dm" {
+  return interaction.guildId ? "commands.providers.not_setup" : "commands.providers.not_setup_dm";
 }
 
 async function defaultResolveScope(
@@ -505,7 +517,24 @@ function readUnavailableReceipt(locale: string): PanelReceipt {
 
 function rangeForEntry(scope: LoadedProviderPanelScope, entryId: string | undefined): number {
   const index = entryId ? scope.data.entries.findIndex((entry) => entry.id === entryId) : -1;
-  return index < 0 ? 0 : Math.floor(index / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
+  return index < 0 ? 0 : Math.floor(index / providersEntriesPerPage(scope.data.optionActions?.length ?? 0));
+}
+
+function canManageServer(interaction: GlobalRoutableInteraction | ChatInputCommandInteraction): boolean {
+  return interaction.memberPermissions?.has(PermissionsBitField.Flags.ManageGuild) ?? false;
+}
+
+function providerOptionScope(
+  scope: LoadedProviderPanelScope,
+  interaction: GlobalRoutableInteraction,
+): ProviderOptionScope {
+  const personal = scope.scopeKind === "personal";
+  return {
+    kind: personal ? "personal" : "server",
+    ownerId: scope.ownerId ?? scope.state?.server_id ?? 0,
+    discordId: personal ? interaction.user.id : (interaction.guildId ?? interaction.user.id),
+    state: scope.state ?? null,
+  };
 }
 
 function repaint(
@@ -529,6 +558,10 @@ function repaint(
       enabledActions: actionsForNamespace(scope.routeNamespace),
       routeNamespace: scope.routeNamespace,
       footerCommand: scope.footerCommand,
+      optionActions: scope.data.optionActions,
+      optionOwnerId: scope.ownerId ?? scope.state?.server_id,
+      viewerId: interaction.user.id,
+      canManageServer: canManageServer(interaction),
     }),
     { locale, receipt },
   );
@@ -672,6 +705,30 @@ export function createProvidersInteractionRoute(
           await dependencies.showAddEndpointModal(interaction as StringSelectMenuInteraction, route.locale, nonce);
           return;
         }
+        const optionAction = providerOptionActionOption(selectedValue);
+        if (optionAction) {
+          if (!configuration.authorize(interaction)) {
+            await interaction.reply({
+              content: localizer(route.locale, "general.errors.permission_denied_description"),
+              flags: MessageFlags.Ephemeral,
+            });
+            return;
+          }
+          const handled = await optionAction.panel?.handleAction?.("select", {
+            locale: route.locale,
+            interaction,
+            loadSelection: async () => {
+              const loaded = await dependencies.resolveScope(interaction, false);
+              return loaded ? { scope: providerOptionScope(loaded, interaction) } : null;
+            },
+            canManageServer: canManageServer(interaction),
+          });
+          if (handled) return;
+          const content = localizer(route.locale, "commands.providers.unavailable");
+          if (interaction.deferred || interaction.replied) await interaction.editReply({ content });
+          else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+          return;
+        }
       }
 
       if (route.action === "edit-provider-open") {
@@ -680,6 +737,26 @@ export function createProvidersInteractionRoute(
             content: localizer(route.locale, "general.errors.permission_denied_description"),
             flags: MessageFlags.Ephemeral,
           });
+          return;
+        }
+        const option = findProviderOption(route.provider);
+        if (option) {
+          const entryId = `provider:${option.value}`;
+          const handled = await option.panel?.handleAction?.("edit", {
+            locale: route.locale,
+            interaction,
+            entryId,
+            loadSelection: async () => {
+              const loaded = await dependencies.resolveScope(interaction, false);
+              const entry = loaded?.data.entries.find((candidate) => candidate.id === entryId);
+              return loaded && entry ? { scope: providerOptionScope(loaded, interaction), entry } : null;
+            },
+            canManageServer: canManageServer(interaction),
+          });
+          if (handled) return;
+          const content = localizer(route.locale, "commands.providers.unavailable");
+          if (interaction.deferred || interaction.replied) await interaction.editReply({ content });
+          else await interaction.reply({ content, flags: MessageFlags.Ephemeral });
           return;
         }
         const nonce = dependencies.createNonce();
@@ -820,7 +897,7 @@ export function createProvidersInteractionRoute(
               route.action === "edit-endpoint-submit" ||
               route.action === "remove-confirm",
           ),
-        onMissing: () => interaction.editReply(terminalPayload(route.locale, "commands.providers.not_setup")),
+        onMissing: () => interaction.editReply(terminalPayload(route.locale, providersNotSetupKey(interaction))),
       });
       if (!scope) return;
 
@@ -1140,7 +1217,7 @@ export function createProvidersInteractionRoute(
       }
       if (route.action === "range-open" || route.action === "range-page") {
         const rangeIndex = route.action === "range-page" ? route.rangeIndex : 0;
-        const entry = scope.data.entries[rangeIndex * PROVIDERS_ENTRIES_PER_SELECTOR_PAGE];
+        const entry = scope.data.entries[rangeIndex * providersEntriesPerPage(scope.data.optionActions?.length ?? 0)];
         await repaint(
           interaction,
           route.locale,
@@ -1158,7 +1235,8 @@ export function createProvidersInteractionRoute(
         return;
       }
       if (route.action === "range") {
-        const entry = scope.data.entries[route.rangeIndex * PROVIDERS_ENTRIES_PER_SELECTOR_PAGE];
+        const entry =
+          scope.data.entries[route.rangeIndex * providersEntriesPerPage(scope.data.optionActions?.length ?? 0)];
         await repaint(interaction, route.locale, scope, { kind: "entry", entryId: entry?.id }, route.rangeIndex);
         return;
       }
@@ -1220,7 +1298,7 @@ export async function buildInitialProvidersPanel(
     return terminalPayload(locale, "general.errors.permission_denied_description");
   }
   const scope = await resolveScope(interaction, false);
-  if (!scope) return terminalPayload(locale, "commands.providers.not_setup");
+  if (!scope) return terminalPayload(locale, providersNotSetupKey(interaction));
   return buildProvidersPanelPayload({
     locale,
     entries: scope.data.entries,
@@ -1230,6 +1308,10 @@ export async function buildInitialProvidersPanel(
     enabledActions: actionsForNamespace(scope.routeNamespace),
     routeNamespace: scope.routeNamespace,
     footerCommand: scope.footerCommand,
+    optionActions: scope.data.optionActions,
+    optionOwnerId: scope.ownerId ?? scope.state?.server_id,
+    viewerId: interaction.user.id,
+    canManageServer: canManageServer(interaction),
   });
 }
 
@@ -1239,7 +1321,7 @@ export async function buildInitialPersonalProvidersPanel(
   resolveScope: ProvidersRouteDependencies["resolveScope"] = defaultResolvePersonalScope,
 ): Promise<InteractionEditReplyOptions> {
   const scope = await resolveScope(interaction, false);
-  if (!scope) return terminalPayload(locale, "commands.providers.not_setup");
+  if (!scope) return terminalPayload(locale, providersNotSetupKey(interaction));
   return buildProvidersPanelPayload({
     locale,
     entries: scope.data.entries,
@@ -1249,5 +1331,9 @@ export async function buildInitialPersonalProvidersPanel(
     enabledActions: enabledPersonalProviderActions,
     routeNamespace: PERSONAL_PROVIDERS_ROUTE_NAMESPACE,
     footerCommand: scope.footerCommand,
+    optionActions: scope.data.optionActions,
+    optionOwnerId: scope.ownerId ?? scope.state?.server_id,
+    viewerId: interaction.user.id,
+    canManageServer: canManageServer(interaction),
   });
 }

@@ -15,7 +15,6 @@ export default {
       no_personas_description: `このサーバーには統計を表示できるペルソナがまだありません。`,
       not_found_title: `ペルソナが見つかりません`,
       not_found_description: `選択されたペルソナはこのサーバーで見つかりませんでした。`,
-      chosen_title: `{name}が選択されました`,
     },
     server: {
       description: `サーバー全体の使用統計を表示します。`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `シェアできる統計画像カードを生成します。`,
-      type_description: `生成するカードの種類。`,
-      timeframe_description: `集計する期間。`,
-      scope_description: `このサーバーのみ、または全サーバーの活動を集計します。「個人」のみ有効。`,
-      personal_option: `個人まとめ`,
-      persona_option: `ペルソナ親和度`,
-      server_option: `サーバーランキング`,
-      privacy_title: `統計を表示できません`,
-      privacy_description: `完全プライベートユーザーの個人統計カードは生成できません。`,
-      picker_title: `ペルソナを選択`,
-      picker_description: `統計カードを生成するペルソナを選んでください。`,
-      no_personas_title: `ペルソナがありません`,
-      no_personas_description: `このサーバーには統計カードを生成できるペルソナがまだありません。`,
+      personal: {
+        description: `あなたの個人まとめカードを生成します。`,
+        timeframe_description: `集計する期間。`,
+        scope_description: `このサーバーのみ、または全サーバーの活動を集計します。`,
+        privacy_title: `統計を表示できません`,
+        privacy_description: `完全プライベートユーザーの個人統計カードは生成できません。`,
+      },
+      persona: {
+        description: `1つのペルソナとの親和度カードを生成します。`,
+        persona_description: `統計カードを生成するペルソナ。`,
+        timeframe_description: `集計する期間。`,
+        no_personas_title: `ペルソナがありません`,
+        no_personas_description: `このサーバーには統計カードを生成できるペルソナがまだありません。`,
+      },
+      server: {
+        description: `このサーバーのランキングカードを生成します。`,
+        timeframe_description: `集計する期間。`,
+      },
     },
   },
 };

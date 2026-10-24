@@ -347,6 +347,22 @@ describe("Voice message command routing", () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]?.source).toEqual({ kind: "elevenlabs", voiceId: "voice-initial" });
   });
+  it("offers the provider detail only behind Show Full Error when synthesis fails", async () => {
+    const providerDetail = "HTTP 400: synthetic provider rejection";
+    const calls = await run({
+      synthesisFailure: true,
+      synthesisResult: {
+        errorKind: "invalid_request",
+        details: "Hosted speech failed: invalid_request.",
+        providerDetail,
+      },
+    });
+    const failure = calls.find((call) => call.method === "editReply");
+    const payload = JSON.stringify(failure?.args[0]);
+    expect(payload).toContain("error_full_detail");
+    expect(payload).not.toContain(providerDetail);
+  });
+
   it("does not retry synthesis through the other slot after synthesis or delivery failure", async () => {
     for (const options of [{ synthesisFailure: true }, { deliveryFailure: true }]) {
       await run(options);

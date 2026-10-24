@@ -15,7 +15,6 @@ export default {
       no_personas_description: `这个服务器还没有可以显示统计的人格。`,
       not_found_title: `找不到人格`,
       not_found_description: `在这个服务器上找不到选中的人格。`,
-      chosen_title: `已选择 {name}`,
     },
     server: {
       description: `查看全服务器的用量统计。`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `生成一张可分享的统计图像卡片。`,
-      type_description: `要生成的卡片类型。`,
-      timeframe_description: `要统计的时间范围。`,
-      scope_description: `只统计这个服务器，或统计所有服务器。仅对个人统计生效。`,
-      personal_option: `个人年度回顾`,
-      persona_option: `人格亲和度`,
-      server_option: `服务器排行榜`,
-      privacy_title: `统计不可用`,
-      privacy_description: `完全私密的用户无法使用个人统计卡片。`,
-      picker_title: `选择一个人格`,
-      picker_description: `选择要为其生成统计卡片的人格。`,
-      no_personas_title: `没有人格`,
-      no_personas_description: `这个服务器还没有可以生成统计卡片的人格。`,
+      personal: {
+        description: `生成你的个人年度回顾卡片。`,
+        timeframe_description: `要统计的时间范围。`,
+        scope_description: `只统计这个服务器上的活动，或统计所有服务器。`,
+        privacy_title: `统计不可用`,
+        privacy_description: `完全私密的用户无法使用个人统计卡片。`,
+      },
+      persona: {
+        description: `生成你与某个人格的人格亲和度卡片。`,
+        persona_description: `要为其生成卡片的人格。`,
+        timeframe_description: `要统计的时间范围。`,
+        no_personas_title: `没有人格`,
+        no_personas_description: `这个服务器还没有可以生成统计卡片的人格。`,
+      },
+      server: {
+        description: `生成这个服务器的服务器排行榜卡片。`,
+        timeframe_description: `要统计的时间范围。`,
+      },
     },
   },
 };

@@ -18,9 +18,9 @@ Agrega una clave de proveedor durante la configuración inicial con `/setup`, o 
 |---|---|
 | Proveedor de IA (recomendado) | Un proveedor del catálogo más su clave API, validada y cifrada como borrador. |
 | Punto de conexión personalizado | La conexión del punto final y un modelo de texto, registrados dentro del asistente. Consulta [Puntos finales personalizados](#custom-endpoints). |
-| Usuario BYOK (solo gremios) | Nada: el espacio de trabajo no cuenta con ningún proveedor propio, por lo que los miembros deberán suministrar uno personal. |
+| Usuario BYOK (solo gremios) | Nada: el servidor no cuenta con ningún proveedor propio, por lo que los miembros deberán suministrar uno personal. |
 
-No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del espacio de trabajo. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un espacio de trabajo ya configurado.
+No se escribe nada en la base de datos hasta que presione `Finalizar configuración`. Un asistente abandonado o caducado deja intactas las filas de proveedores existentes del servidor. Para reemplazar una clave existente, use `/providers`, porque `/setup` no se ejecutará en un servidor ya configurado.
 
 Cada proveedor tiene sus propios pasos de generación de claves. En `/help`, elija `Configuración`, luego `Obtener una clave de API` y elija su proveedor para un tutorial paso a paso, o utilice estos puntos de partida:
 
@@ -62,20 +62,21 @@ En `/config` > `Modelos` > Modelos de conmutador, puede asignar modelos y puntos
 - **Texto**: el modelo de chat principal.
 - **Visión**: lee imágenes cuando el modelo de chat no puede.
 - **Incrustaciones**: potencia la [base de conocimiento de documentos](/es-419/features/knowledge/memory/#document-knowledge-base-rag).
+- **Decisión**: un [modelo de decisión](#decision-models) registrado. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) lo utiliza para decidir cuándo unirse a una conversación.
 - **Imagen estándar**: generación de imágenes estándar (consulte [Generación de imágenes](/es-419/features/capabilities/media-generation/image-generation/)).
 - **Imagen NovelAI**: Generación de imágenes NovelAI.
 - **Video**: generación de video.
 - **Punto final TTS**: punto final de voz de texto a voz.
 - **Punto final STT**: punto final de transcripción de audio de voz a texto.
 
-Los primeros seis espacios eligen registros del catálogo de modelos. En su lugar, las ranuras TTS y STT eligen puntos finales con ámbito de espacio de trabajo, activando el punto final seleccionado en lugar de escribir una columna de modelo. Registre y edite esos puntos finales en `/providers`. `/personal config` conserva seis ranuras de enrutamiento de modelos personales y no incluye selectores de puntos finales personales TTS/STT.
+Los primeros seis espacios eligen registros del catálogo de modelos. En su lugar, las ranuras TTS y STT eligen puntos finales con ámbito de servidor, activando el punto final seleccionado en lugar de escribir una columna de modelo. Registre y edite esos puntos finales en `/providers`. `/personal config` conserva seis ranuras de enrutamiento de modelos personales y no incluye selectores de puntos finales personales TTS/STT.
 
 También puede administrar claves de respaldo para conmutación por error automática y equilibrio de carga en `/providers`.
 
 ## Modelos de decisiones
 <!-- anchor: decision-models -->
 
-Los modelos de decisiones son una categoría independiente en `/providers` y `/personal providers`. Responden a predicados tipados con probabilidades. El registro no cambia el modelo de chat activo, no establece calibración ni habilita la omisión de la revisión de respuestas. Estos paneles aún no seleccionan un modelo de decisiones.
+Los modelos de decisiones son una categoría independiente en `/providers` y `/personal providers`. Responden preguntas tipadas (sí o no, o una opción entre varias) con probabilidades. El registro no cambia el modelo de chat activo. Elige el modelo de decisión del servidor en `/config` > `Modelos` > `Cambiar modelos`. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) lo utiliza como su verificador de intervenciones activas para saber cuándo una conversación coincide con los intereses de una persona, a menos que se elija otro verificador en `/config` > `Plugins` > `Natural Nudges`.
 
 OpenRouter es el proveedor nativo admitido. Guarda su clave, abre el menú desplegable de modelos y elige `+ Agregar un modelo de decisiones`. Ingresa un ID de su catálogo de decisiones verificado. El catálogo global incluye `typesafe/jev-1.13`; los registros adicionales pertenecen a su servidor o propietario personal. El descubrimiento nativo proporciona el límite de entrada documentado y los precios. Los catálogos de chat no pueden establecer compatibilidad con decisiones.
 
@@ -92,7 +93,7 @@ Los registros y credenciales del proveedor permanecen fuera de las exportaciones
 
 Los puntos finales personalizados le permiten registrar servicios autohospedados o respaldados por proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT local) como paquetes de proveedores etiquetados.
 
-- **Alcance del servidor**: abra `/providers` para registrar y editar el punto final del espacio de trabajo.
+- **Alcance del servidor**: abra `/providers` para registrar y editar los puntos finales del servidor.
 - **Ámbito personal**: abra `/personal providers` para catálogos de modelos personales (consulte [Personalización](/es-419/features/knowledge/personalization/#your-own-providers)). Los puntos finales de voz personal no se seleccionan de `/personal config`.
 
 Una etiqueta es el nombre del menú de cara al usuario y las capacidades de los grupos en un paquete cuando comparten una URL de punto final. Nunca se envía al servicio remoto. Las capacidades ofrecidas desde diferentes URL necesitan etiquetas distintas.

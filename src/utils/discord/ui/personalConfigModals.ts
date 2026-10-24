@@ -28,12 +28,14 @@ import {
   resolveSupportedLocale,
 } from "@/utils/text/localizer";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
+import { providerOptionModelDescription } from "@/utils/provider/providerOptionRegistry";
 import {
   getActivePersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
 } from "@/utils/provider/personalProviderHelpers";
 import { getFallbackModelRefKey } from "@/utils/provider/fallbackModelIdentity";
 import { THINKING_LEVEL_LOCALIZER_KEYS, THINKING_LEVEL_VALUES } from "@/constants/thinkingLevels";
+import { formatUtcOffsetInput } from "@/utils/text/timezoneHelper";
 
 export function buildPersonalConfigModalFieldId(field: string, nonce: string): string {
   return `${field}_${nonce}`;
@@ -105,7 +107,7 @@ export function buildTimezoneModal(
           ),
           max_length: 10,
           required: true,
-          value: currentOffset !== null ? String(currentOffset) : "",
+          value: currentOffset !== null ? formatUtcOffsetInput(currentOffset) : "",
         },
       },
     ],
@@ -530,7 +532,9 @@ export function buildModelSelectModal(
   const options = availableModels.slice(0, PERSONAL_MODEL_PAGE_SIZE).map((m) => ({
     value: String(m.id),
     label: safeSelectOptionText(m.name, 100),
-    description: m.description ? safeSelectOptionText(m.description, 100) : undefined,
+    description: m.description
+      ? safeSelectOptionText(m.description, 100)
+      : providerOptionModelDescription(locale, provider),
     default: m.id === currentModelId,
   }));
 
@@ -552,7 +556,7 @@ export function buildModelSelectModal(
         label: safeSelectOptionText(localizer(locale, "commands.personal.config.model_modal_select_label"), 45),
         description: safeSelectOptionText(
           localizer(locale, "commands.personal.config.model_modal_select_description", {
-            provider: getProviderDisplayName(provider),
+            provider: getProviderDisplayName(provider, locale),
           }),
           100,
         ),

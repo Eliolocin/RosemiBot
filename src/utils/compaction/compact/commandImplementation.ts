@@ -1,6 +1,14 @@
+import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, Message, TextBasedChannel } from "discord.js";
 import {
   ActionRowBuilder,
+  ChannelType,
   ComponentType,
   EmbedBuilder,
   MessageFlags,
@@ -9,10 +17,16 @@ import {
   TextInputStyle,
 } from "discord.js";
 import type { UserRow } from "@/types/db/schema";
-import type { ModalInputField, ModalRadioGroupField, ModalSelectField } from "@/types/discord/modal";
+import type {
+  ModalChannelSelectField,
+  ModalInputField,
+  ModalRadioGroupField,
+  ModalSelectField,
+} from "@/types/discord/modal";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { isRagAvailable } from "@/utils/db/ragAvailability";
 import { llmModelRepo, personaRepository, ragRepository } from "@/utils/db/repositories";
+import { DISCORD_SELECT_VALUES_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { replyInfoEmbed } from "@/utils/discord/ui/embeds";
 import { promptWithRawModal, safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { generateEmbeddingsBatched, providerSupportsEmbeddingTaskType } from "@/utils/embeddings/embeddingProvider";
@@ -110,6 +124,7 @@ export async function executeCompactCommand(
     return;
   }
 
+  let usageContext: ProviderUsageContext | undefined;
   const apiKey = await decryptApiKey(encryptedApiKey, tomoriState.config.key_version || 1);
   if (!apiKey) {
     log.warn(`[Compact] Failed to decrypt API key for provider "${providerName}"`, undefined, {
@@ -183,7 +198,17 @@ export async function executeCompactCommand(
       supplementaryContext,
       systemPrompt: modalSelection.systemPrompt,
       analyzeImages: modalSelection.analyzeImages,
+      onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
     });
+
+    const denied = findProviderRequestDeniedError(result.cause, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
 
     if (result.error || !result.summary) {
       await editFailure(modalSelection.submitInteraction, locale, result.error || "Unknown error");
@@ -250,9 +275,17 @@ export async function executeCompactCommand(
         .edit({ embeds: [updatedEmbed], components: [buildAddToDocsButtonRow(locale)] })
         .catch(() => {});
       const serverDiscId = interaction.guild?.id ?? interaction.user.id;
-      setupAddToDocsCollector({ client, summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
+      setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     log.error("Compact summary command failed", error);
     await editFailure(
       modalSelection.submitInteraction,
@@ -540,7 +573,7 @@ async function executeManualCompact(
         .edit({ embeds: [updatedEmbed], components: [buildAddToDocsButtonRow(locale)] })
         .catch(() => {});
       const serverDiscId = interaction.guild?.id ?? interaction.user.id;
-      setupAddToDocsCollector({ client, summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
+      setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
     log.error("Manual compact command failed", error);
@@ -553,13 +586,12 @@ async function executeManualCompact(
 }
 
 function setupAddToDocsCollector(params: {
-  client: Client;
   summaryMessage: Message;
   buildEmbed: (text: string) => EmbedBuilder;
   locale: string;
   serverDiscId: string;
 }): void {
-  const { client, summaryMessage, buildEmbed, locale, serverDiscId } = params;
+  const { summaryMessage, buildEmbed, locale, serverDiscId } = params;
 
   const NAME_FIELD_ID = "compact_doc_name";
   const SCOPE_FIELD_ID = "compact_doc_scope";
@@ -631,11 +663,15 @@ function setupAddToDocsCollector(params: {
             ]
           : []),
         {
+          kind: "channelSelect",
           customId: CHANNELS_FIELD_ID,
           labelKey: "commands.compact.save_as_doc_channels_label",
           descriptionKey: "commands.compact.save_as_doc_channels_description",
+          channelTypes: [ChannelType.GuildText, ChannelType.GuildAnnouncement],
+          minValues: 0,
+          maxValues: DISCORD_SELECT_VALUES_MAX,
           required: false,
-        } as ModalInputField,
+        } as ModalChannelSelectField,
       ],
     });
 
@@ -647,23 +683,11 @@ function setupAddToDocsCollector(params: {
     const docName = (modalResult.values?.[NAME_FIELD_ID] ?? autoName).trim().slice(0, 64) || autoName;
     const scope = modalResult.values?.[SCOPE_FIELD_ID] === "persona" ? "persona" : "serverwide";
     const selectedPersonaIdStr = modalResult.values?.[PERSONA_FIELD_ID];
-    const channelsInput = modalResult.values?.[CHANNELS_FIELD_ID];
-
-    const channelTags: string[] = channelsInput
-      ? channelsInput
-          .split(",")
-          .map((raw) => {
-            const s = raw.trim();
-            const mention = s.match(/^<#(\d+)>$/);
-            if (mention) {
-              const resolved = client.channels.cache.get(mention[1]);
-              return "name" in (resolved ?? {}) ? (resolved as { name: string }).name.toLowerCase() : "";
-            }
-            return s.toLowerCase().replace(/^#+/, "");
-          })
-          .filter((c) => c.length > 0 && /^[\w-]+$/.test(c))
-          .map((c) => `#${c}`)
-      : [];
+    const channelDiscIds = [
+      ...new Set(
+        (modalResult.multiValues?.[CHANNELS_FIELD_ID] ?? []).filter((id) => DISCORD_SNOWFLAKE_PATTERN.test(id)),
+      ),
+    ];
 
     let targetPersonaId: number | null = null;
     if (scope === "persona") {
@@ -708,9 +732,19 @@ function setupAddToDocsCollector(params: {
       return;
     }
 
-    const embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", {
-      userId: null,
-    }).catch(() => null);
+    let embeddingCreds: ResolvedCredentials | null = null;
+    try {
+      embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId: null });
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
+    }
     if (!embeddingCreds) {
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_no_embedding_title",
@@ -765,6 +799,7 @@ function setupAddToDocsCollector(params: {
         inputs: chunks,
         taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
         batchSize: 16,
+        onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
       });
 
       await ragRepository.insertWithChunks({
@@ -781,7 +816,7 @@ function setupAddToDocsCollector(params: {
         embeddingModelId: embeddingModel.embedding_model_id,
         embeddingFamily: embeddingModel.model_family,
         sourceType: "history",
-        channelTags,
+        channelDiscIds,
       });
 
       invalidateTomoriStateCache(serverDiscId);
@@ -797,6 +832,14 @@ function setupAddToDocsCollector(params: {
         color: ColorCode.SUCCESS,
       });
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, embeddingCreds.usageContext);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
       log.error("Failed to save compact summary to document store", error);
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_error_title",

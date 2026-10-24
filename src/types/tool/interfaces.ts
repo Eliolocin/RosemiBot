@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Generic tool interface for provider-agnostic function calling
  * This abstracts tools away from specific LLM provider formats
@@ -69,8 +70,7 @@ export interface ToolParameterSchema extends ToolObjectParameterSchema {
 
 /**
  * A single Discord message the streaming layer has already committed to the channel.
- * Collected into {@link StreamingContext.deliveredMessageRefs} so the fallback orchestrator
- * can delete the partial output of a superseded (timed-out / errored) generation attempt.
+ * Collected into {@link StreamingContext.deliveredMessageRefs}.
  */
 export interface DeliveredStreamMessage {
   /** Discord snowflake ID of the delivered message. */
@@ -84,6 +84,9 @@ export interface DeliveredStreamMessage {
  * Streaming context for enhanced functionality during streaming
  */
 export interface StreamingContext {
+  /** When set, delivered text may ping only these users: no roles, no everyone, nobody else. */
+  mentionableUserIds?: readonly string[];
+  usageContext?: ProviderUsageContext;
   speechToolState?: { userId?: number; selection?: string };
   disableYouTubeProcessing: boolean; // Flag to temporarily disable YouTube function during enhanced context restart
   disableProfilePictureProcessing?: boolean; // Flag to temporarily disable profile picture processing during enhanced context restart
@@ -171,8 +174,8 @@ export interface StreamingContext {
    * The orchestrator pushes one entry per successful send (see uiUpdater's `recordSuccessfulSend`);
    * because it is a reference threaded through {@link buildStreamContext} onto the per-attempt
    * StreamContext, entries survive even when a timed-out `streamToDiscord` promise is abandoned by
-   * the SDK-call-timeout race. `runGenerationTurn` reads it to delete the partial output of a
-   * superseded generation attempt so only the surviving (fallback) response remains visible.
+   * the SDK-call-timeout race. Failed attempts keep their messages, so it spans every attempt, and
+   * expression delivery reads it to tell whether this turn has already posted text.
    */
   deliveredMessageRefs?: DeliveredStreamMessage[];
 }
@@ -182,6 +185,7 @@ export interface StreamingContext {
  * Contains all necessary Discord and Tomori state information
  */
 export interface ToolContext {
+  usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   message?: Message;

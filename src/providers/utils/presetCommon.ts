@@ -11,6 +11,13 @@ import type { ToolResult } from "@/types/tool/interfaces";
 import type { GeneratePresetParams, PresetGenerationErrorType } from "@/types/provider/featureInterfaces";
 import { PRESET_MAX_STRING_LENGTH } from "@/types/preset/presetExport";
 import { tryRepairIncompleteJson } from "@/utils/text/jsonRepair";
+import {
+  NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
+  NATURAL_NUDGE_INTEREST_LABEL_MAX,
+  NATURAL_NUDGE_INTEREST_LIMIT,
+  naturalNudgeInterestSchema,
+  type NaturalNudgeInterest,
+} from "@/modules/natural-nudges/db/types";
 
 /** A text or image_url content part in an OpenAI-compatible message. */
 export type PresetContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -27,12 +34,23 @@ interface PresetGenerationFields {
   attribute_list?: string[];
   sample_dialogues_in?: string[];
   sample_dialogues_out?: string[];
+  interests?: unknown;
+}
+
+/** Validated generation output, keyed the way `PresetExportData` stores it. */
+interface GeneratedPresetFields {
+  attribute_list: string[];
+  sample_dialogues_in: string[];
+  sample_dialogues_out: string[];
+  natural_nudge_interests: NaturalNudgeInterest[];
 }
 
 /** Attributes every generated preset must carry, matching the order the prompt specifies. */
 export const PRESET_ATTRIBUTE_COUNT = 6;
 /** Dialogue pairs every generated preset must carry, matching the 3 guided + 2 free structure. */
 export const PRESET_DIALOGUE_PAIR_COUNT = 5;
+/** Upper end of the interest count the prompt asks for, below the stored cap so edits leave room. */
+const GENERATED_PRESET_INTEREST_TARGET = 5;
 
 /**
  * Why a generated payload cannot become a preset.
@@ -68,7 +86,7 @@ export interface PresetFieldFailure {
 }
 
 export type PresetFieldsResult =
-  | { ok: true; preset: Required<PresetGenerationFields> }
+  | { ok: true; preset: GeneratedPresetFields }
   | { ok: false; failure: PresetFieldFailure };
 
 /**
@@ -132,6 +150,37 @@ export function validatePresetGenerationFields(candidate: unknown): PresetFields
       attribute_list: fields.attribute_list,
       sample_dialogues_in: fields.sample_dialogues_in.map(sanitizeSampleDialogueText),
       sample_dialogues_out: fields.sample_dialogues_out.map(sanitizeSampleDialogueText),
+      natural_nudge_interests: acceptGeneratedInterests(fields.interests),
+    },
+  };
+}
+
+/**
+ * Interests are optional garnish on a generated preset, so a malformed entry is dropped rather than
+ * failing the whole generation.
+ */
+export function acceptGeneratedInterests(candidate: unknown): NaturalNudgeInterest[] {
+  if (!Array.isArray(candidate)) return [];
+  return candidate
+    .flatMap((entry) => {
+      const parsed = naturalNudgeInterestSchema.safeParse(entry);
+      return parsed.success ? [parsed.data] : [];
+    })
+    .slice(0, NATURAL_NUDGE_INTEREST_LIMIT);
+}
+
+/** Interests property shared by every preset generation schema. */
+export function buildPresetInterestsSchemaProperty() {
+  return {
+    type: "array" as const,
+    description: `Between 2 and ${GENERATED_PRESET_INTEREST_TARGET} topics the character would bring up unprompted. Each item has a short "label" (1-${NATURAL_NUDGE_INTEREST_LABEL_MAX} characters, lowercase noun phrase such as "mecha anime") and a one-line "description" (1-${NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX} characters) naming concrete examples so a conversation can be matched to it.`,
+    items: {
+      type: "object" as const,
+      properties: {
+        label: { type: "string" as const },
+        description: { type: "string" as const },
+      },
+      required: ["label", "description"],
     },
   };
 }
@@ -260,8 +309,9 @@ export function buildPresetResponseSchema() {
           type: "string" as const,
         },
       },
+      interests: buildPresetInterestsSchemaProperty(),
     },
-    required: ["attribute_list", "sample_dialogues_in", "sample_dialogues_out"],
+    required: ["attribute_list", "sample_dialogues_in", "sample_dialogues_out", "interests"],
   };
 }
 
@@ -344,7 +394,9 @@ The sample_dialogues_in and sample_dialogues_out MUST follow this structure (exa
 
 5. **Free Dialogue #2**: Choose another scenario that demonstrates different aspects of the character
    - Avoid repeating patterns from previous dialogues
-   - Could be humor, vulnerability, expertise, philosophical musings, or anything that adds dimension`;
+   - Could be humor, vulnerability, expertise, philosophical musings, or anything that adds dimension
+
+The interests list names 2-${GENERATED_PRESET_INTEREST_TARGET} topics the character would bring up on their own, drawn from their Likes. Each has a short lowercase "label" (e.g. "mecha anime") and a one-line "description" with concrete examples (e.g. "Fiction about giant piloted robots, such as Gundam, Code Geass, and Evangelion."). Keep topics distinct from each other.`;
 
   if (params.existingPresetContext?.trim()) {
     prompt += `\n\nExisting Character Data (from uploaded card/preset):

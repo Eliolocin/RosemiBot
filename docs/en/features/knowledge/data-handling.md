@@ -42,7 +42,7 @@ privacy policy. Avoid sharing sensitive personal credentials or confidential dat
 ### Response Drafting selections
 
 `/config` > `Plugins` > `Response Drafting` stores reviewer, optional rule checker,
-prompt choices, and enabled review items for the workspace. When On, replies are reviewed before
+prompt choices, and enabled review items for that server or DM. When On, replies are reviewed before
 they are sent. Tool requests are reviewed before execution only with `Tool Calls` enabled. An optional checker receives pending reply text and sends advisory findings
 only to the reviewer. Off keeps ordinary replies and tools without review requests.
 
@@ -59,15 +59,15 @@ unavailable. An unavailable review keeps ordinary application checks; an earlier
 stays blocked.
 
 Inheritance uses the model and credentials actually answering, including personal routing, key
-rotation, overrides, and fallback. A pinned reviewer uses its own workspace registration and saved
-provider key. Its provider has its own privacy policy. Choosing it leaves the primary response
+rotation, overrides, and fallback. A pinned reviewer uses the registration and saved provider key
+for that server or DM. Its provider has its own privacy policy. Choosing it leaves the primary response
 provider unchanged. Pending replies and correction packets last only for the turn. Only dialogue
 accepted by Discord enters conversation memory; token accounting includes actual unsuccessful
 attempts when the provider reports usage. Diagnostics contain metadata and counts, without drafts,
 evidence, corrections, provider response bodies, or keys.
 
 Configuration exports include these settings without API keys or MCP authentication tokens. Imports
-preserve model and checker references only when they are available to the receiving workspace.
+preserve model and checker references only when they are available to the receiving server or DM.
 Register a local equivalent or clear unavailable selections before importing. Server configuration
 reset restores Off, reviewer inheritance, the default prompt, and no checker.
 
@@ -77,7 +77,7 @@ Exportable data is delivered to your DMs as a JSON file:
 
 - `/export config`: server configuration values (excludes API keys and credentials).
 - `/export personal config`: personal profile settings (privacy, appearance tags, naming).
-- `/export memories`: server memories, scoped to the main persona, one persona, or all personas.
+- `/export memories`: server memories, scoped to the main persona, one persona, or all personas. Channel limits are not exported, so imported memories apply in every channel until you pick channels again.
 - `/export personal memories`: personal memories, scoped globally or per persona.
 - `/persona export`: full persona definitions.
 
@@ -121,7 +121,9 @@ For exact database tables and preserved column lists, see the
 
 ## Opting Out
 
-- `/personal config`: control your visibility, up to full invisibility (opting out of memory context).
+- `/personal config`: control your visibility, up to full invisibility (opting out of memory context),
+  and turn off [Pings from Personas](/features/chatting-personality/natural-nudges/#ping-user), the
+  idle nudges where a persona pings you to start a conversation.
 - `/config` > Permissions: server managers can toggle self-learning and memory features off.
 
 See [Memory](/features/knowledge/memory/) for day-to-day memory management.

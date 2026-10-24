@@ -25,7 +25,7 @@ TomoriBot可以記住你在與她共享的每台伺服器上追蹤你的個人�
 
 TomoriBot永遠不會從一個欄位推斷另一個欄位。空白欄位將被清除並從提示上下文中省略。只有當你的隱私等級設定為`無`時，原始個人資料欄位才會向AI公開。
 
-**Interface** 部分可讓你設定數位UTC偏移量（-12到 +14）或匹配伺服器預設值。TomoriBot僅儲存此數位偏移量，而不儲存地理位置或IANA時區。
+**介面**部分可讓你設定數值 UTC 位移（-12 到 +14）或匹配伺服器預設值。半小時與一刻鐘也同樣支援：印度可以輸入 `5:30` 或 `5.5`，尼泊爾可以輸入 `5:45`。TomoriBot 僅儲存此數值位移，而不儲存地理位置或 IANA 時區，因此不會自動跟隨日光節約時間調整。
 
 ### 命名繼承
 
@@ -83,7 +83,7 @@ TomoriBot永遠不會從一個欄位推斷另一個欄位。空白欄位將被�
 使用`/personal config`客製化附加功能：
 
 - **外觀** (`個人檔案` > `外觀`)：儲存每當[影像產生](/zh-TW/features/capabilities/media-generation/image-generation/#tag-customization)引用你時使用的booru風格外觀標籤。提交一個空框以清除它們。
-- **隱私控制** (`隱私` > `隱私控制`)：選擇你的可見性等級（`無`、`部分`或`完整`），或切換跨伺服器短期記憶體共用。
+- **隱私控制** (`隱私` > `隱私控制`)：選擇你的可見性等級（`無`、`部分`或`完整`）、切換跨伺服器短期記憶共用，或關閉[來自人格的標註](/features/chatting-personality/natural-nudges/#ping-user)以使人格絕不主動 @標註 你發起對話。
 - **回應模式** (`進階` > `回應模式`)：切換你的個人覆蓋[故意觸發模式](/zh-TW/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode)。
 - **模擬**（`進階` > `模擬他人`）：設定當有人為你呼叫`/impersonate user`時所使用的可重複使用的提示。
 

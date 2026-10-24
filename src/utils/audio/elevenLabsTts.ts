@@ -1,9 +1,9 @@
 import {
   ELEVENLABS_API_BASE_URL,
   getElevenLabsTtsConfig,
+  readElevenLabsErrorDetail,
   sanitizeElevenLabsTaggedScript,
 } from "@/utils/audio/elevenLabsShared";
-import { log } from "@/utils/misc/logger";
 
 export type ElevenLabsTtsErrorKind =
   | "missing_api_key"
@@ -33,6 +33,8 @@ export interface ElevenLabsTtsResult {
   errorKind?: ElevenLabsTtsErrorKind;
   statusCode?: number;
   details?: string;
+  /** ElevenLabs' status and response body, for the operator log and the gated error modal. */
+  providerDetail?: string;
 }
 
 function inferAudioOutputMetadata(outputFormat: string): {
@@ -117,15 +119,14 @@ export async function synthesizeSpeechWithElevenLabs(request: ElevenLabsTtsReque
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
       // Details reach the command reply and the voice tool's result to the model, so ElevenLabs'
-      // own message stays in the log.
-      log.warn(`ElevenLabs TTS returned HTTP ${response.status}: ${errorBody.slice(0, 2000)}`);
+      // own message travels only in providerDetail.
       return {
         success: false,
         errorKind: "request_failed",
         statusCode: response.status,
         details: `HTTP ${response.status}`,
+        providerDetail: await readElevenLabsErrorDetail(response, request.apiKey),
       };
     }
 

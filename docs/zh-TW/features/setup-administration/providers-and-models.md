@@ -18,9 +18,9 @@ TomoriBot連接到外部AI供應商，而不是託管內建模型。你可以連
 |---|---|
 | 人工智慧供應商（推薦） | 目錄中的供應商及其API金鑰，已作為草稿進行驗證和加密。|
 | 自訂端點 | 端點連接和一個文字模型，在嚮導內註冊。請參閱[自訂端點](#custom-endpoints)。|
-| 使用者BYOK（僅限公會） | 什麼都沒有：工作區不保留自己的供應商，因此會員必須提供個人供應商。|
+| 使用者BYOK（僅限伺服器） | 什麼都沒有：伺服器不保留自己的供應商，因此會員必須提供個人供應商。|
 
-在你按`完成設定`之前，不會將任何內容寫入資料庫。廢棄或過期的嚮導不會影響工作區的現有提供程序行。若要取代現有金鑰，請使用`/providers`，因為`/setup`不會在已設定的工作區上執行。
+在你按`完成設定`之前，不會將任何內容寫入資料庫。廢棄或過期的嚮導不會影響伺服器的現有提供程序行。若要取代現有金鑰，請使用`/providers`，因為`/setup`不會在已設定的伺服器上執行。
 
 每個供應商都有自己的密鑰產生步驟。在`/help`中，選擇`設定`，然後選擇`取得API金鑰`，然後選擇你的供應商進行逐步演練，或使用以下起點：
 
@@ -62,20 +62,21 @@ Brave Search與你的AI供應商分開，並透過圖像、影片和新聞結果
 - **文字**：主要聊天模型。
 - **視覺**：當聊天模型無法讀取影像時。
 - **嵌入**：為[文件知識庫](/zh-TW/features/knowledge/memory/#document-knowledge-base-rag)提供支援。
+- **判定**：已註冊的[判定模型](#decision-models)。[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges)使用它來決定何時加入對話。
 - **標準影像**：標準影像產生（請參閱[影像生成](/zh-TW/features/capabilities/media-generation/image-generation/)）。
 - **NovelAI圖片**：NovelAI影像生成。
 - **影片**：影片產生。
 - **TTS端點**：文字轉語音語音端點。
 - **STT端點**：語音到文字的音訊轉錄端點。
 
-前六個槽選擇模型目錄記錄。TTS和STT插槽改為選擇工作區範圍的端點，啟動選定的端點而不是編寫模型列。在`/providers`中註冊並編輯這些端點。`/personal config`保留6個個人模型路由插槽，不包含個人TTS/STT端點選擇器。
+前六個槽選擇模型目錄記錄。TTS和STT插槽改為選擇伺服器範圍的端點，啟動選定的端點而不是編寫模型列。在`/providers`中註冊並編輯這些端點。`/personal config`保留6個個人模型路由插槽，不包含個人TTS/STT端點選擇器。
 
 你也可以管理`/providers`中的自動故障轉移和負載平衡的備份金鑰。
 
 ## 判定模型
 <!-- anchor: decision-models -->
 
-判定模型是 `/providers` 與 `/personal providers` 中的一個獨立類別。它們以機率形式回答具型別的謂詞。註冊不會改變進行中的聊天模型、建立校準或啟用回覆審查略過。這些面板尚無法選擇判定模型。
+判定模型是 `/providers` 與 `/personal providers` 中的一個獨立類別。它們以機率形式回答具型別的問題（是或否，或從多個選項中選擇一個）。註冊不會改變進行中的聊天模型。在 `/config` > `模型` > `切換模型` 中選擇伺服器的判定模型。除非在 `/config` > `外掛` > `Natural Nudges` 中選擇了其他檢查模型，否則 [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) 會將其用作主動搭話檢查模型，以判斷對話是否切合某個人格的興趣。
 
 OpenRouter 是受支援的原生提供商。儲存其金鑰，開啟其模型下拉選單，然後選擇 `+ 新增判定模型`。從其已驗證的判定目錄中輸入 ID。全域目錄包含 `typesafe/jev-1.13`；其他註冊歸屬於其伺服器或個人擁有者。原生探索提供記載的輸入限制與價格。聊天目錄無法建立判定支援。
 
@@ -92,7 +93,7 @@ OpenRouter 是受支援的原生提供商。儲存其金鑰，開啟其模型下
 
 自訂端點可讓你將自架或代理支援的服務（Ollama、LM Studio、LiteLLM、vLLM、ComfyUI、本機TTS/STT）註冊為標記的供應商捆綁包。
 
-- **伺服器範圍**：開啟`/providers`進行工作區端點註冊和編輯。
+- **伺服器範圍**：開啟`/providers`註冊和編輯伺服器端點。
 - **個人範圍**：開啟`/personal providers`以取得個人模型目錄（請參閱[個人化](/zh-TW/features/knowledge/personalization/#your-own-providers)）。個人語音端點不是從`/personal config`中選擇的。
 
 標籤是面向使用者的選單名稱，當它們共用一個端點URL時，會將功能分組到一個捆綁包中。它永遠不會發送到遠端服務。從不同URL提供的功能需要不同的標籤。

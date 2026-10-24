@@ -46,6 +46,32 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Scoped model registrations (Migration D)",
     await testSql`DELETE FROM video_generation_models WHERE provider = ${SHARED_PROVIDER}`;
   });
 
+  it("replaces the video default on reseed while preserving saved model selections", async () => {
+    const [previous] = await testSql<Array<{ video_model_id: number }>>`
+      SELECT video_model_id FROM video_generation_models
+      WHERE provider = 'openrouter' AND codename = 'bytedance/seedance-1-5-pro'
+    `;
+    await testSql`
+      UPDATE video_generation_models SET is_default = (video_model_id = ${previous.video_model_id})
+      WHERE provider = 'openrouter'
+    `;
+    await testSql`
+      INSERT INTO saved_provider_configs (server_id, provider, video_model_id)
+      VALUES (${serverAId}, 'openrouter', ${previous.video_model_id})
+    `;
+    await seedModelsFromCatalog(testSql);
+    await seedModelsFromCatalog(testSql);
+    const defaults = await testSql<Array<{ codename: string }>>`
+      SELECT codename FROM video_generation_models WHERE provider = 'openrouter' AND is_default
+    `;
+    expect(defaults.map((row) => row.codename)).toEqual(["minimax/hailuo-3-max"]);
+    const [saved] = await testSql<Array<{ video_model_id: number }>>`
+      SELECT video_model_id FROM saved_provider_configs WHERE server_id = ${serverAId} AND provider = 'openrouter'
+    `;
+    expect(saved.video_model_id).toBe(previous.video_model_id);
+    await testSql`DELETE FROM saved_provider_configs WHERE server_id = ${serverAId} AND provider = 'openrouter'`;
+  });
+
   it("enforces exactly one owner and one capability foreign key", async () => {
     const constraints = await testSql<Array<{ definition: string }>>`
       SELECT pg_get_constraintdef(oid) AS definition

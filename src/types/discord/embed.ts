@@ -31,7 +31,10 @@ export interface StandardEmbedOptions {
   tipKeys?: string[];
   /** Shared interpolation vars applied to every tip item in {@link tipKeys}. */
   tipVars?: Record<string, string | number | boolean>;
-  /** Raw diagnostic text behind a second button. Only `sendStandardEmbed` renders it. */
+  /**
+   * Raw diagnostic text behind a second button, rendered by `sendStandardEmbed` and `replyInfoEmbed`.
+   * The Components V2 fallback in `replyInfoEmbed` drops it along with the tip button.
+   */
   restrictedDetail?: RestrictedDetailModal;
   files?: AttachmentBuilder[];
 }

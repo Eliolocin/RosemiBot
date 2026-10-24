@@ -274,11 +274,8 @@ Dùng \`/config\` > Models > Switch Models để chuyển sang model hỗ trợ 
       error_download_timeout: `Tải ảnh avatar xuống đã hết thời gian chờ. Vui lòng thử lại.`,
       error_download_failed: `Không thể tải ảnh avatar xuống.`,
       processing_title: `Đang tạo persona...`,
-      processing_description: `Có thể mất 1-2 phút. Vui lòng chờ mình tạo nhân vật...
-
-Kết quả đôi khi bất ngờ. Bạn có thể tạo lại nếu cần.`,
-      captioning_title: `Đang mô tả ảnh đại diện...`,
-      captioning_description: `Model chính của bạn không xem được hình ảnh, nên tôi nhờ model thị giác (**{model_name}**) mô tả ảnh đại diện bạn đã tải lên trước. Sau đó model chính sẽ viết tính cách dựa trên mô tả đó. Quá trình này có thể mất 1-2 phút.`,
+      processing_description: `Có thể mất 1-2 phút. Vui lòng chờ mình tạo nhân vật...`,
+      processing_footer: `Quá trình này có thể tạo ra kết quả không mong muốn. Bạn có thể tạo lại nếu cần.`,
       generation_failed_title: `🔴 Tạo thất bại`,
       generation_failed_description: `Không thể tạo persona: {error}
 

@@ -3,7 +3,7 @@ import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { configRepository, llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { buildFallbackModelPersistence } from "@/utils/provider/fallbackModelIdentity";
-import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
+import { setPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
 import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
 import { hasSpeechDesignSelection, setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
@@ -95,11 +95,10 @@ export async function activateServerTextModelFromSavedConfig(params: {
     }),
   ]);
 
+  if (updatedModel || updatedChat) invalidateTomoriStateCache(params.serverDiscId);
   if (!updatedModel || !updatedChat) {
     return { status: "update_failed" };
   }
-
-  invalidateTomoriStateCache(params.serverDiscId);
   return { status: "activated", modelName: selectedModel.llm_codename };
 }
 
@@ -120,9 +119,7 @@ export async function activatePersonalProviderTextModel(params: {
   const customEndpoints = isCustomProvider(params.provider)
     ? await llmProviderRepo.loadCustomEndpointsForUser(params.userId)
     : [];
-  const updated = await assignPersonalCapabilityToProvider(params.userId, params.provider, "text", (row) =>
-    withPersonalTextPrimary(row, selectedModel.llm_id ?? null, customEndpoints),
-  );
+  const updated = await setPersonalTextPrimary(params.userId, params.provider, selectedModel.llm_id, customEndpoints);
 
   return updated ? { status: "activated", modelName: selectedModel.llm_codename } : { status: "update_failed" };
 }

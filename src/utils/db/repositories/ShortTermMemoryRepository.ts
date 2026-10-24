@@ -14,7 +14,7 @@
  * durable state is volatile and excluded from exports per design decision 8.
  */
 import { sql } from "@/utils/db/client";
-import type { ServerStmConfigRow, StmCategoryRow } from "@/types/db/schema";
+import type { ServerStmConfigRow, ShortTermMemoryRow, StmCategoryRow } from "@/types/db/schema";
 import { serverStmConfigSchema, stmCategorySchema } from "@/types/db/schema";
 import {
   storeShortTermMemory,
@@ -26,6 +26,8 @@ import {
   clearShortTermMemorySummary,
   updateShortTermMemoryCategories,
   incrementStmTurnCounter,
+  filterUnwarmedStmUsers,
+  warmUserStmRows,
   resetStmTurnCounter,
   invalidateShortTermMemory,
   clearShortTermMemoryForChannel,
@@ -204,6 +206,21 @@ class ShortTermMemoryRepository implements IRepository<ShortTermMemoryExportShap
     } catch (error) {
       log.error(`[STMRepo] Failed to load server_stm_configs for server ${serverId}`, error);
       return null;
+    }
+  }
+
+  /** One query for many users, so ranking a server's members does not issue a query per member. */
+  async preWarmUsers(userDiscIds: readonly string[]): Promise<void> {
+    const cold = filterUnwarmedStmUsers(userDiscIds);
+    if (cold.length === 0) return;
+    try {
+      const rows = await sql<ShortTermMemoryRow[]>`
+        SELECT * FROM short_term_memories
+        WHERE scope_kind = 'user' AND user_disc_id = ANY(${sql.array(cold, "TEXT")})
+      `;
+      warmUserStmRows(cold, rows);
+    } catch (error) {
+      log.warn("[STMRepo] Batch user STM warm failed", error, { metadata: { userCount: cold.length } });
     }
   }
 

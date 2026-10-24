@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+  reportProviderUsage,
+  type ProviderUsageContext,
+} from "@/utils/provider/providerUsage";
 /**
  * Image Generation Tool
  * Allows TomoriBot to generate images using the active provider's native image API
@@ -917,6 +923,7 @@ export class GenerateImageTool extends BaseTool {
 
     // Default to allowed; overwritten below for server-credential users
     let quotaCheck: QuotaCheckResult = { allowed: true };
+    let usageContext: ProviderUsageContext | undefined;
 
     try {
       const { credentials: creds, quotaCheck: serverQuotaCheck } = await resolveCredentialsWithMediaQuota(
@@ -986,6 +993,7 @@ export class GenerateImageTool extends BaseTool {
       log.info(`Using diffusion model: ${modelCodename} for image generation`);
 
       const apiKey = creds.apiKey;
+      usageContext = creds.usageContext;
       const executionProvider = creds.provider;
       const appliedNegativePrompt = this.customEndpointSupportsNegativePrompt(creds.customEndpoint)
         ? effectiveNegativePrompt
@@ -1313,6 +1321,7 @@ export class GenerateImageTool extends BaseTool {
           ...(providerReferenceImages.length > 0 ? { referenceImages: providerReferenceImages } : {}),
           ...(context.abortSignal ? { abortSignal: context.abortSignal } : {}),
         });
+        reportProviderUsage(usageContext, { modelCodename, costUsd: result.costUsd });
         generatedImageData = result.imageData;
       } else if (imageGenerationImplementation === "google") {
         // Use Google Gemini API
@@ -1458,6 +1467,8 @@ export class GenerateImageTool extends BaseTool {
         endTurn: context.streamContext?.endTurnAfterTools?.includes(this.name) ?? false,
       };
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       if (context.abortSignal?.aborted) {
         return { success: false, error: "Image generation was cancelled." };
       }

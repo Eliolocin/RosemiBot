@@ -1,8 +1,10 @@
+import { findProviderRequestDeniedError, getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import { MessageFlags, PermissionFlagsBits, type ButtonInteraction, type ColorResolvable } from "discord.js";
 import type { RestrictedDetailModal } from "@/types/discord/embed";
 import type { ProviderError, StreamProvider, StreamContext } from "@/types/stream/interfaces";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { ColorCode, log, redactLogString } from "@/utils/misc/logger";
+import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import {
   getProviderErrorDetail,
   isAccountBalanceExhaustedError,
@@ -27,6 +29,34 @@ const PERSONAL_TIP_KEYS = {
   "genai.tips.verify_api_key": "genai.tips.verify_api_key_personal",
 };
 
+/** Attributes an internal failure to TomoriBot so users do not debug their provider for it. */
+export const TOMORIBOT_ERROR_FOOTER_KEY = "genai.stream.error_footer_tomoribot";
+
+/**
+ * Names the provider a failed request ran on, so an upstream refusal or outage is not read as a
+ * TomoriBot bug. A personal route names the member's own provider ahead of the DM wording because
+ * the member's key failed, not the bot owner's.
+ */
+export function resolveProviderErrorFooter(args: {
+  providerName: string;
+  textCredentialSource?: "server" | "personal";
+  isDM?: boolean;
+}): { footerKey: string; footerVars: { provider: string } } {
+  const footerVars = { provider: getProviderDisplayName(args.providerName) };
+  if (args.textCredentialSource === "personal") {
+    return { footerKey: "genai.stream.error_footer_personal_provider", footerVars };
+  }
+  if (args.isDM) {
+    return { footerKey: "genai.stream.error_footer_dm_provider", footerVars };
+  }
+  return { footerKey: "genai.stream.error_footer_server_provider", footerVars };
+}
+
+/** Guild channels carry their guild; a DM channel has none, and test doubles need not implement `isDMBased`. */
+export function isDirectMessageChannel(channel: object): boolean {
+  return !("guild" in channel && channel.guild);
+}
+
 /**
  * Owns provider and generic stream error reporting to Discord.
  */
@@ -34,17 +64,20 @@ export class StreamErrorUi {
   public async handleProviderError(error: unknown, provider: StreamProvider, context: StreamContext): Promise<void> {
     const providerError = error as ProviderError;
     const locale = context.locale;
+    const denied = findProviderRequestDeniedError(error, context.usageContext);
+    const denialCopy = denied ? getProviderRequestFailureCopy(denied, locale) : null;
     const isModelError = isProviderModelError(providerError);
-    const providerDescription = this.resolveProviderDescription(providerError, provider, locale, isModelError);
+    const providerDescription =
+      denialCopy?.description ?? this.resolveProviderDescription(providerError, provider, locale, isModelError);
     const errorMessage =
       providerDescription ||
       localizer(locale, "genai.stream.provider_error_interaction", {
         reason: providerError.type || "unknown",
       });
 
-    const providerDetail = getProviderErrorDetail(providerError);
+    const providerDetail = denied ? null : getProviderErrorDetail(providerError);
     const operatorDetail = boundOperatorDetail(providerDetail);
-    if (isOperatorActionableProviderError(providerError)) {
+    if (!denied && isOperatorActionableProviderError(providerError)) {
       const providerName = provider.getProviderInfo().name;
       // Not awaited: an unacknowledged initialInteraction is replied to below. The raw provider
       // error is the payload because errorMessage is localized for the guild, not the operator.
@@ -83,9 +116,16 @@ export class StreamErrorUi {
     }
 
     const restrictedDetail = providerDetail ? buildRestrictedErrorDetail(providerDetail, context) : undefined;
+    const sourceFooter = resolveProviderErrorFooter({
+      providerName: context.tomoriState.llm.llm_provider,
+      textCredentialSource: context.textCredentialSource,
+      isDM: isDirectMessageChannel(context.channel),
+    });
 
     if (providerDescription) {
-      const { titleKey, tipKeys, color } = this.resolveProviderErrorPresentation(providerError, provider, context);
+      const { titleKey, tipKeys, color } = denialCopy
+        ? { titleKey: denialCopy.titleKey, tipKeys: [], color: ColorCode.ERROR }
+        : this.resolveProviderErrorPresentation(providerError, provider, context);
 
       await sendStandardEmbed(context.channel, locale, {
         titleKey,
@@ -93,6 +133,7 @@ export class StreamErrorUi {
         color,
         tipKeys,
         restrictedDetail,
+        ...sourceFooter,
       }).catch((e) => log.warn("Stream: Failed to send provider error embed to channel", e));
       return;
     }
@@ -111,10 +152,28 @@ export class StreamErrorUi {
           : "genai.tips.switch_model_provider",
       ],
       restrictedDetail,
+      ...sourceFooter,
     }).catch((e) => log.warn("Stream: Failed to send error embed to channel", e));
   }
 
-  public async handleStreamError(_error: Error, context: StreamContext): Promise<void> {
+  public async handleStreamError(error: Error, context: StreamContext): Promise<void> {
+    const denied = findProviderRequestDeniedError(error, context.usageContext);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, context.locale);
+      if (context.initialInteraction) {
+        const payload = { content: copy.description, flags: MessageFlags.Ephemeral } as const;
+        const interaction = context.initialInteraction;
+        await (interaction.replied || interaction.deferred
+          ? interaction.followUp(payload)
+          : interaction.reply(payload)
+        ).catch((sendError) => log.warn("Failed to send provider request denial", sendError));
+      } else {
+        await sendStandardEmbed(context.channel, context.locale, { ...copy, color: ColorCode.ERROR }).catch(
+          (sendError) => log.warn("Failed to send provider request denial", sendError),
+        );
+      }
+      return;
+    }
     // The orchestrator already logged the exception; its text can carry an endpoint's response.
     const errorMessage = localizer(context.locale, "genai.stream.streaming_failed_description");
 
@@ -136,6 +195,7 @@ export class StreamErrorUi {
       descriptionKey: "genai.stream.streaming_failed_description",
       color: ColorCode.ERROR,
       tipKeys: ["genai.tips.refresh_context"],
+      footerKey: TOMORIBOT_ERROR_FOOTER_KEY,
     }).catch((e) => log.warn("Stream: Failed to send generic error embed to channel", e));
   }
 
@@ -383,7 +443,10 @@ const NESTED_JSON_DEPTH = 4;
  * enters channel history, so neither the channel nor self-debug sees it; the remaining exposure
  * is limited to the people who could already replace the failing key.
  */
-export function buildRestrictedErrorDetail(detail: string, context: StreamContext): RestrictedDetailModal {
+export function buildRestrictedErrorDetail(
+  detail: string,
+  context: Pick<StreamContext, "textCredentialSource" | "triggererDiscId">,
+): RestrictedDetailModal {
   // A personal route ran on the triggerer's own key and endpoint, which server managers do not own.
   if (context.textCredentialSource === "personal") {
     const ownerDiscId = context.triggererDiscId;

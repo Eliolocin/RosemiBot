@@ -1,7 +1,15 @@
 import { handleDraftModalOpen, handleDraftRoutes } from "@/utils/discord/interactions/responseDraftingRoutes";
+import { naturalNudgePanelDependencies } from "@/modules/natural-nudges/discord/operations";
+import { sameNaturalNudgeInterests } from "@/modules/natural-nudges/db/types";
+import {
+  handleNudgeModalOpen,
+  handleNudgeRoutes,
+  NUDGE_CHANNEL_SELECT_ACTIONS,
+  NUDGE_MODAL_SUBMIT_ACTIONS,
+  NUDGE_STRING_SELECT_ACTIONS,
+} from "@/modules/natural-nudges/discord/routes";
 import {
   loadResponseDraftingView,
-  loadDraftingModelGroups,
   loadDraftCheckerChoices,
   responseDraftingOperations,
 } from "@/utils/discord/interactions/responseDraftingOperations";
@@ -81,6 +89,7 @@ import {
   configModelOperations,
   loadConfigModelChoices,
   loadConfigModelProviders,
+  loadStructuredOutputModelGroups,
 } from "@/utils/discord/interactions/configModelOperations";
 import {
   loadConfigFallbackOptions,
@@ -227,7 +236,7 @@ import {
 } from "@/utils/discord/ui/configModals";
 import {
   showRoutedRawModal,
-  takeRawModalChannelSelectValue,
+  takeRawModalChannelSelectValues,
   takeRawModalCheckboxGroupValues,
   takeRawModalFileUpload,
   takeRawModalSelectValue,
@@ -490,9 +499,10 @@ export async function loadConfigPersonaMemoryView(
 
 const defaultDependencies: ConfigRouteDependencies = {
   loadResponseDraftingView,
-  loadDraftModels: loadDraftingModelGroups,
+  loadDraftModels: loadStructuredOutputModelGroups,
   loadDraftCheckers: loadDraftCheckerChoices,
   draftingOperations: responseDraftingOperations,
+  naturalNudges: naturalNudgePanelDependencies,
   async resolveScope(interaction, forceRefresh = false) {
     const guildId = interaction.guildId ?? null;
     // Every absorbed command keys its workspace this way, so the panel must not invent a different
@@ -714,7 +724,7 @@ const defaultDependencies: ConfigRouteDependencies = {
   takeFileUpload: takeRawModalFileUpload,
   takeCheckboxValues: takeRawModalCheckboxGroupValues,
   takeSelectValue: takeRawModalSelectValue,
-  takeChannelSelectValue: takeRawModalChannelSelectValue,
+  takeChannelSelectValues: takeRawModalChannelSelectValues,
 };
 
 /**
@@ -3156,13 +3166,32 @@ async function runPersonaWrite(
     }
 
     case "resync-confirm": {
-      if (
-        scope.readStatus !== "fresh" ||
-        persona.is_pointer ||
-        !persona.preset_lineage_id ||
-        !persona.preset_language
-      ) {
+      if (scope.readStatus !== "fresh" || !persona.preset_lineage_id || !persona.preset_language) {
         return { receipt: staleReceipt(locale) };
+      }
+      if (persona.is_pointer) {
+        const cleared = await dependencies.naturalNudges.operations.clearPersonaOverride(personaId);
+        if (cleared === "stale") return { receipt: staleReceipt(locale) };
+        if (cleared === "write-failed") {
+          return {
+            receipt: receipt(
+              locale,
+              "error",
+              "commands.config.panel.resync_failed_heading",
+              "commands.config.panel.resync_failed_detail",
+            ),
+          };
+        }
+        return {
+          receipt: receipt(
+            locale,
+            "success",
+            "commands.config.panel.resync_success_heading",
+            "commands.config.panel.resync_success_detail",
+            { persona: persona.persona_nickname },
+          ),
+          telemetry: "server-config.workspace.persona.resync",
+        };
       }
       const preset = await dependencies.loadPersonaPreset(persona.preset_lineage_id, persona.preset_language);
       if (!preset) {
@@ -3426,9 +3455,11 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         route.action === "voice-sample-select" ||
         CONFIG_MODEL_SELECT_ACTIONS.has(route.action) ||
         CONFIG_CHANNEL_SELECT_ACTIONS.has(route.action) ||
-        CONFIG_BEHAVIOR_SELECT_ACTIONS.has(route.action);
+        CONFIG_BEHAVIOR_SELECT_ACTIONS.has(route.action) ||
+        NUDGE_STRING_SELECT_ACTIONS.has(route.action);
       const expectsPersonaVoiceSelect = route.action === "voice-select";
-      const expectsChannelSelect = route.action === "channels-overrides-select";
+      const expectsChannelSelect =
+        route.action === "channels-overrides-select" || NUDGE_CHANNEL_SELECT_ACTIONS.has(route.action);
       const expectsModal =
         route.action === "draft-items-submit" ||
         route.action === "draft-prompt-submit" ||
@@ -3462,7 +3493,8 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         CONFIG_BEHAVIOR_D10_MODAL_SUBMIT_ACTIONS.has(route.action) ||
         CONFIG_PERMISSION_MODAL_SUBMIT_ACTIONS.has(route.action) ||
         CONFIG_CHANNEL_MODAL_SUBMIT_ACTIONS.has(route.action) ||
-        CONFIG_VOICES_MODAL_SUBMIT_ACTIONS.has(route.action);
+        CONFIG_VOICES_MODAL_SUBMIT_ACTIONS.has(route.action) ||
+        NUDGE_MODAL_SUBMIT_ACTIONS.has(route.action);
 
       if (expectsStringSelect && !interaction.isStringSelectMenu()) {
         throw new Error(`Config ${route.action} route requires a String Select interaction`);
@@ -3523,6 +3555,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       }
 
       if (await handleDraftModalOpen(interaction, route, dependencies, actor)) return;
+      if (await handleNudgeModalOpen(interaction, route, dependencies, actor)) return;
 
       if (CONFIG_MODEL_MODAL_OPEN_ACTIONS.has(route.action)) {
         // A clearable slot's None entry rides the same select as its provider entries, and clearing
@@ -3646,6 +3679,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       }
 
       if (await handleDraftRoutes({ interaction, route, scope, dependencies, selectedValue: submittedValue })) return;
+      if (await handleNudgeRoutes({ interaction, route, scope, dependencies })) return;
 
       if (
         await handleConfigModelRoutes({
@@ -3742,7 +3776,7 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
       const selectedValue = submittedValue;
 
       let category: ConfigCategory = "category" in route ? route.category : "persona";
-      let page: ConfigPage = "page" in route ? route.page : "general";
+      let page: ConfigPage = ("page" in route ? route.page : undefined) ?? "general";
       if (route.action === "stm-edit-submit" || route.action === "conditioning-submit") {
         category = "persona";
         page = "memories";
@@ -3897,12 +3931,15 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
         (route.action === "resync-confirm" && !findExactPersona(scope.personas, requestedPersonaId))
       ) {
         const target = findExactPersona(scope.personas, requestedPersonaId);
+        const nudgeConfig = target?.persona_id
+          ? await dependencies.naturalNudges.loadPersonaConfig(target.persona_id)
+          : null;
         let view: ConfigPanelView | undefined;
         let resyncReceipt = staleReceipt(route.locale);
         if (
           scope.readStatus === "fresh" &&
           target?.persona_id &&
-          !target.is_pointer &&
+          (!target.is_pointer || nudgeConfig?.has_override) &&
           target.preset_lineage_id &&
           target.preset_language
         ) {
@@ -3938,6 +3975,10 @@ export function createConfigInteractionRoute(overrides: Partial<ConfigRouteDepen
                   target.webhook_avatar_url && !isSharedPresetAssetReference(target.webhook_avatar_url),
                 ),
                 addedSprites: sprites.filter((sprite) => !presetKeys.has(sprite.sprite_key)).length,
+                nudgesChanged:
+                  nudgeConfig?.has_override === true &&
+                  (nudgeConfig.talkativeness !== preset.natural_nudge_talkativeness ||
+                    !sameNaturalNudgeInterests(nudgeConfig.interests, preset.natural_nudge_interests)),
               },
             };
           } else {

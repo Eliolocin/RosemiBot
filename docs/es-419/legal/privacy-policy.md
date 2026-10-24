@@ -1,132 +1,141 @@
 ---
 title: Política de privacidad
-description: Cómo la instancia oficial alojada de TomoriBot recopila, almacena y elimina tus datos.
+description: Cómo TomoriBot oficial alojada recopila, usa y elimina tus datos.
 aiGenerated: false
 ---
 
 Aviso de traducción: Esta traducción se proporciona para tu comodidad. La versión en inglés controla en caso de conflicto.
 
-Última actualización: 2026-09-12
+Última actualización: 2026-10-22
 
-Esta Política de privacidad explica cómo la instancia oficial alojada de TomoriBot maneja los datos. Si autoalojas TomoriBot desde este repositorio, tú controlas tus propios datos; este documento es una plantilla de referencia y no rige tu despliegue autoalojado.
+Esta política cubre TomoriBot oficial alojada en Discord, incluido el uso personal, en servidores y las solicitudes patrocinadas. Si autoalojas TomoriBot, tú controlas tus datos; esta política no se aplica a tu copia.
 
-Los términos «Servidor», «Memorias», «Persona/Preajuste», «Proveedor», «Activación» y «Clave de API» se definen en nuestros [Términos de servicio](/es-419/legal/terms-of-service/). Consulta ese documento para ver las definiciones.
+## Resumen de privacidad
 
-## Privacidad de un vistazo
-
-- No conservamos una copia de tu historial de chat de Discord. TomoriBot lee mensajes recientes mientras responde y luego los descarta.
-- Si la memoria a corto plazo está habilitada, TomoriBot almacena resúmenes breves derivados de esas conversaciones. Vencen después de un periodo de inactividad (90 días de forma predeterminada).
-- Todo lo que enseñas a TomoriBot intencionalmente (memorias, ajustes de persona y documentos cargados) se almacena hasta que alguien lo borra.
-- Cuando TomoriBot responde, envía tu prompt y el contexto reciente al proveedor de IA configurado para ese servidor. Ese proveedor tiene sus propios términos y prácticas de privacidad, que no controlamos.
-- `/personal nuke` borra todo lo que almacenamos sobre ti en todos los servidores.
-
-Las siguientes secciones explican cada uno de esos puntos.
+- TomoriBot lee mensajes recientes para responder y envía el contexto relevante al proveedor de IA seleccionado. No guardamos una copia del historial del chat, pero la memoria a corto plazo opcional guarda resúmenes.
+- Conservamos la configuración, las memorias y los archivos que tú o tu servidor elijan guardar. Algunas memorias del servidor pueden describir a miembros que no aportaron esa información.
+- Las membresías de pago agregan vínculos de cuenta, patrocinios y registros de uso para proporcionar beneficios y controlar la asignación compartida. No recopilamos tu contraseña de Patreon ni datos de tarjetas.
+- Puedes consultar o eliminar la mayoría de los datos guardados mediante comandos. Los registros de suscripción requieren una solicitud separada a soporte. Eliminar datos del bot no cancela los cobros de Patreon.
 
 ## 1) A quién cubre esta política
-Esta política se aplica a la instancia oficial alojada de TomoriBot. Los administradores configuran TomoriBot para un servidor, pero todo miembro cuyos mensajes procese TomoriBot está cubierto, haya ejecutado un comando o no.
 
-Los administradores aceptan los Términos de servicio durante `/setup` y confirman que pondrán esta información a disposición de sus miembros. Cualquier miembro puede leer las políticas vigentes en cualquier momento con `/legal privacy-policy` y `/legal terms-of-service`.
+Incluye a los miembros cuyos mensajes lee TomoriBot, aunque nunca usen un comando. Los administradores deben informar a los miembros sobre el bot y esta política. Lee los documentos actuales con `/legal privacy-policy` y `/legal terms-of-service`, o consulta los [Términos de servicio](/legal/terms-of-service/).
 
-## 2) Qué almacenamos
+## 2) Qué guardamos y para qué
 
-### 2.1) Sobre ti
-- Identidad y preferencias: tu ID de usuario de Discord, preferencia de idioma y estado de exclusión de privacidad.
-- Ajustes de personalización: apodo, pronombres, identidad de género, formas de tratamiento, etiquetas de apariencia física, prompt de suplantación, URL de imagen de referencia, zona horaria y ajustes personales de prefijo o sufijo de mensajes.
-- Preferencias de nombres: cómo debe llamarte cada persona.
-- Memorias personales: datos que enseñas a TomoriBot sobre ti o que guarda sobre ti cuando las memorias personales están habilitadas.
-- Destacados: la configuración de destacados personales que estableces por servidor.
-- Registros de condicionamiento: el texto y motivo que proporcionas mediante `/reward` y `/punish`, que moldean el comportamiento de una persona en ese servidor.
-- Contadores de uso: totales diarios de comandos, modelos y herramientas que usaste, además de tokens, asociados contigo, el servidor y la persona. Estos alimentan `/stats`.
+Usamos los datos guardados para ofrecer las funciones que eliges, recordar tus preferencias, administrar el acceso de pago y mantener el servicio funcionando.
 
-### 2.2) Sobre tu servidor
-- Configuración del servidor: atributos de persona, diálogos de ejemplo, palabras de activación, selecciones de proveedor y modelo, permisos de canales y roles, cuotas, zona horaria y funciones activadas.
-- Memorias del servidor: datos enseñados a TomoriBot para todo el servidor. Pueden describir a miembros, incluso a quienes no los escribieron.
-- Metadatos de emojis y stickers: ID, nombres, descripciones y banderas de formato de Discord. Los archivos de imagen no se almacenan.
-- Recordatorios: texto, ID y apodo de Discord del usuario objetivo, canal, horario y configuración de recurrencia.
-- Resúmenes de memoria a corto plazo: cuando está habilitada, TomoriBot escribe en la base de datos resúmenes breves derivados de conversaciones recientes para conservar el contexto entre activaciones. Se eliminan tras un periodo de inactividad (90 días de forma predeterminada).
-- Enlaces de integración: enlaces de salas y canales de Matrix, además de las URL, nombres de herramientas descubiertos y tokens de autenticación cifrados de cualquier servidor MCP conectado por un administrador.
+### 2.1) Tu cuenta y preferencias
 
-### 2.3) Credenciales
-- Claves de API de proveedores que elijas almacenar a nivel del servidor o personalmente.
-- Definiciones de endpoints personalizados, incluida la URL del endpoint y cualquier token bearer.
+Guardamos tu ID de usuario de Discord, elecciones de privacidad y los datos de perfil y preferencias que elijas guardar. También conservamos totales de uso para que puedas consultar estadísticas tuyas, del servidor y de sus personas. Las preferencias guardadas incluyen si las personas pueden mencionarte para iniciar una conversación (Menciones de personas).
 
-Todas las credenciales se cifran en reposo.
+### 2.2) Memorias y configuración del servidor
 
-### 2.4) Contenido que cargas
-- Documentos: todo el texto extraído de archivos cargados a la base de conocimientos del servidor, junto con nombre, tipo de medio, tamaño y embeddings de búsqueda generados a partir de ese texto.
-- Imágenes de personas: avatares, sprites e imágenes de referencia, almacenados en almacenamiento de objetos para renderizar personas de forma consistente.
-- Muestras de voz: muestras de audio y sus transcripciones de referencia cuando se configura la clonación de voz.
+Conservamos memorias personales y del servidor, personalizaciones de personas, recordatorios y configuración del servidor para ofrecer las funciones que configures.
 
-### 2.5) Registros operativos
-- Registros de errores: ID de interacción, ID de usuario y servidor, nombres de comandos, tipos de error y trazas. No se registran mensajes ni conversaciones. Se conservan 90 días.
-- Métricas de rendimiento: muestras de tiempo y recursos usadas para mantener el servicio saludable. Se conservan 30 días.
-- Mapeos de mensajes de personas: ID de mensajes y canales de Discord que vinculan un mensaje enviado con el sprite de persona usado, para que TomoriBot pueda actualizar o limpiar sus propios mensajes. Se conservan 30 días.
+Cuando una persona inicia una conversación por su cuenta (Natural Nudges), registramos qué persona habló, el canal, si alguien respondió y el miembro al que mencionó. También guardamos el objetivo privado de la persona para esa conversación, que puede mencionar a ese miembro.
 
-## 3) Qué no almacenamos
-Lo siguiente se lee mientras TomoriBot prepara una respuesta y no se escribe en nuestra base de datos:
-- Mensajes de Discord: se leen en memoria los mensajes recientes del canal (normalmente los últimos 80) para crear contexto y se envían al proveedor configurado. Se descartan al generar la respuesta. Pueden conservarse resúmenes por separado si la memoria a corto plazo está habilitada, como se describe en la sección 2.2.
-- Archivos adjuntos y multimedia: imágenes, videos y fotos de perfil analizados durante una activación se procesan en memoria y se descartan.
-- Metadatos del servidor y canal: nombres y descripciones del servidor, nombres de canales y temas se leen de nuevo cada vez.
-- Información de presencia: tu actividad o estado actual, cuando está disponible.
-- Imágenes de emojis y stickers: se obtienen de Discord cada vez que se usan.
+La memoria a corto plazo opcional guarda resúmenes de conversaciones. Otras memorias guardadas permanecen hasta su eliminación y pueden describir a personas que no las escribieron.
 
-## 4) Qué enviamos a terceros
-- Proveedores de IA: tu prompt, el contexto reciente descrito arriba, datos de persona y archivos adjuntos se envían al proveedor configurado para ese servidor o para ti, como Google, OpenRouter, NovelAI o un endpoint personalizado. Esto cubre solicitudes de texto, visión, embeddings, imágenes, video, voz y transcripción. Sus términos, políticas, filtros y reglas de retención se aplican a ese contenido y no los controlamos.
-- Proveedores de búsqueda: si la búsqueda web está habilitada, las consultas y el contexto relevante se envían al proveedor configurado.
-- Matrix: si hay un puente de Matrix configurado para un canal, los mensajes pasan entre Discord y la sala de Matrix vinculada.
+### 2.3) Claves de API y servicios conectados
 
-No vendemos datos personales. Los compartimos solo cuando es necesario para operar las funciones que invocas o cuando la ley lo exige.
+Guardamos claves de API, direcciones de servicios y datos de autenticación que proporcionas para proveedores de IA, endpoints personalizados y servidores MCP, además de los vínculos entre canales de Discord y salas de Matrix. El servicio alojado también administra las credenciales de acceso por suscripción. Las credenciales guardadas están cifradas.
 
-## 5) Durante cuánto tiempo lo conservamos
-| Datos | Retención |
+### 2.4) Archivos que guardas
+
+Conservamos el texto y la información de los documentos de la base de conocimiento para que el bot pueda buscarlos. También guardamos imágenes de personas y, para clonar voces, muestras de voz y transcripciones.
+
+### 2.5) Registros del servicio
+
+Los registros de errores y rendimiento ayudan a investigar problemas. Pueden incluir IDs de Discord, nombres de comandos y detalles de errores, pero no conversaciones ni contenido de mensajes. También conservamos identificadores de mensajes para administrar los mensajes enviados por el bot.
+
+### 2.6) Membresías y uso de suscripciones
+
+Vincular Patreon conecta tu cuenta de Discord con tu membresía de Patreon. Recibimos de Patreon tu nivel, estado de pago y fechas de cobro para determinar tus beneficios.
+
+Conservamos patrocinios, sus autorizaciones, totales de asignación y gastos, y detalles de solicitudes como modelo, función, costo, cantidad de tokens, hora e identificadores. El uso en un servidor patrocinado se asocia con ese servidor y se descuenta de la asignación del patrocinador.
+
+Los registros temporales de inicio de sesión y actualización de membresía ayudan a proteger la vinculación y evitar actualizaciones duplicadas. Tus propios tokens de inicio de sesión de Patreon no se conservan después de la vinculación.
+
+## 3) Qué leemos sin guardar
+
+TomoriBot lee temporalmente mensajes recientes, medios relevantes, detalles del servidor y canal, e información de presencia disponible para responder. Esto no se guarda como historial de chat. Los resúmenes de memoria a corto plazo y los archivos que guardes deliberadamente se tratan como se explica arriba.
+
+## 4) Quién recibe tus datos
+
+- **Proveedores de IA:** el proveedor seleccionado recibe el prompt, contexto relevante de conversación, información de la persona y medios necesarios para texto, imágenes, video, voz o búsqueda de documentos. Antes de que una persona mencione a alguien, el modelo del servidor también recibe el nombre de ese miembro, su actividad actual y sus recuerdos personales recientes, a menos que su nivel de privacidad los oculte. Las solicitudes por suscripción usan OpenRouter y los proveedores del modelo seleccionado. Consultamos los gastos con OpenRouter para aplicar tu asignación.
+- **Patreon:** la vinculación nos autoriza a verificar tu membresía. Patreon proporciona actualizaciones de cuenta y membresía; Patreon y sus proveedores de pago gestionan pagos y datos de pago.
+- **Proveedores de búsqueda:** al usar búsqueda web, reciben las consultas y el contexto relevante.
+- **Matrix:** al configurar un puente, los mensajes se comparten entre el canal de Discord y la sala de Matrix vinculados.
+- **Proveedores de alojamiento y almacenamiento:** procesan y guardan los datos necesarios para ejecutar TomoriBot.
+
+Estos servicios pueden procesar datos fuera de tu país y tienen sus propias políticas de privacidad y conservación. No vendemos datos personales; los compartimos para ofrecer las funciones que usas o cuando lo exige la ley.
+
+## 5) Cuánto tiempo los conservamos
+
+| Datos | Conservación |
 |---|---|
-| Resúmenes de memoria a corto plazo | 90 días después de la última actividad (predeterminado) |
+| Resúmenes de memoria a corto plazo | 90 días después de la última actividad, de forma predeterminada |
 | Registros de errores | 90 días |
-| Métricas de rendimiento | 30 días |
-| Mapeos de mensajes de personas | 30 días |
-| Todo lo demás de la sección 2 | Hasta que se elimine mediante los comandos de la sección 6 |
+| Registros de rendimiento e identificadores de mensajes del bot | 30 días |
+| Registros de Natural Nudges | 30 días; el objetivo privado de la persona hasta 90 días |
+| Registros de actualización de membresía de Patreon | 30 días de forma predeterminada |
+| Registros de inicio de sesión de Patreon completados o vencidos | Pueden eliminarse después de una hora de forma predeterminada |
+| Uso detallado de suscripción | 90 días; los registros del período actual quedan hasta que termine si es posterior |
+| Copias de recuperación de la base de datos | Siete días |
+| Copias automáticas al iniciar | Hasta cinco copias; las antiguas se eliminan al crear nuevas |
+| Vínculos de membresía, estado de acceso, patrocinios y claves administradas | Mientras exista el vínculo; pide la desvinculación o eliminación a soporte |
+| Identificadores de membresía y totales de asignación/gastos tras desvincular | 90 días desde el último de estos eventos: desvinculación, fin del período pagado y eliminación completada de la clave del proveedor |
+| Otras configuraciones, memorias, credenciales y archivos guardados | Hasta eliminarlos con los controles de la Sección 6 |
 
-Cuando TomoriBot se elimina de un servidor, los datos se conservan para que la configuración sobreviva a una nueva invitación. Un administrador que quiera eliminarlos debe ejecutar `/nuke` antes de retirar el bot.
+Los registros vencidos se eliminan durante la limpieza programada. Podemos conservar registros contables relevantes por más tiempo para una disputa específica sin resolver u obligación legal y eliminarlos cuando termine esa necesidad. Los totales de gastos pueden permanecer después de eliminar el uso detallado. Los datos eliminados pueden quedar en copias conservadas: las de recuperación de la base de datos vencen después de siete días y las de inicio permanecen hasta reemplazarse. Las copias separadas para recuperación o migración se eliminan al terminar ese trabajo.
 
-## 6) Tus controles
-| Lo que quieres | Comando |
+Quitar el bot conserva los datos del servidor para volver a invitarlo; ejecuta `/nuke` antes si quieres eliminarlos. Cancelar los cobros no elimina los registros de membresía.
+
+## 6) Consultar, exportar o eliminar tus datos
+
+| Qué quieres hacer | Dónde hacerlo |
 |---|---|
-| Evitar que TomoriBot guarde memorias personales sobre ti | `/personal config` |
-| Revisar o eliminar memorias personales individuales | `/personal memories` |
-| Revisar o eliminar memorias y documentos del servidor | `/memories` |
-| Obtener una copia de tus datos personales | `/export personal config`, `/export personal memories` |
-| Obtener una copia de los datos del servidor | `/export config`, `/export memories` |
-| Restablecer tus ajustes personales a los valores predeterminados | `/reset personal config` |
-| Borrar todo lo que almacenamos sobre ti en todos los servidores | `/personal nuke` |
+| Controlar la visibilidad de mensajes y el uso de memoria personal | `/personal config` |
+| Evitar que las personas te mencionen para iniciar una conversación | `/personal config` > `Privacidad` > `Menciones de personas` |
+| Consultar o quitar memorias personales | `/personal memories` |
+| Consultar o quitar memorias y documentos del servidor | `/memories` |
+| Exportar configuración o memorias personales | `/export personal config`, `/export personal memories` |
+| Exportar configuración o memorias del servidor | `/export config`, `/export memories` |
+| Restablecer la configuración personal | `/reset personal config` |
+| Borrar los datos personales descritos abajo en todos los servidores | `/personal nuke` |
 | Borrar los datos de un servidor (solo administradores) | `/nuke` |
 
-`/personal nuke` elimina tus memorias personales, ajustes de personalización y nombres, destacados, claves de proveedor personales y endpoints personales guardados, modelos registrados, contadores de uso, condicionamiento de personas que aportaste y cualquier recordatorio que hayas creado o que se haya configurado para ti. Antes de ejecutarlo, ten en cuenta dos consecuencias:
+`/personal nuke` elimina tu configuración personal, memorias, credenciales y configuraciones guardadas de proveedores, contadores de uso y recordatorios que creaste o que se configuraron para ti. Eliminar tus comentarios también puede afectar el comportamiento de una persona para otros miembros.
 
-- El condicionamiento de personas que aportaste mediante `/reward` y `/punish` influye en el comportamiento para todos en ese servidor, así que eliminarlo cambia el comportamiento compartido.
-- Las memorias del servidor que enseñaste y los documentos que cargaste pertenecen al servidor y se conservan, eliminando tu autoría. Si alguno te describe, pide a un administrador que lo elimine con `/memories`.
+Tus memorias y documentos del servidor permanecen, sin la asociación de autoría; pide a un administrador que los elimine con `/memories`. Si una memoria o documento compartido contiene datos personales sobre ti y no consigues que lo quiten, contáctanos directamente mediante la Sección 9. No necesitas permiso de un administrador para pedir revisión y eliminación.
 
-Tus ajustes de exclusión sobreviven deliberadamente al borrado, así que borrar tus datos no vuelve a activar silenciosamente la recopilación sobre ti.
+La configuración de privacidad limita la visibilidad de mensajes y personalización; no borra memorias existentes. Las elecciones para excluirte de la recopilación permanecen tras la eliminación para que esta no se reactive silenciosamente. Tu elección de Menciones de personas es un ajuste de personalización, por lo que `/personal nuke` lo borra; desactiva Menciones de personas nuevamente después si aún deseas tenerlas desactivadas.
 
-Para cualquier cosa que estos comandos no puedan alcanzar, contáctanos usando la sección 9 y la gestionaremos manualmente.
+Para suscripciones, usa el panel de suscripción para consultar tu asignación y patrocinios o dejar de patrocinar un servidor. Cancela la renovación en Patreon; detener un patrocinio o eliminar datos del bot no detiene los cobros.
 
-## 7) Seguridad
-- Las claves de API de proveedores, tokens bearer y credenciales MCP se cifran en reposo.
-- Las conexiones de base de datos usan TLS con verificación de certificados.
-- El acceso a la base de datos se limita al tiempo de ejecución del bot y a operadores con acceso a la infraestructura.
+Contáctanos mediante la Sección 9 para acceder, desvincular o borrar registros de suscripción; las exportaciones comunes y `/personal nuke` no los incluyen. La desvinculación elimina el vínculo de cuenta, acceso, patrocinios y uso local detallado, y solicita eliminar la clave administrada del proveedor. Pueden quedar registros contables limitados como se describe en la Sección 5.
 
-Ningún sistema es completamente seguro. No proporciones a TomoriBot información altamente sensible o regulada.
+## 7) Cómo protegemos tus datos
+
+Las credenciales de acceso guardadas están cifradas. Las conexiones a la base de datos están cifradas y verifican la identidad del servidor. El acceso se limita al entorno de ejecución del bot y operadores con acceso a la infraestructura.
+
+Ningún sistema es completamente seguro. Evita proporcionar información altamente sensible o datos que requieran tratamiento especial.
 
 ## 8) Datos de menores
-TomoriBot no está dirigida a personas menores de la edad mínima que Discord exige en su país, que es de al menos 13 años. No recopilamos conscientemente datos de personas menores de esa edad. Si crees que tenemos datos de alguien menor de la edad mínima aplicable, contáctanos mediante la sección 9 y los eliminaremos.
+
+TomoriBot no se dirige a personas por debajo de la edad mínima de Discord en su país, que es de al menos 13 años. No recopilamos conscientemente datos de personas por debajo de esa edad. Contáctanos si crees que tenemos esos datos y los eliminaremos. Algunos proveedores y funciones de suscripción tienen requisitos de edad mayores, como explican los Términos de servicio.
 
 ## 9) Contacto
-Para preguntas o solicitudes de privacidad que excedan los comandos anteriores, escribe a `bredrumb@gmail.com` o contáctanos en el [servidor oficial de soporte de TomoriBot en Discord](https://discord.gg/bjCfHm9QsB). Usa el correo electrónico o un mensaje directo, no una incidencia pública de GitHub, para cualquier asunto relacionado con tus datos personales.
+
+Para dudas de privacidad o solicitudes que los comandos no resuelven, escribe a `bredrumb@gmail.com` o contáctanos en el [servidor oficial de soporte de TomoriBot en Discord](https://discord.gg/bjCfHm9QsB). Usa correo o mensaje directo para datos personales o asuntos de seguridad, en lugar de una issue pública de GitHub.
 
 ## 10) Cambios
-Podemos actualizar esta Política de privacidad y cambiará la fecha de «Última actualización» cuando lo hagamos. Los cambios sustanciales se anuncian en el Discord de soporte o el repositorio del proyecto.
+
+Anunciamos cambios importantes mediante el Discord de soporte o el repositorio del proyecto y actualizamos la fecha al inicio de esta política.
 
 ## 11) Usuarios internacionales y GDPR
-- El servicio alojado de TomoriBot está disponible globalmente y los datos se almacenan en infraestructura operada por nuestro proveedor de alojamiento.
-- Si estás en el Espacio Económico Europeo, el Reino Unido o Suiza, tienes derechos bajo el GDPR para acceder, rectificar, borrar, restringir y portar tus datos personales, y para oponerte al procesamiento.
-- Los controles de la sección 6 cubren directamente el acceso, la portabilidad y el borrado. Para cualquier otra cosa, contáctanos mediante la sección 9.
-- Nos basamos en los siguientes fundamentos legales: ejecución de un contrato para operar las funciones que invocas; interés legítimo para seguridad, prevención de abusos y estabilidad del servicio; y consentimiento para funciones opcionales que activas, como memorias personales, memoria a corto plazo y búsqueda web. Puedes retirar ese consentimiento desactivando la función.
+
+Si estás en el EEE, Reino Unido o Suiza, la ley de protección de datos aplicable te da derechos de acceder, corregir, borrar, restringir y recibir una copia portátil de tus datos, y de oponerte al procesamiento. Usa los controles anteriores o contáctanos.
+
+Procesamos datos para cumplir nuestro acuerdo contigo, incluida la prestación de funciones solicitadas y beneficios pagados. Nos basamos en intereses legítimos para proporcionar conversaciones grupales configuradas por el servidor, proteger el servicio, evitar abuso y asignaciones duplicadas, y mantener la confiabilidad, considerando los derechos y elecciones de privacidad de los miembros. Que un administrador active una función no significa que todos los miembros hayan consentido. Puedes usar los controles de privacidad anteriores o contactarnos para oponerte al procesamiento.

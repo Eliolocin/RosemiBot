@@ -4210,8 +4210,22 @@ export const videoSections: ModelSection<VideoInput>[] = [
     rows: [
       {
         provider: "openrouter",
-        codename: "bytedance/seedance-1-5-pro",
+        codename: "minimax/hailuo-3-max",
         isDefault: true,
+        desc: "MiniMax H3 Max: 5-15 second videos at 480p or 768p with first and last frame control",
+        i18n: {
+          ja: "MiniMax H3 Max：480pまたは768pの5-15秒動画、開始・終了フレームを指定可能",
+          "pt-BR": "MiniMax H3 Max: vídeos de 5 a 15 segundos em 480p ou 768p com controle dos quadros inicial e final",
+          "es-419":
+            "MiniMax H3 Max: videos de 5 a 15 segundos en 480p o 768p con control del primer y último fotograma",
+          "zh-TW": "MiniMax H3 Max：480p 或 768p 的 5-15 秒影片，可指定首尾影格",
+          vi: "MiniMax H3 Max: video 5-15 giây ở 480p hoặc 768p với điều khiển khung hình đầu và cuối",
+          "zh-CN": "MiniMax H3 Max：480p 或 768p 的 5-15 秒视频，可指定首尾帧",
+        },
+      },
+      {
+        provider: "openrouter",
+        codename: "bytedance/seedance-1-5-pro",
         desc: "ByteDance Seedance 1.5 Pro — high-quality video generation with 4-12s duration",
         i18n: {
           ja: "ByteDance Seedance 1.5 Pro — 4〜12秒の高品質動画生成",

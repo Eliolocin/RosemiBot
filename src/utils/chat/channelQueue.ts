@@ -12,6 +12,7 @@ import type {
   ChatReminderData,
   LockedChatTurn,
   ManualTriggerInvoker,
+  NaturalNudgeTurn,
   QueuedMessageDiscardHandler,
   QueuedMessageDiscardReason,
   RunnableChatAdmission,
@@ -54,11 +55,14 @@ export type QueuedMessage = {
   forcedMentions?: ForcedMention[];
   manualTriggerInvoker?: ManualTriggerInvoker;
   systemTriggerIdentity?: SystemTriggerIdentity;
+  borrowsTriggerMessage?: boolean;
   manualStreamingContextOverrides?: Pick<
     StreamingContext,
     "disableCrossChannelMessage" | "disableRecentMessageReplyTool" | "disableReminderTool"
   >;
   sceneTurn?: SceneTurnMetadata;
+  naturalNudge?: NaturalNudgeTurn;
+  nudgeSceneCatcherPersonaId?: number;
   reminderRecipientID?: string;
   reminderData?: ChatReminderData;
   onGenerationResult?: ChatGenerationResultHandler;
@@ -76,6 +80,8 @@ export interface ChannelLockEntry {
   currentIsPersonaJob?: boolean;
   activePersonaId?: number;
   activeTriggeredPersonaIds?: number[];
+  /** Set while the turn holding the lock is a Natural Nudges turn, so its own output is not answered. */
+  activeNaturalNudge?: "single" | "scene";
   activeIsUserImpersonation?: boolean;
   activeImpersonatedUserId?: string;
   followUpEligible?: boolean;
@@ -98,6 +104,8 @@ export interface ChannelLockEntry {
 
 export const channelLocks = new Map<string, ChannelLockEntry>();
 export const selfReplySuppressionUntil = new Map<string, number>();
+/** A nudge turn's last message can reach the gateway after its lock releases, so its output stays ignored briefly. */
+const nudgeOutputQuietUntil = new Map<string, number>();
 
 export async function runWithChannelLock<T>(
   admission: RunnableChatAdmission,
@@ -137,7 +145,10 @@ export async function runWithChannelLock<T>(
     selectedPersonaId: admission.incoming.selectedPersonaId,
     triggeredPersonaIds: admission.incoming.triggeredPersonaIds,
     isCommandTriggered: admission.incoming.isManuallyTriggered ?? false,
+    naturalNudge: admission.incoming.naturalNudge ? (admission.incoming.sceneTurn ? "scene" : "single") : undefined,
   });
+  // The quiet window only bridges to the next nudge turn; any other turn's persona output is real.
+  if (!admission.incoming.naturalNudge) nudgeOutputQuietUntil.delete(channelId);
 
   try {
     return await callback(
@@ -260,6 +271,7 @@ export function releaseStaleChannelLockIfExpired(channelId: string, lockEntry: C
   lockEntry.currentIsPersonaJob = false;
   lockEntry.activePersonaId = undefined;
   lockEntry.activeTriggeredPersonaIds = undefined;
+  lockEntry.activeNaturalNudge = undefined;
   lockEntry.activeIsUserImpersonation = undefined;
   lockEntry.activeImpersonatedUserId = undefined;
   lockEntry.followUpEligible = false;
@@ -280,6 +292,7 @@ export function acquireChannelLockForTurn(
     selectedPersonaId?: number;
     triggeredPersonaIds?: number[];
     isCommandTriggered: boolean;
+    naturalNudge?: "single" | "scene";
   },
 ): void {
   lockEntry.isLocked = true;
@@ -294,6 +307,7 @@ export function acquireChannelLockForTurn(
   lockEntry.currentIsPersonaJob = args.isPersonaJob;
   lockEntry.activePersonaId = args.selectedPersonaId;
   lockEntry.activeTriggeredPersonaIds = args.triggeredPersonaIds;
+  lockEntry.activeNaturalNudge = args.naturalNudge;
   lockEntry.activeIsUserImpersonation = undefined;
   lockEntry.activeImpersonatedUserId = undefined;
   lockEntry.followUpEligible = false;
@@ -403,6 +417,7 @@ export function queueScenePersonaJobsAtFront(args: {
     sceneTurn: SceneTurnMetadata;
     manualSystemPrompt: string;
     textQuotaTriggerKey: string;
+    injectedContextItems?: StructuredContextItem[];
   }>;
   triggeredPersonaIds: number[];
   forceReason?: boolean;
@@ -411,10 +426,11 @@ export function queueScenePersonaJobsAtFront(args: {
   textQuotaSource: TextQuotaSource;
   textQuotaUserDiscId: string;
   shouldSurfaceUserErrors?: boolean;
-  injectedContextItems?: StructuredContextItem[];
   forcedMentions?: ForcedMention[];
   manualTriggerInvoker?: ManualTriggerInvoker;
   manualStreamingContextOverrides?: QueuedMessage["manualStreamingContextOverrides"];
+  naturalNudge?: NaturalNudgeTurn;
+  borrowsTriggerMessage?: boolean;
 }): void {
   for (let i = args.sceneJobs.length - 1; i >= 0; i--) {
     const queuedSceneJob = args.sceneJobs[i];
@@ -432,11 +448,13 @@ export function queueScenePersonaJobsAtFront(args: {
       textQuotaUserDiscId: args.textQuotaUserDiscId,
       manualSystemPrompt: queuedSceneJob.manualSystemPrompt,
       shouldSurfaceUserErrors: args.shouldSurfaceUserErrors,
-      injectedContextItems: args.injectedContextItems,
+      injectedContextItems: queuedSceneJob.injectedContextItems,
       forcedMentions: args.forcedMentions,
       manualTriggerInvoker: args.manualTriggerInvoker,
       manualStreamingContextOverrides: args.manualStreamingContextOverrides,
       sceneTurn: queuedSceneJob.sceneTurn,
+      naturalNudge: args.naturalNudge,
+      borrowsTriggerMessage: args.borrowsTriggerMessage,
     });
   }
 
@@ -628,6 +646,10 @@ export function releaseChannelLockAndReplayQueue(args: {
   args.lockEntry.activeMessageWasProxy = false;
   args.lockEntry.currentIsPersonaJob = false;
   args.lockEntry.activePersonaId = undefined;
+  if (args.lockEntry.activeNaturalNudge) {
+    nudgeOutputQuietUntil.set(args.channelId, Date.now() + SELF_REPLY_SUPPRESSION_TTL_MS);
+  }
+  args.lockEntry.activeNaturalNudge = undefined;
   args.lockEntry.activeIsUserImpersonation = undefined;
   args.lockEntry.activeImpersonatedUserId = undefined;
   args.lockEntry.followUpEligible = false;
@@ -707,11 +729,8 @@ export async function startDiscordTypingKeepalive(
   stopDiscordTypingKeepalive(channel.id, lockEntry, "restart");
   await refreshDiscordTypingIndicator(channel, "lock_scope_start");
   lockEntry.typingKeepaliveTimer = setInterval(() => {
-    if (
-      !lockEntry.isLocked ||
-      lockEntry.currentMessageId !== messageId ||
-      StreamOrchestrator.hasStopRequest(channel.id)
-    ) {
+    // Not gated on stop requests: internal and follow-up stops are cleared while the turn keeps the lock.
+    if (!lockEntry.isLocked || lockEntry.currentMessageId !== messageId) {
       stopDiscordTypingKeepalive(channel.id, lockEntry, "lock_scope_end");
       return;
     }
@@ -887,6 +906,51 @@ export function clearQueuedSelfReplyWork(
     clearedPersonaJobCount,
     clearedSelfTriggerCount,
   };
+}
+
+/**
+ * Drops the queued turns of a Natural Nudges scene, so a member who speaks up mid-scene is answered
+ * next instead of waiting out the script. `/generate scene` turns carry no nudge marker and stay.
+ */
+export function clearQueuedNudgeSceneWork(channelId: string): QueuedMessage[] {
+  const lockEntry = channelLocks.get(channelId);
+  if (!lockEntry || lockEntry.messageQueue.length === 0) {
+    return [];
+  }
+
+  const removedMessages: QueuedMessage[] = [];
+  lockEntry.messageQueue = lockEntry.messageQueue.filter((queuedMsg) => {
+    if (!queuedMsg.sceneTurn || !queuedMsg.naturalNudge) {
+      return true;
+    }
+    removedMessages.push(queuedMsg);
+    return false;
+  });
+
+  if (removedMessages.length > 0) {
+    log.info(`Dropped ${removedMessages.length} queued Natural Nudges scene turn(s) in channel ${channelId}.`);
+    discardQueuedMessages(removedMessages, "scene_interrupted");
+  }
+  return removedMessages;
+}
+
+/**
+ * Ends a Natural Nudges scene for a member who spoke up, and returns the persona who catches their
+ * message: the next scripted speaker, else the one speaking now, as in a conversation someone joins.
+ */
+export function interruptNudgeScene(channelId: string): number | undefined {
+  const [nextSpeaker] = clearQueuedNudgeSceneWork(channelId);
+  if (nextSpeaker) return nextSpeaker.selectedPersonaId;
+  const lockEntry = channelLocks.get(channelId);
+  return lockEntry?.isLocked && lockEntry.activeNaturalNudge === "scene" ? lockEntry.activePersonaId : undefined;
+}
+
+/** Whether a persona message here is a nudge's own output, which must never start persona-to-persona replies. */
+export function isNudgeOutputActive(channelId: string): boolean {
+  const lockEntry = channelLocks.get(channelId);
+  if (lockEntry?.isLocked && lockEntry.activeNaturalNudge) return true;
+  if (lockEntry?.messageQueue.some((queuedMsg) => queuedMsg.naturalNudge)) return true;
+  return Date.now() < (nudgeOutputQuietUntil.get(channelId) ?? 0);
 }
 
 function discardQueuedMessages(messages: QueuedMessage[], reason: QueuedMessageDiscardReason): void {

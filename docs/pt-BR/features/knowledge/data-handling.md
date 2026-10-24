@@ -36,13 +36,13 @@ O provedor de IA escolhido (Google, OpenRouter, NovelAI,…) processa mensagens 
 ### Seleções de Revisão de respostas
 <!-- anchor: response-drafting-selections -->
 
-`/config` > `Plugins` > `Revisão de respostas` armazena as escolhas de revisor, modelo de decisões, verificador de regras opcional, prompt e itens de revisão ativados para o espaço de trabalho. Quando ativada, as respostas são revisadas antes de serem enviadas. Solicitações de ferramentas são revisadas antes da execução apenas com `Chamadas de ferramentas` ativado. Um verificador opcional recebe o texto da resposta pendente e envia conclusões consultivas apenas ao revisor. A dispensa por decisão permanece inativa até que haja validação rotulada, e as seleções de decisões salvas não fazem chamadas pagas enquanto faltar calibração. Desativar mantém respostas e ferramentas normais sem solicitações de revisão.
+`/config` > `Plugins` > `Revisão de respostas` armazena as escolhas de revisor, modelo de decisões, verificador de regras opcional, prompt e itens de revisão ativados para aquele servidor ou DM. Quando ativada, as respostas são revisadas antes de serem enviadas. Solicitações de ferramentas são revisadas antes da execução apenas com `Chamadas de ferramentas` ativado. Um verificador opcional recebe o texto da resposta pendente e envia conclusões consultivas apenas ao revisor. A dispensa por decisão permanece inativa até que haja validação rotulada, e as seleções de decisões salvas não fazem chamadas pagas enquanto faltar calibração. Desativar mantém respostas e ferramentas normais sem solicitações de revisão.
 
 O revisor selecionado sempre recebe a resposta pendente, a mensagem disparadora e o destino da resposta. `Itens a verificar` controla quais contextos adicionais já admitidos para o autor ele recebe: instruções da persona, diálogos de exemplo, conversa recente, memórias e outro contexto e chamadas de ferramentas. Instruções da persona, diálogos de exemplo e conversa recente começam ativados. Memórias e outro contexto inclui relacionamentos visíveis entre participantes e documentos. Com `Chamadas de ferramentas` ativado, o revisor recebe os resultados concluídos e as definições de ferramentas disponíveis; uma solicitação proposta inclui seu alvo exato e argumentos, incluindo qualquer texto de mensagem. A revisão não adiciona consulta a perfis privados. Credenciais e argumentos de autenticação são ocultados. As evidências necessárias precisam caber; cobertura incompleta de mídia, argumentos de ferramentas ocultos ou limites de modelo ausentes tornam a revisão indisponível. Uma revisão indisponível mantém as verificações normais do aplicativo; uma ação rejeitada anteriormente permanece bloqueada.
 
-A herança usa o modelo e as credenciais que realmente respondem, incluindo roteamento pessoal, rotação de chaves, substituições e fallback. Um revisor fixado usa o registro do próprio espaço de trabalho e a chave do provedor salva. Seu provedor tem sua própria política de privacidade. Escolhê-lo mantém o provedor de respostas principal inalterado. Respostas pendentes e pacotes de correção duram apenas durante o turno. Apenas diálogos aceitos pelo Discord entram na memória de conversa; a contabilidade de tokens inclui tentativas reais sem sucesso quando o provedor relata o uso. Os diagnósticos contêm metadados e contagens, sem rascunhos, evidências, correções, corpos de resposta do provedor ou chaves.
+A herança usa o modelo e as credenciais que realmente respondem, incluindo roteamento pessoal, rotação de chaves, substituições e fallback. Um revisor fixado usa o registro e a chave do provedor salvos para aquele servidor ou DM. Seu provedor tem sua própria política de privacidade. Escolhê-lo mantém o provedor de respostas principal inalterado. Respostas pendentes e pacotes de correção duram apenas durante o turno. Apenas diálogos aceitos pelo Discord entram na memória de conversa; a contabilidade de tokens inclui tentativas reais sem sucesso quando o provedor relata o uso. Os diagnósticos contêm metadados e contagens, sem rascunhos, evidências, correções, corpos de resposta do provedor ou chaves.
 
-As exportações de configuração incluem essas definições sem chaves de API ou tokens de autenticação MCP. As importações preservam referências de modelo e verificador apenas quando disponíveis no espaço de trabalho receptor. Registre um equivalente local ou limpe seleções indisponíveis antes de importar. A redefinição de configuração do servidor restaura o estado desativado, herança de revisor, nenhum modelo de decisões, o prompt padrão e nenhum verificador.
+As exportações de configuração incluem essas definições sem chaves de API ou tokens de autenticação MCP. As importações preservam referências de modelo e verificador apenas quando disponíveis no servidor ou DM receptor. Registre um equivalente local ou limpe seleções indisponíveis antes de importar. A redefinição de configuração do servidor restaura o estado desativado, herança de revisor, nenhum modelo de decisões, o prompt padrão e nenhum verificador.
 
 ## Exporte Seus Dados
 
@@ -50,7 +50,7 @@ Os dados exportáveis são entregues aos seus DMs como um arquivo JSON:
 
 - `/export config`: valores de configuração do servidor (exclui chaves e credenciais API).
 - `/export personal config`: configurações de perfil pessoal (privacidade, tags de aparência, nomenclatura).
-- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona ou todas as personas.
+- `/export memories`: memórias do servidor, com escopo para a persona principal, uma persona ou todas as personas. Os limites de canal não são exportados, então as memórias importadas se aplicam em todos os canais até que você escolha os canais novamente.
 - `/export personal memories`: memórias pessoais, com escopo global ou individual.
 - `/persona export`: definições completas de personalidade.
 
@@ -87,7 +87,7 @@ Para tabelas exatas de banco de dados e listas de colunas preservadas, consulte 
 
 ## Optando por Sair
 
-- `/personal config`: controle sua visibilidade, até a invisibilidade total (optando por sair do contexto de memória).
+- `/personal config`: controle sua visibilidade, até a invisibilidade total (optando por sair do contexto de memória), e desative as [Menções de Personas](/features/chatting-personality/natural-nudges/#ping-user), os toques ociosos em que uma persona menciona você para iniciar uma conversa.
 - `/config` > `Permissões`: os gerenciadores de servidores podem desativar os recursos de autoaprendizado e memória.
 
 Consulte [Memória](/pt-BR/features/knowledge/memory/) para gerenciamento diário de memória.

@@ -57,7 +57,7 @@ O status da atividade requer a intenção `Guild Presences` de Discord e respeit
 O acionamento automático permite que TomoriBot participe de conversas sem ser mencionado diretamente:
 
 - `/config` > `Canais` > Auto-Trigger (ou `/server autotrigger channels`): escolha os canais onde ela responde de forma autônoma.
-- `/config` > `Canais` > Auto-Trigger (ou `/server autotrigger threshold`): defina quantas mensagens devem ser acumuladas antes que ela intervenha.
+- `/config` > `Canais` > Auto-Trigger (ou `/server autotrigger threshold`): defina quantas mensagens devem ser acumuladas antes que ela entre na conversa.
 - `/config` > `Comportamento` > Comportamento do gatilho: configure gatilhos aleatórios baseados em temporizador para um canal.
 
 Use o acionamento automático em canais casuais dedicados onde você deseja que o bot participe naturalmente.

@@ -18,9 +18,9 @@ Thêm khóa nhà cung cấp trong lần thiết lập đầu tiên với `/setup
 |---|---|
 | Nhà cung cấp AI (Được khuyến nghị) | Một nhà cung cấp từ danh mục cộng với khóa API của nó, được xác thực và mã hóa dưới dạng bản nháp. |
 | Endpoint tùy chỉnh | Kết nối điểm cuối và một model văn bản, được đăng ký bên trong trình hướng dẫn. Xem [Điểm cuối tùy chỉnh](#custom-endpoints). |
-| Người dùng BYOK (chỉ dành cho bang hội) | Không có gì: không gian làm việc không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
+| Người dùng BYOK (chỉ dành cho máy chủ) | Không có gì: máy chủ không có nhà cung cấp riêng, vì vậy các thành viên phải cung cấp nhà cung cấp cá nhân. |
 
-Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của không gian làm việc. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên không gian làm việc đã được định cấu hình.
+Không có gì được ghi vào cơ sở dữ liệu cho đến khi bạn nhấn `Hoàn tất thiết lập`. Trình hướng dẫn bị bỏ rơi hoặc đã hết hạn sẽ giữ nguyên các hàng nhà cung cấp hiện có của máy chủ. Để thay thế khóa hiện có, hãy sử dụng `/providers`, vì `/setup` sẽ không chạy trên máy chủ đã được định cấu hình.
 
 Mỗi nhà cung cấp có các bước tạo khóa riêng. Trong `/help`, chọn `Thiết lập`, sau đó là `Lấy API key` và chọn nhà cung cấp của bạn để xem hướng dẫn từng bước hoặc sử dụng các điểm bắt đầu sau:
 
@@ -62,20 +62,21 @@ Trong `/config` > `Model` > `Chuyển đổi model`, bạn có thể chỉ đị
 - **Văn bản**: model trò chuyện chính.
 - **Tầm nhìn**: đọc hình ảnh khi model trò chuyện không thể đọc được.
 - **Phần nhúng**: hỗ trợ [cơ sở kiến thức tài liệu](/vi/features/knowledge/memory/#document-knowledge-base-rag).
+- **Quyết định**: một [model quyết định](#decision-models) đã đăng ký. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) sử dụng nó để quyết định thời điểm tham gia cuộc trò chuyện.
 - **Hình ảnh tiêu chuẩn**: tạo hình ảnh tiêu chuẩn (xem [Tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/)).
 - **Hình ảnh NovelAI**: Tạo hình ảnh NovelAI.
 - **Video**: tạo video.
 - **Điểm cuối TTS**: điểm cuối chuyển văn bản thành giọng nói.
 - **Điểm cuối STT**: điểm cuối chuyển âm thanh từ giọng nói thành văn bản.
 
-Sáu vị trí đầu tiên chọn bản ghi danh mục model. Thay vào đó, các khe TTS và STT chọn điểm cuối trong phạm vi không gian làm việc, kích hoạt điểm cuối đã chọn thay vì ghi cột model. Đăng ký và chỉnh sửa các điểm cuối đó trong `/providers`. `/personal config` giữ lại sáu khe định tuyến model cá nhân và không bao gồm bộ chọn điểm cuối TTS/STT cá nhân.
+Sáu vị trí đầu tiên chọn bản ghi danh mục model. Thay vào đó, các khe TTS và STT chọn điểm cuối trong phạm vi máy chủ, kích hoạt điểm cuối đã chọn thay vì ghi cột model. Đăng ký và chỉnh sửa các điểm cuối đó trong `/providers`. `/personal config` giữ lại sáu khe định tuyến model cá nhân và không bao gồm bộ chọn điểm cuối TTS/STT cá nhân.
 
 Bạn cũng có thể quản lý các khóa dự phòng để tự động chuyển đổi dự phòng và cân bằng tải trong `/providers`.
 
 ## Model quyết định
 <!-- anchor: decision-models -->
 
-Model quyết định là một danh mục riêng biệt trong `/providers` và `/personal providers`. Chúng trả lời các vị từ được định kiểu bằng xác suất. Việc đăng ký không làm thay đổi model trò chuyện đang hoạt động, không thiết lập hiệu chuẩn hoặc kích hoạt tính năng bỏ qua duyệt phản hồi. Các bảng điều khiển này vẫn chưa chọn một model quyết định.
+Model quyết định là một danh mục riêng biệt trong `/providers` và `/personal providers`. Chúng trả lời các câu hỏi có định kiểu (có hoặc không, hoặc chọn một trong nhiều lựa chọn) bằng xác suất. Việc đăng ký không làm thay đổi model trò chuyện đang hoạt động. Chọn model Quyết định của máy chủ trong `/config` > `Model` > `Chuyển đổi model`. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) sử dụng nó làm Trình kiểm tra gợi ý chủ động để biết khi nào cuộc trò chuyện phù hợp với sở thích của persona, trừ khi một trình kiểm tra khác được chọn trong `/config` > `Plugins` > `Natural Nudges`.
 
 OpenRouter là nhà cung cấp gốc được hỗ trợ. Hãy lưu khóa của nó, mở menu thả xuống model và chọn `+ Thêm một model quyết định`. Nhập ID từ danh mục Quyết định đã được xác minh của nó. Danh mục toàn cầu bao gồm `typesafe/jev-1.13`; các đăng ký bổ sung thuộc về máy chủ hoặc chủ sở hữu cá nhân của chúng. Tính năng khám phá gốc cung cấp giới hạn đầu vào và giá đã được ghi nhận. Danh mục trò chuyện không thể thiết lập hỗ trợ Quyết định.
 
@@ -92,7 +93,7 @@ Mở đăng ký Quyết định đã lưu để chỉnh sửa. Các chỉnh sử
 
 Điểm cuối tùy chỉnh cho phép bạn đăng ký các dịch vụ self-hosting hoặc hỗ trợ proxy (Ollama, LM Studio, LiteLLM, vLLM, ComfyUI, TTS/STT cục bộ) dưới dạng gói nhà cung cấp được gắn nhãn.
 
-- **Phạm vi máy chủ**: mở `/providers` để đăng ký và chỉnh sửa điểm cuối không gian làm việc.
+- **Phạm vi máy chủ**: mở `/providers` để đăng ký và chỉnh sửa các điểm cuối máy chủ.
 - **Phạm vi cá nhân**: mở `/personal providers` để xem danh mục mẫu cá nhân (xem [Cá nhân hóa](/vi/features/knowledge/personalization/#your-own-providers)). Điểm cuối lời nói cá nhân không được chọn từ `/personal config`.
 
 Nhãn là tên menu giao diện người dùng và nhóm các khả năng trong một gói khi chúng chia sẻ một URL điểm cuối. Nó không bao giờ được gửi đến dịch vụ từ xa. Khả năng được phân phát từ các URL khác nhau cần có nhãn riêng biệt.

@@ -20,6 +20,7 @@ import { readFile } from "node:fs/promises";
 import { initializeDatabase } from "@/utils/db/initializeDatabase";
 import { splitSqlStatements } from "@/utils/db/sqlSplitter";
 import { keyManager } from "@/utils/security/keyManager";
+import { resetDatabaseConnection, sql } from "@/utils/db/client";
 
 const effectiveHost = process.env.TEST_POSTGRES_HOST ?? process.env.POSTGRES_HOST ?? "localhost";
 const effectivePort = process.env.TEST_POSTGRES_PORT ?? process.env.POSTGRES_PORT ?? "5432";
@@ -56,6 +57,8 @@ export const testSql = new SQL({
   username: effectiveUser,
   password: effectivePassword ?? "dummy",
   database: effectiveDatabase,
+  idleTimeout: 180,
+  maxLifetime: 1800,
 });
 
 /** Executes a migration script on one reserved transaction connection. */
@@ -95,6 +98,9 @@ let bootstrapPromise: Promise<void> | null = null;
 export async function setupTestDb(): Promise<void> {
   bootstrapPromise ??= bootstrap();
   await bootstrapPromise;
+  // Retire the application pool between suites because migration replays invalidate its prepared result shapes.
+  await sql.close();
+  resetDatabaseConnection();
 }
 
 /**

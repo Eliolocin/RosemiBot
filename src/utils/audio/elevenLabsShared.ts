@@ -1,3 +1,6 @@
+import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
+import { readBoundedResponse } from "@/utils/security/boundedResponse";
+import { speechErrorBody } from "@/utils/speech/hostedSpeech";
 import { stripTtsUnsupportedEmojiAttempts } from "@/utils/text/emojiHelper";
 
 const DEFAULT_STT_MODEL_ID = "scribe_v2";
@@ -12,7 +15,60 @@ const DEFAULT_TTS_OUTPUT_FORMAT = "mp3_44100_128";
 
 export const ELEVENLABS_SERVICE_NAME = "elevenlabs";
 export const ELEVENLABS_API_BASE_URL = "https://api.elevenlabs.io";
+const ELEVENLABS_ERROR_BODY_BYTES = 64 * 1024;
 const DISCORD_MESSAGE_MAX_CHARS = 2_000;
+
+/** A rejected key, a missing permission, an exhausted quota, or a rate limit is the key owner's to fix. */
+const EXPECTED_ELEVENLABS_STATUSES = new Set([401, 402, 403, 429]);
+
+interface ElevenLabsFailure {
+  errorKind?: string;
+  statusCode?: number;
+  details?: string;
+  providerDetail?: string;
+}
+
+function isExpectedElevenLabsFailure({ errorKind, statusCode }: ElevenLabsFailure): boolean {
+  if (errorKind === "invalid_response") return false;
+  if (errorKind !== "request_failed") return true;
+  return statusCode !== undefined && EXPECTED_ELEVENLABS_STATUSES.has(statusCode);
+}
+
+/** The status and response body behind a failed request, or the transport error when none arrived. */
+export function elevenLabsFailureDetail(failure: ElevenLabsFailure): string | undefined {
+  return failure.providerDetail ?? (failure.errorKind === "request_failed" ? failure.details : undefined);
+}
+
+export async function reportElevenLabsFailure(
+  operation: "voice-synthesis" | "transcription" | "voice-catalog" | "key-validation",
+  failure: ElevenLabsFailure,
+  context: { serverId?: number | null; userId?: number | null; cancelled?: boolean } = {},
+): Promise<void> {
+  await reportProviderFailure({
+    summary: "ElevenLabs request failed",
+    errorType: "ElevenLabsOperationFailed",
+    error: undefined,
+    expected: !!context.cancelled || isExpectedElevenLabsFailure(failure),
+    detail: elevenLabsFailureDetail(failure) ?? failure.details,
+    serverId: context.serverId,
+    userId: context.userId,
+    dimensions: {
+      operation,
+      provider: ELEVENLABS_SERVICE_NAME,
+      errorKind: failure.errorKind ?? "unknown",
+      ...(failure.statusCode !== undefined ? { providerStatus: failure.statusCode } : {}),
+    },
+  });
+}
+
+/** ElevenLabs' status and response body, scrubbed of the key that sent the request. */
+export async function readElevenLabsErrorDetail(response: Response, apiKey: string): Promise<string> {
+  const body = await readBoundedResponse(response, ELEVENLABS_ERROR_BODY_BYTES).then(
+    (buffer) => speechErrorBody(buffer.toString("utf8"), apiKey),
+    () => "",
+  );
+  return body ? `HTTP ${response.status}: ${body}` : `HTTP ${response.status}`;
+}
 
 function parseNumberEnv(
   value: string | undefined,

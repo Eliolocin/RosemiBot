@@ -1,3 +1,8 @@
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+} from "@/utils/provider/providerUsage";
 import type { APIAttachment } from "discord.js";
 import type { ServerMemoryRow } from "@/types/db/schema";
 import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
@@ -20,6 +25,8 @@ export interface DocumentListRow {
   document_id: number;
   document_name: string;
   first_chunk: string | null;
+  channel_disc_ids: string[];
+  channel_scope_pending: boolean;
   isHistory: boolean;
 }
 
@@ -35,6 +42,7 @@ export type DocumentWriteResult =
   | { status: "empty-content" | "content-too-long" | "too-many-chunks" | "document-limit" | "chunk-limit" }
   | { status: "duplicate" | "quota-exceeded" | "credentials-missing" | "model-missing" | "not-found" }
   | { status: "write-failed" }
+  | { status: "provider-denied"; denied: ProviderRequestDeniedError }
   | { status: "success"; documentId: number; documentName: string; chunkCount: number };
 
 export interface AddDocumentInput {
@@ -49,7 +57,7 @@ export interface AddDocumentInput {
   memteachingEnabled: boolean;
   documentName: string;
   attachment: APIAttachment | undefined;
-  channelTags: string[];
+  channelDiscIds: string[];
 }
 
 export interface VectorizeMemoryInput {
@@ -66,7 +74,7 @@ export interface VectorizeMemoryInput {
   memteachingEnabled: boolean;
   content: string;
   documentName: string;
-  channelTags: string[];
+  channelDiscIds: string[];
 }
 
 export type VectorizeMemoryResult =
@@ -80,6 +88,7 @@ export type DocumentRemoveResult =
 export type ChunkEditResult =
   | { status: "forbidden" | "not-found" | "empty-content" | "content-too-long" }
   | { status: "credentials-missing" | "model-missing" | "write-failed" | "unchanged" }
+  | { status: "provider-denied"; denied: ProviderRequestDeniedError }
   | { status: "success" };
 
 export type ChunkRemoveResult =
@@ -102,6 +111,8 @@ async function resolveEmbedding(serverId: number, userId: number, configuredMode
     if (!model?.embedding_model_id) return { status: "model-missing" as const };
     return { status: "success" as const, credentials, model, embeddingModelId: model.embedding_model_id };
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) return { status: "provider-denied" as const, denied };
     if (error instanceof PersonalProviderRequiredError || error instanceof CredentialUnavailableError) {
       return { status: "credentials-missing" as const };
     }
@@ -112,7 +123,7 @@ async function resolveEmbedding(serverId: number, userId: number, configuredMode
 async function embedChunks(
   chunks: string[],
   resolved: Extract<Awaited<ReturnType<typeof resolveEmbedding>>, { status: "success" }>,
-): Promise<number[][]> {
+): Promise<number[][] | { status: "provider-denied"; denied: ProviderRequestDeniedError }> {
   return generateEmbeddingsBatched({
     provider: resolved.model.provider,
     apiKey: resolved.credentials.apiKey,
@@ -121,6 +132,11 @@ async function embedChunks(
     inputs: chunks,
     taskType: (await providerSupportsEmbeddingTaskType(resolved.model.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
     batchSize: 16,
+    onUsage: createProviderUsageRecorder(resolved.credentials.usageContext, resolved.model.codename),
+  }).catch((error: unknown) => {
+    const denied = findProviderRequestDeniedError(error, resolved.credentials.usageContext);
+    if (denied) return { status: "provider-denied" as const, denied };
+    throw error;
   });
 }
 
@@ -174,6 +190,7 @@ export const serverDocumentsOperations = {
 
     if (!reserveDocumentQuota(input.userDiscId).allowed) return { status: "quota-exceeded" };
     const embeddings = await embedChunks(chunks, resolved);
+    if (!Array.isArray(embeddings)) return embeddings;
     const documentId = await ragRepository.insertWithChunks({
       serverId: input.serverId,
       personaId: input.personaId,
@@ -187,7 +204,7 @@ export const serverDocumentsOperations = {
       embeddings,
       embeddingModelId: resolved.embeddingModelId,
       embeddingFamily: resolved.model.model_family,
-      channelTags: input.channelTags,
+      channelDiscIds: input.channelDiscIds,
     });
     invalidateTomoriStateCache(input.workspaceId);
     return { status: "success", documentId, documentName, chunkCount: chunks.length };
@@ -227,7 +244,7 @@ export const serverDocumentsOperations = {
     configuredEmbeddingModelId: number | null;
     canManage: boolean;
     content: string;
-    channelTags: string[];
+    channelDiscIds: string[];
   }): Promise<ChunkEditResult> {
     if (!input.canManage) return { status: "forbidden" };
     const meta = await serverMemoryRepository.loadDocumentMeta(input.documentId, input.serverId, input.personaId);
@@ -238,14 +255,17 @@ export const serverDocumentsOperations = {
     if (!content) return { status: "empty-content" };
     if (content.length > 4000) return { status: "content-too-long" };
     const contentChanged = content !== target.content;
-    const normalizedCurrentTags = [...meta.channel_tags].sort();
-    const normalizedNextTags = [...input.channelTags].sort();
-    const tagsChanged = normalizedCurrentTags.join("\u0000") !== normalizedNextTags.join("\u0000");
-    if (!contentChanged && !tagsChanged) return { status: "unchanged" };
+    const normalizedCurrentScope = [...meta.channel_disc_ids].sort();
+    const normalizedNextScope = [...input.channelDiscIds].sort();
+    const scopeChanged =
+      meta.channel_scope_pending || normalizedCurrentScope.join(",") !== normalizedNextScope.join(",");
+    if (!contentChanged && !scopeChanged) return { status: "unchanged" };
     if (contentChanged) {
       const resolved = await resolveEmbedding(input.serverId, input.userId, input.configuredEmbeddingModelId);
       if (resolved.status !== "success") return resolved;
-      const [embedding] = await embedChunks([content], resolved);
+      const embedded = await embedChunks([content], resolved);
+      if (!Array.isArray(embedded)) return embedded;
+      const [embedding] = embedded;
       if (!embedding) return { status: "write-failed" };
       const updated = await serverMemoryRepository.updateChunk({
         chunkId: target.document_chunk_id,
@@ -261,11 +281,11 @@ export const serverDocumentsOperations = {
       await rebuildDocumentTextContent(input.documentId);
       invalidateTomoriStateCache(input.workspaceId);
     }
-    if (tagsChanged) {
-      const updated = await serverMemoryRepository.updateDocumentChannelTags(
+    if (scopeChanged) {
+      const updated = await serverMemoryRepository.updateDocumentChannelScope(
         input.documentId,
         input.serverId,
-        input.channelTags,
+        input.channelDiscIds,
         input.personaId,
       );
       if (!updated) return { status: "write-failed" };
@@ -347,6 +367,7 @@ async function vectorizeLoadedMemory(
   if (resolved.status !== "success") return resolved;
   if (!reserveDocumentQuota(input.userDiscId).allowed) return { status: "quota-exceeded" };
   const embeddings = await embedChunks(chunks, resolved);
+  if (!Array.isArray(embeddings)) return embeddings;
   const documentId = await ragRepository.insertWithChunks({
     serverId: input.serverId,
     personaId: input.personaId,
@@ -361,7 +382,7 @@ async function vectorizeLoadedMemory(
     embeddingModelId: resolved.embeddingModelId,
     embeddingFamily: resolved.model.model_family,
     sourceType: "memory",
-    channelTags: input.channelTags,
+    channelDiscIds: input.channelDiscIds,
   });
   invalidateTomoriStateCache(input.workspaceId);
   if (!target.server_memory_id || !(await serverMemoryRepository.remove(target.server_memory_id))) {

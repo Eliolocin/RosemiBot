@@ -18,6 +18,8 @@ import { resolvePersonaAvatarPublicUrl, uploadPersonaAvatarToStorage } from "@/u
 import { getAllBaseTriggerWords } from "@/utils/text/localizer";
 import { selectUnclaimedTriggerWords } from "@/utils/text/triggerWords";
 import type { PresetExportData } from "@/types/preset/presetExport";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { DEFAULT_NATURAL_NUDGE_TALKATIVENESS } from "@/modules/natural-nudges/db/types";
 
 /**
  * Parameters for {@link importAlterPreset}.
@@ -207,6 +209,14 @@ export async function importAlterPreset(params: ImportAlterPresetParams): Promis
       importedPersonaPrompt,
     );
     if (!personaConfigUpdated) {
+      return { ok: false, reason: "config_failed" };
+    }
+    if (
+      !(await naturalNudgeRepository.savePersonaConfig(newTomoriId, {
+        talkativeness: presetData.natural_nudge_talkativeness ?? DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+        interests: presetData.natural_nudge_interests ?? [],
+      }))
+    ) {
       return { ok: false, reason: "config_failed" };
     }
   }

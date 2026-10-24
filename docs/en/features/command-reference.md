@@ -11,7 +11,7 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **41**. Runnable slash commands: **86**.
+Top-level command groups: **42**. Runnable slash commands: **89**.
 
 ## `/comment`
 
@@ -208,6 +208,14 @@ Age-restricted commands and settings.
 | `/nsfw persona default` | Apply an NSFW preset personality configuration |
 | `/nsfw persona import` | Import a persona from a PNG, JSON, or CHARX file, including NSFW personas |
 
+## `/nudge-studio`
+
+Choose which idle nudges I use in this server, and write your own.
+
+| Command | Summary |
+|---|---|
+| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
+
 ## `/nuke`
 
 Completely wipe all server data. Requires re-running /setup afterwards.
@@ -339,7 +347,9 @@ View usage statistics
 
 | Command | Summary |
 |---|---|
-| `/stats generate` | Generate a shareable stats image card. |
+| `/stats generate persona` | Generate your Persona Affinity card with one persona. |
+| `/stats generate personal` | Generate your Personal Wrapped card. |
+| `/stats generate server` | Generate this server's Server Leaderboard card. |
 | `/stats persona` | View a persona's usage statistics on this server. |
 | `/stats personal` | View your own usage statistics. |
 | `/stats server` | View server-wide usage statistics. |

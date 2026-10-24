@@ -1,11 +1,19 @@
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import {
+  reportProviderUsage,
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+} from "@/utils/provider/providerUsage";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
-import type { SearchCategory, WebSearchEngine } from "@/tools/webSearch/types";
+import type { SearchCategory, WebSearchEngine, WebSearchEngineFailure } from "@/tools/webSearch/types";
 import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { log } from "@/utils/misc/logger";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { decryptApiKey } from "@/utils/security/crypto";
 
@@ -77,7 +85,7 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetch(SEARCH_ENDPOINT, {
+      const response = await fetchWithProviderRequest(SEARCH_ENDPOINT, {
         method: "POST",
         redirect: "error",
         headers: {
@@ -97,12 +105,24 @@ export class OpenRouterEngine implements WebSearchEngine {
       });
 
       if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
+        const limit = await readOpenRouterLimitResponse(response);
+        const denied = findProviderRequestDeniedError(limit, context.usageContext);
+        if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
         return this.fail("http_error", response.status);
       }
 
       const body = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
-      const parsed = responseSchema.safeParse(JSON.parse(body.toString("utf8")));
+      const payload: unknown = JSON.parse(body.toString("utf8"));
+      const metadata = z.object({ usage: z.unknown().optional(), id: z.string().optional() }).safeParse(payload);
+      const usage = metadata.success ? normalizeProviderUsage(metadata.data.usage) : null;
+      if (usage)
+        reportProviderUsage(context.usageContext, {
+          modelCodename: model,
+          ...usage,
+          costUsd: usage.costUsd,
+          providerRequestId: metadata.success ? metadata.data.id : undefined,
+        });
+      const parsed = responseSchema.safeParse(payload);
       if (!parsed.success) return this.fail("malformed");
 
       const results: string[] = [];
@@ -137,13 +157,19 @@ export class OpenRouterEngine implements WebSearchEngine {
           status: "completed",
         },
       };
-    } catch {
-      return this.fail(signal.aborted ? "aborted" : "request_failed");
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error, context.usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
+      return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }
 
-  private fail(failure: string, status?: number): ToolResult {
-    log.warn("OpenRouter search failed", { errorType: "OpenRouterSearchFailed", metadata: { failure, status } });
-    return { success: false, error: `OpenRouter search failed: ${failure}${status ? ` (HTTP ${status})` : ""}` };
+  private fail(failure: string, status?: number, error?: unknown): ToolResult {
+    log.warn("OpenRouter search failed", error, { errorType: "OpenRouterSearchFailed", metadata: { failure, status } });
+    return {
+      success: false,
+      error: `OpenRouter search failed: ${failure}${status ? ` (HTTP ${status})` : ""}`,
+      data: { failure, status } satisfies WebSearchEngineFailure,
+    };
   }
 }

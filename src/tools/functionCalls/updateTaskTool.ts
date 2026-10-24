@@ -18,9 +18,8 @@ import {
   formatUTCOffset,
   isValidUtcOffset,
   parseTimeWithOffset,
-  UTC_OFFSET_MAX,
-  UTC_OFFSET_MIN,
 } from "@/utils/text/timezoneHelper";
+import { UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/constants/utcOffset";
 import { BaseTool, type ToolContext, type ToolParameterSchema, type ToolResult } from "@/types/tool/interfaces";
 import type { ReminderRow } from "@/types/db/schema";
 

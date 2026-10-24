@@ -1,3 +1,10 @@
+import {
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 /**
  * /memory history import - Extract atomic facts from channel message history using an LLM
@@ -18,11 +25,13 @@ import type {
   ButtonInteraction,
   ModalSubmitInteraction,
   Client,
+  Guild,
   Message,
   SlashCommandSubcommandBuilder,
   TextBasedChannel,
 } from "discord.js";
-import { MessageFlags, EmbedBuilder, TextInputStyle } from "discord.js";
+import { ChannelType, MessageFlags, EmbedBuilder, TextInputStyle } from "discord.js";
+import { channelScopeAdmits, channelScopeCandidates } from "@/utils/discord/channelScope";
 import { isRagAvailable } from "@/utils/db/ragAvailability";
 import { localizer } from "@/utils/text/localizer";
 import { log, ColorCode } from "@/utils/misc/logger";
@@ -70,6 +79,7 @@ import {
 } from "@/utils/provider/credentialResolver";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import type { TokenUsage } from "@/utils/text/tokenEstimate";
 
 /** Maximum document name length */
 const MAX_DOCUMENT_NAME_LENGTH = 64;
@@ -161,45 +171,29 @@ function buildFooter(params: {
 }
 
 /**
- * Loads existing server memories for a persona, filtered by channel tags.
- * Untagged memories (no `#tag` entries) are always included; tagged memories must
- * match at least one of the provided filter tags. Tag quotes are stripped before
- * comparison (server_memories tags are stored with surrounding quotes).
+ * Loads existing server memories for a persona whose channel scope admits one of the filter
+ * channels; unscoped memories are always included.
  *
  * @param serverId Internal server id
- * @param filterChannelTags Channel tag names without `#` prefix (e.g. ["general", "dev"])
  */
 async function loadInCharacterMemoryLines(
   serverId: number,
   personaLineageId: number | null,
-  filterChannelTags: string[],
+  filterChannelIds: readonly string[],
 ): Promise<string[]> {
   if (personaLineageId == null) return [];
 
   const rows = await serverMemoryRepository.loadServerMemoryContentTags(serverId, personaLineageId);
 
-  const lowerFilter = filterChannelTags.map((t) => t.toLowerCase());
-
   return rows
-    .filter((row) => {
-      const normalized = (row.tags ?? []).map((t) => t.replace(/^["']+|["']+$/g, ""));
-      const channelTags = normalized.filter((t) => t.startsWith("#"));
-      if (channelTags.length === 0) return true;
-      if (lowerFilter.length === 0) return true;
-      return channelTags.some((t) => lowerFilter.includes(t.slice(1).toLowerCase()));
-    })
+    .filter((row) => channelScopeAdmits(row.channel_disc_ids, filterChannelIds))
     .map((row) => row.content.trim())
     .filter((content) => content.length > 0);
 }
 
 /**
- * Retrieves document chunks relevant to a query, looping over multiple channel
- * filter tags and merging results. Each tag-filtered call returns chunks from
- * documents tagged with that channel (plus untagged documents). Results are
- * deduped by (document_id, chunk_index) and the highest-similarity copy is kept.
- *
- * NB: this makes one embedding round-trip per tag. With 16-results × 3 tags,
- * that's 3 embedding calls per extraction window. The user opted into "luxury".
+ * Retrieves document chunks relevant to a query from unscoped documents and documents scoped to
+ * any of the filter channels.
  */
 async function retrieveInCharacterChunks(params: {
   serverId: number;
@@ -207,40 +201,51 @@ async function retrieveInCharacterChunks(params: {
   query: string;
   embeddingModel: EmbeddingModelRow;
   embeddingApiKey: string;
-  filterChannelTags: string[];
+  filterChannelIds: readonly string[];
   maxResults: number;
 }): Promise<RetrievedDocumentChunk[]> {
-  const { serverId, personaId, query, embeddingModel, embeddingApiKey, filterChannelTags, maxResults } = params;
+  const { serverId, personaId, query, embeddingModel, embeddingApiKey, filterChannelIds, maxResults } = params;
 
   if (!query.trim()) return [];
 
-  const tagsToQuery = filterChannelTags.length > 0 ? filterChannelTags : [null];
-  const merged = new Map<string, RetrievedDocumentChunk>();
+  return ragRepository.retrieveRelevantChunks({
+    serverId,
+    personaId,
+    query,
+    embeddingModel,
+    apiKey: embeddingApiKey,
+    maxResults,
+    minSimilarity: HISTORY_INCHARACTER_RAG_MIN_SIMILARITY,
+    channelIds: filterChannelIds,
+  });
+}
 
-  for (const tag of tagsToQuery) {
-    const chunks = await ragRepository.retrieveRelevantChunks({
-      serverId,
-      personaId,
-      query,
-      embeddingModel,
-      apiKey: embeddingApiKey,
-      maxResults,
-      minSimilarity: HISTORY_INCHARACTER_RAG_MIN_SIMILARITY,
-      channelName: tag,
-    });
-
-    for (const chunk of chunks) {
-      const key = `${chunk.document_id}:${chunk.chunk_index}`;
-      const existing = merged.get(key);
-      if (!existing || chunk.similarity > existing.similarity) {
-        merged.set(key, chunk);
-      }
-    }
+/**
+ * Resolves the `channels` option to channel IDs: a `<#id>` mention must name a channel in this
+ * server, and a name matches every text or announcement channel that carries it.
+ *
+ * @returns The first entry that resolves to nothing when any does, so the command can reject it
+ */
+export function resolveHistoryChannelScope(
+  guild: Pick<Guild, "channels"> | null,
+  input: string | null,
+): { status: "resolved"; channelIds: string[] } | { status: "unresolved"; entry: string } {
+  const scopeableChannels = [...(guild?.channels.cache.values() ?? [])].filter(
+    (channel) => channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement,
+  );
+  const channelIds = new Set<string>();
+  for (const rawEntry of (input ?? "").split(",")) {
+    const entry = rawEntry.trim();
+    if (!entry) continue;
+    const mentionedId = entry.match(/^<#(\d{17,20})>$/)?.[1];
+    const name = entry.replace(/^#+/, "").toLowerCase();
+    const matches = scopeableChannels.filter((channel) =>
+      mentionedId ? channel.id === mentionedId : channel.name.toLowerCase() === name,
+    );
+    if (matches.length === 0) return { status: "unresolved", entry };
+    for (const channel of matches) channelIds.add(channel.id);
   }
-
-  return Array.from(merged.values())
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, maxResults);
+  return { status: "resolved", channelIds: [...channelIds] };
 }
 
 /** Shows the "no facts extracted from this batch" embed with the pagination footer. */
@@ -296,6 +301,15 @@ async function showExtractionFailureTerminal(
 ): Promise<void> {
   if (failure.reason === "extraction-failed") {
     await showExtractionFailedEmbed(statusTarget, locale, footer, failure);
+    return;
+  }
+  if (failure.reason === "provider-denied") {
+    const copy = getProviderRequestFailureCopy(failure.denied, locale);
+    await replaceHistoryImportStatus(statusTarget, locale, {
+      titleKey: copy.titleKey,
+      description: `${copy.description}\n\n${footer}`,
+      color: ColorCode.ERROR,
+    });
     return;
   }
   await showNoFactsExtractedEmbed(statusTarget, locale, footer);
@@ -461,6 +475,7 @@ async function extractWindow(
   apiKey: string,
   systemPrompt: string,
   endpointUrl?: string,
+  onUsage?: (usage: TokenUsage) => void,
 ): Promise<HistoryExtractionOutcome> {
   const userPrompt = buildExtractionUserPrompt(windowText, previousRestatements);
   return await extractHistoryWindowForProvider({
@@ -472,6 +487,7 @@ async function extractWindow(
     userPrompt,
     temperature: 0.3,
     maxOutputTokens: 8192,
+    onUsage,
   });
 }
 
@@ -578,12 +594,12 @@ async function createDocumentForImport(params: {
   serverId: number;
   personaId: number | null;
   uploaderUserId: number | null;
-  channelTags: string[];
+  channelDiscIds: string[];
   scopeLabel: string;
   replyInteraction: HistoryImportStatusTarget;
   locale: string;
 }): Promise<number | null> {
-  const { documentName, serverId, personaId, uploaderUserId, channelTags, scopeLabel, replyInteraction, locale } =
+  const { documentName, serverId, personaId, uploaderUserId, channelDiscIds, scopeLabel, replyInteraction, locale } =
     params;
 
   const memoryLimits = getMemoryLimits();
@@ -633,7 +649,7 @@ async function createDocumentForImport(params: {
     uploaderUserId,
     documentName,
     sourceType: "history",
-    channelTags,
+    channelDiscIds,
   });
 }
 
@@ -647,7 +663,8 @@ async function createDocumentForImport(params: {
 type IncrementalExtractionResult =
   | { ok: true; totalFactCount: number; allChunkText: string }
   | { ok: false; reason: "no-facts" }
-  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number };
+  | { ok: false; reason: "extraction-failed"; error: string; failedWindows: number; totalWindows: number }
+  | { ok: false; reason: "provider-denied"; denied: ProviderRequestDeniedError };
 
 /**
  * Runs incremental LLM extraction over message windows, embedding and persisting each
@@ -672,6 +689,8 @@ async function runIncrementalExtraction(params: {
   embeddingProvider: string;
   embeddingCodename: string;
   embeddingApiKey: string;
+  embeddingUsageContext?: ProviderUsageContext;
+  textUsageContext?: ProviderUsageContext;
 }): Promise<IncrementalExtractionResult> {
   const {
     formattedResult,
@@ -688,6 +707,8 @@ async function runIncrementalExtraction(params: {
     embeddingProvider,
     embeddingCodename,
     embeddingApiKey,
+    embeddingUsageContext,
+    textUsageContext,
   } = params;
 
   const memoryLimits = getMemoryLimits();
@@ -730,7 +751,13 @@ async function runIncrementalExtraction(params: {
       apiKey,
       composedSystemPrompt,
       endpointUrl,
+      createProviderUsageRecorder(textUsageContext, model),
     );
+
+    const deniedExtraction = windowOutcome.ok
+      ? null
+      : findProviderRequestDeniedError(windowOutcome.cause, textUsageContext);
+    if (deniedExtraction) return { ok: false, reason: "provider-denied", denied: deniedExtraction };
 
     // A failed window is recorded and skipped rather than treated as "found nothing",
     //    so the run can still report the real cause if no window ever succeeds.
@@ -757,15 +784,23 @@ async function runIncrementalExtraction(params: {
 
       allChunks.push(...windowChunks);
 
-      const embeddings = await generateEmbeddingsBatched({
-        provider: embeddingProvider,
-        apiKey: embeddingApiKey,
-        model: embeddingCodename,
-        modelId: embeddingModelId,
-        inputs: windowChunks,
-        taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-        batchSize: 16,
-      });
+      let embeddings: number[][];
+      try {
+        embeddings = await generateEmbeddingsBatched({
+          provider: embeddingProvider,
+          apiKey: embeddingApiKey,
+          model: embeddingCodename,
+          modelId: embeddingModelId,
+          inputs: windowChunks,
+          taskType: (await providerSupportsEmbeddingTaskType(embeddingProvider)) ? "RETRIEVAL_DOCUMENT" : undefined,
+          batchSize: 16,
+          onUsage: createProviderUsageRecorder(embeddingUsageContext, embeddingCodename),
+        });
+      } catch (error) {
+        const deniedEmbedding = findProviderRequestDeniedError(error, embeddingUsageContext);
+        if (deniedEmbedding) return { ok: false, reason: "provider-denied", denied: deniedEmbedding };
+        throw error;
+      }
 
       for (const target of writeTargets) {
         const startIdx = chunkStartIndex.get(target.documentId) ?? 0;
@@ -823,7 +858,8 @@ async function runIncrementalExtraction(params: {
 
 interface HistoryImportNotice {
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   descriptionVars?: Record<string, string>;
 }
 
@@ -837,6 +873,7 @@ interface HistoryImportRuntime {
     embeddingProvider: string;
     embeddingCodename: string;
     embeddingApiKey: string;
+    embeddingUsageContext?: ProviderUsageContext;
   };
   provider: string;
   model: string;
@@ -850,6 +887,7 @@ type HistoryImportRuntimeResult =
 async function resolveHistoryImportRuntime(
   tomoriState: TomoriState,
   userId: number | null,
+  locale: string,
 ): Promise<HistoryImportRuntimeResult> {
   let textCreds: ResolvedCredentials;
   let embeddingCreds: ResolvedCredentials;
@@ -859,6 +897,19 @@ async function resolveHistoryImportRuntime(
       resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId }),
     ]);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      log.warn(`[Learn History] Provider denied a text or embedding request`, error, {
+        userId,
+        serverId: tomoriState.server_id,
+        personaId: tomoriState.persona_id,
+        metadata: {
+          command: "learn history",
+        },
+      });
+      return { ok: false, notice: { titleKey: copy.titleKey, description: copy.description } };
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Learn History] Personal provider required for capability "text" or "embedding"`, error, {
         userId,
@@ -952,6 +1003,7 @@ async function resolveHistoryImportRuntime(
         embeddingProvider: embeddingModel.provider as string,
         embeddingCodename: embeddingModel.codename,
         embeddingApiKey: embeddingCreds.apiKey,
+        embeddingUsageContext: embeddingCreds.usageContext,
       },
       provider: tomoriState.llm.llm_provider.toLowerCase(),
       model: getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name),
@@ -1157,21 +1209,18 @@ export async function execute(
       return;
     }
 
-    const channelTags: string[] = channelsInput
-      ? channelsInput
-          .split(",")
-          .map((raw) => {
-            const s = raw.trim();
-            const mention = s.match(/^<#(\d+)>$/);
-            if (mention) {
-              const resolved = _client.channels.cache.get(mention[1]);
-              return "name" in (resolved ?? {}) ? (resolved as { name: string }).name.toLowerCase() : "";
-            }
-            return s.toLowerCase().replace(/^#+/, "");
-          })
-          .filter((c) => c.length > 0 && /^[\w-]+$/.test(c))
-          .map((c) => `#${c}`)
-      : [];
+    const channelScope = resolveHistoryChannelScope(interaction.guild, channelsInput);
+    if (channelScope.status === "unresolved") {
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.learn.history.channels_unresolved_title",
+        descriptionKey: "commands.learn.history.channels_unresolved_description",
+        descriptionVars: { entry: channelScope.entry },
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const channelDiscIds = channelScope.channelIds;
 
     const allPersonas = await personaRepository.loadAllForServer(guildId);
 
@@ -1242,7 +1291,7 @@ export async function execute(
             color: ColorCode.INFO,
           });
 
-          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null);
+          const runtimeResult = await resolveHistoryImportRuntime(activeTomoriState, userData.user_id ?? null, locale);
           if (!runtimeResult.ok) {
             await replaceHistoryImportStatus(work.message, locale, {
               ...runtimeResult.notice,
@@ -1278,19 +1327,17 @@ export async function execute(
           });
           if (!fetchResult) return completePersonaWorkflow();
 
-          const inCharacterFilterTags =
-            channelTags.length > 0
-              ? channelTags.map((tag) => tag.replace(/^#/, ""))
-              : "name" in sourceChannel && sourceChannel.name
-                ? [sourceChannel.name.toLowerCase()]
-                : [];
+          const inCharacterFilterIds =
+            channelDiscIds.length > 0
+              ? channelDiscIds
+              : channelScopeCandidates(sourceChannel.id, sourceChannel.isThread() ? sourceChannel.parentId : null);
           const personaServerId = activeTomoriState.server_id;
           const inCharacterExistingMemories =
             promptMode === "in_character"
               ? await loadInCharacterMemoryLines(
                   personaServerId,
                   selectedPersona.persona_lineage_id ?? null,
-                  inCharacterFilterTags,
+                  inCharacterFilterIds,
                 )
               : [];
           const composeSystemPrompt =
@@ -1302,7 +1349,7 @@ export async function execute(
                     query: windowText,
                     embeddingModel,
                     embeddingApiKey: embeddingCreds.apiKey,
-                    filterChannelTags: inCharacterFilterTags,
+                    filterChannelIds: inCharacterFilterIds,
                     maxResults: HISTORY_INCHARACTER_RAG_MAX_RESULTS,
                   });
                   return composeInCharacterSystemPrompt({
@@ -1341,7 +1388,7 @@ export async function execute(
             serverId: activeTomoriState.server_id,
             personaId: targetPersonaId,
             uploaderUserId: userData.user_id ?? null,
-            channelTags,
+            channelDiscIds,
             scopeLabel,
             replyInteraction: work.message,
             locale,
@@ -1353,6 +1400,7 @@ export async function execute(
             provider,
             model,
             apiKey: textCreds.apiKey,
+            textUsageContext: textCreds.usageContext,
             endpointUrl,
             composeSystemPrompt,
             replyInteraction: work.message,
@@ -1406,7 +1454,7 @@ export async function execute(
 
       await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+      const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
       if (!runtimeResult.ok) {
         await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
           ...runtimeResult.notice,
@@ -1469,7 +1517,7 @@ export async function execute(
         serverId: tomoriState.server_id,
         personaId: null,
         uploaderUserId: userData.user_id ?? null,
-        channelTags,
+        channelDiscIds,
         scopeLabel,
         replyInteraction: modalSubmitInteraction,
         locale,
@@ -1481,6 +1529,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => globalSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1526,7 +1575,7 @@ export async function execute(
 
     await modalSubmitInteraction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null);
+    const runtimeResult = await resolveHistoryImportRuntime(tomoriState, userData.user_id ?? null, locale);
     if (!runtimeResult.ok) {
       await replaceHistoryImportStatus(modalSubmitInteraction, locale, {
         ...runtimeResult.notice,
@@ -1595,7 +1644,7 @@ export async function execute(
         serverId: tomoriState.server_id,
         personaId: null,
         uploaderUserId: userData.user_id ?? null,
-        channelTags,
+        channelDiscIds,
         scopeLabel,
         replyInteraction: modalSubmitInteraction,
         locale,
@@ -1607,6 +1656,7 @@ export async function execute(
         provider,
         model,
         apiKey: textCreds.apiKey,
+        textUsageContext: textCreds.usageContext,
         endpointUrl,
         composeSystemPrompt: async () => autoSystemPrompt,
         replyInteraction: modalSubmitInteraction,
@@ -1674,7 +1724,7 @@ export async function execute(
         uploaderUserId: userData.user_id ?? null,
         documentName: docName,
         sourceType: "history",
-        channelTags,
+        channelDiscIds,
       });
 
       personaTargets.push({
@@ -1701,6 +1751,7 @@ export async function execute(
       provider,
       model,
       apiKey: textCreds.apiKey,
+      textUsageContext: textCreds.usageContext,
       endpointUrl,
       composeSystemPrompt: async () => autoSystemPrompt,
       replyInteraction: modalSubmitInteraction,

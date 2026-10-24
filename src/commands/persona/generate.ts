@@ -1,3 +1,9 @@
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Preset Generate Command
  * AI-powered personality generation using supported structured output providers
@@ -143,10 +149,13 @@ function resolveComponentsV2AccentColor(color: string | number): number {
 function buildGenerateStatusComponents(options: {
   locale: string;
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   color: string | number;
   descriptionVars?: Record<string, string | number | boolean>;
   details?: string;
+  footerKey?: string;
+  footerVars?: Record<string, string | number | boolean>;
   showInputAttachment?: boolean;
 }): TopLevelComponentData[] {
   const components: ComponentInContainerData[] = [
@@ -156,7 +165,7 @@ function buildGenerateStatusComponents(options: {
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(options.locale, options.descriptionKey, options.descriptionVars),
+      content: options.description ?? localizer(options.locale, options.descriptionKey ?? "", options.descriptionVars),
     },
   ];
 
@@ -164,6 +173,13 @@ function buildGenerateStatusComponents(options: {
     components.push({
       type: ComponentType.TextDisplay,
       content: options.details,
+    });
+  }
+
+  if (options.footerKey) {
+    components.push({
+      type: ComponentType.TextDisplay,
+      content: `-# ${localizer(options.locale, options.footerKey, options.footerVars)}`,
     });
   }
 
@@ -199,10 +215,13 @@ async function editGenerateStatusReply(
   options: {
     locale: string;
     titleKey: string;
-    descriptionKey: string;
+    descriptionKey?: string;
+    description?: string;
     color: string | number;
     descriptionVars?: Record<string, string | number | boolean>;
     details?: string;
+    footerKey?: string;
+    footerVars?: Record<string, string | number | boolean>;
     inputAttachment?: AttachmentBuilder;
   },
 ): Promise<void> {
@@ -213,9 +232,12 @@ async function editGenerateStatusReply(
           locale: options.locale,
           titleKey: options.titleKey,
           descriptionKey: options.descriptionKey,
+          description: options.description,
           color: options.color,
           descriptionVars: options.descriptionVars,
           details: options.details,
+          footerKey: options.footerKey,
+          footerVars: options.footerVars,
           showInputAttachment: Boolean(options.inputAttachment),
         }),
         ...(options.inputAttachment ? { files: [options.inputAttachment] } : {}),
@@ -573,6 +595,7 @@ export async function execute(
 
     // The primary model always performs generation, so these stay the primary model's own
     // resolved provider and key. A vision model only ever contributes a text description.
+    let usageContext: ProviderUsageContext | undefined;
     const generationTomoriState = tomoriState;
     const generationProviderName = providerName;
     const generationApiKey = decryptedApiKey;
@@ -802,15 +825,9 @@ export async function execute(
 
     await editGenerateStatusReply(modalSubmitInteraction, {
       locale,
-      // The caption is a second model call the user is waiting on, so the status names it
-      // rather than reporting generation while a different model is still reading the image.
-      titleKey: visionCaptionPending
-        ? "commands.persona.generate.captioning_title"
-        : "commands.persona.generate.processing_title",
-      descriptionKey: visionCaptionPending
-        ? "commands.persona.generate.captioning_description"
-        : "commands.persona.generate.processing_description",
-      descriptionVars: visionCaptionPending ? { model_name: tomoriState.vision_llm?.llm_codename ?? "" } : undefined,
+      titleKey: "commands.persona.generate.processing_title",
+      descriptionKey: "commands.persona.generate.processing_description",
+      footerKey: "commands.persona.generate.processing_footer",
       color: ColorCode.INFO,
     });
     replyUsesComponentsV2 = true;
@@ -840,6 +857,15 @@ export async function execute(
         userId: userData.user_id ?? null,
       });
 
+      if (captionResult.requestDenied) {
+        await editGenerateStatusReply(modalSubmitInteraction, {
+          locale,
+          ...getProviderRequestFailureCopy(captionResult.requestDenied, locale),
+          color: ColorCode.ERROR,
+          inputAttachment: getInputAttachment(),
+        });
+        return;
+      }
       if (!captionResult.ok) {
         const reason = captionResult.failure?.reason ?? "request_failed";
         log.warn(
@@ -906,6 +932,7 @@ export async function execute(
         tomoriState: generationTomoriState,
         locale,
         provider: generationProviderName,
+        usageContext,
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
@@ -923,16 +950,34 @@ export async function execute(
       params: genParams,
       locale,
       toolContext: presetToolContext,
+      onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
     });
 
-    if (genResult.error || !genResult.preset) {
+    const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
+    if (deniedGeneration) {
       await editGenerateStatusReply(modalSubmitInteraction, {
         locale,
-        titleKey: "commands.persona.generate.generation_failed_title",
-        descriptionKey: "commands.persona.generate.generation_failed_description",
+        ...getProviderRequestFailureCopy(deniedGeneration, locale),
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
+
+    if (genResult.error || !genResult.preset) {
+      const invalidGeneratedData = genResult.errorType === "VALIDATION_ERROR";
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        titleKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_title"
+          : "commands.persona.generate.generation_failed_title",
+        descriptionKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_description"
+          : "commands.persona.generate.generation_failed_description",
         descriptionVars: {
           error: genResult.error || "Unknown error",
         },
+        details: invalidGeneratedData ? genResult.error : undefined,
         color: ColorCode.ERROR,
         inputAttachment: getInputAttachment(),
       });
@@ -1128,6 +1173,16 @@ export async function execute(
     // Quota already reserved at step 8 - no increment needed
     log.success(`Preset generated successfully for: ${characterName}`);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      if (replyUsesComponentsV2) {
+        await editGenerateStatusReply(replyInteraction, { locale, ...copy, color: ColorCode.ERROR });
+      } else {
+        await replyInfoEmbed(replyInteraction, locale, { ...copy, color: ColorCode.ERROR });
+      }
+      return;
+    }
     log.error("Error in preset generate command:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 

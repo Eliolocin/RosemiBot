@@ -11,6 +11,7 @@ import {
 import type { CooldownType } from "@/types/db/schema";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { GlobalInteractionRoute, GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
+import { storeChecklistSnapshot, takeChecklistSnapshot } from "@/utils/discord/interactions/checklistSnapshotStore";
 import {
   beginPanelInteraction,
   deliverGuardedPanel,
@@ -51,7 +52,7 @@ import {
 } from "@/utils/discord/ui/moderationPanel";
 import {
   showRoutedRawModal,
-  takeRawModalChannelSelectValue,
+  takeRawModalChannelSelectValues,
   takeRawModalCheckboxGroupValues,
   takeRawModalSelectValue,
   takeRawModalUserSelectValue,
@@ -101,7 +102,7 @@ export interface ModerationRouteDependencies {
     | "removeUserFromBlacklist"
     | "removePersonaUserBlock"
     | "removeUserBlacklistBatch"
-    | "upsertWhitelistChannel"
+    | "upsertWhitelistChannels"
     | "removeWhitelistChannel"
     | "addWhitelistRole"
     | "removeWhitelistRole"
@@ -143,12 +144,12 @@ export interface ModerationRouteDependencies {
   takeRemovalSnapshot(nonce: string): string[] | undefined;
   takeCheckboxValues(interactionId: string, nonce: string): string[] | undefined;
   takeUserSelectValue(interactionId: string, nonce: string): string | undefined;
-  takeChannelSelectValue(interactionId: string, nonce: string): string | undefined;
+  takeChannelSelectValues(interactionId: string, nonce: string): string[] | undefined;
   takeCooldownTypeSelectValue(interactionId: string, nonce: string): string | undefined;
   takeRoleSelectValue(interactionId: string, nonce: string): string | undefined;
   takeRemovalCheckboxValues(interactionId: string, nonce: string, index: number): string[] | undefined;
   takePersonaChannelPersonaValue(interactionId: string, nonce: string): string | undefined;
-  takePersonaChannelChannelValue(interactionId: string, nonce: string): string | undefined;
+  takePersonaChannelChannelValues(interactionId: string, nonce: string): string[] | undefined;
   resolveUser(
     interaction: ModalSubmitInteraction | GlobalRoutableInteraction | ChatInputCommandInteraction,
     userId: string,
@@ -161,22 +162,6 @@ export interface ModerationRouteDependencies {
     interaction: ModalSubmitInteraction | GlobalRoutableInteraction | ChatInputCommandInteraction,
     roleId: string,
   ): Promise<{ id: string; name: string } | null>;
-}
-
-const removalSnapshots = new Map<string, { values: string[]; expiresAt: number }>();
-
-function storeRemovalSnapshot(nonce: string, values: string[]): void {
-  const now = Date.now();
-  for (const [key, snapshot] of removalSnapshots) {
-    if (snapshot.expiresAt < now) removalSnapshots.delete(key);
-  }
-  removalSnapshots.set(nonce, { values: [...values], expiresAt: now + 15 * 60_000 });
-}
-
-function takeRemovalSnapshot(nonce: string): string[] | undefined {
-  const snapshot = removalSnapshots.get(nonce);
-  removalSnapshots.delete(nonce);
-  return snapshot && snapshot.expiresAt >= Date.now() ? snapshot.values : undefined;
 }
 
 function isAuthorized(interaction: GlobalRoutableInteraction | ChatInputCommandInteraction): boolean {
@@ -383,14 +368,14 @@ export function createModerationInteractionRoute(
       showRoutedRawModal(interaction, buildModerationRemovalModal(locale, nonce, action, options)),
     showPersonaChannelAddModal: (interaction, locale, nonce, personas) =>
       showRoutedRawModal(interaction, buildPersonaChannelAddModal(locale, nonce, personas)),
-    storeRemovalSnapshot,
-    takeRemovalSnapshot,
+    storeRemovalSnapshot: storeChecklistSnapshot,
+    takeRemovalSnapshot: takeChecklistSnapshot,
     takeCheckboxValues: (interactionId, nonce) =>
       takeRawModalCheckboxGroupValues(interactionId, buildMemberAccessModalFieldId(nonce)),
     takeUserSelectValue: (interactionId, nonce) =>
       takeRawModalUserSelectValue(interactionId, buildUserBlacklistAddModalFieldId(nonce)),
-    takeChannelSelectValue: (interactionId, nonce) =>
-      takeRawModalChannelSelectValue(interactionId, buildWhitelistChannelAddModalFieldId(nonce, "channel")),
+    takeChannelSelectValues: (interactionId, nonce) =>
+      takeRawModalChannelSelectValues(interactionId, buildWhitelistChannelAddModalFieldId(nonce, "channel")),
     takeCooldownTypeSelectValue: (interactionId, nonce) =>
       takeRawModalSelectValue(interactionId, buildWhitelistChannelAddModalFieldId(nonce, "type")),
     takeRoleSelectValue: (interactionId, nonce) =>
@@ -399,8 +384,8 @@ export function createModerationInteractionRoute(
       takeRawModalCheckboxGroupValues(interactionId, buildModerationRemoveModalFieldId(nonce, index)),
     takePersonaChannelPersonaValue: (interactionId, nonce) =>
       takeRawModalSelectValue(interactionId, buildPersonaChannelAddModalFieldId(nonce, "persona")),
-    takePersonaChannelChannelValue: (interactionId, nonce) =>
-      takeRawModalChannelSelectValue(interactionId, buildPersonaChannelAddModalFieldId(nonce, "channel")),
+    takePersonaChannelChannelValues: (interactionId, nonce) =>
+      takeRawModalChannelSelectValues(interactionId, buildPersonaChannelAddModalFieldId(nonce, "channel")),
     resolveUser: defaultResolveUser,
     resolveChannel: defaultResolveChannel,
     resolveRole: defaultResolveRole,
@@ -1159,7 +1144,7 @@ export function createModerationInteractionRoute(
         const modal = interaction as ModalSubmitInteraction;
         await interaction.deferUpdate();
 
-        const rawChannelId = dependencies.takeChannelSelectValue(modal.id, route.nonce);
+        const rawChannelIds = dependencies.takeChannelSelectValues(modal.id, route.nonce) ?? [];
         const rawCooldownType = dependencies.takeCooldownTypeSelectValue(modal.id, route.nonce);
         let rawCooldownLength: string | undefined;
         try {
@@ -1181,7 +1166,7 @@ export function createModerationInteractionRoute(
           return;
         }
 
-        if (!rawChannelId || !/^\d{17,20}$/.test(rawChannelId)) {
+        if (rawChannelIds.length === 0 || !rawChannelIds.every((channelId) => /^\d{17,20}$/.test(channelId))) {
           await repaint(interaction, route.locale, "whitelist", "channels", 0, scope, {
             tone: "error",
             heading: localizer(route.locale, "commands.moderation.user_blacklist_add_invalid_input"),
@@ -1199,8 +1184,10 @@ export function createModerationInteractionRoute(
           return;
         }
 
-        const targetChannel = await dependencies.resolveChannel(modal, rawChannelId);
-        if (!targetChannel || targetChannel.type !== ChannelType.GuildText) {
+        const targetChannels = await Promise.all(
+          rawChannelIds.map((channelId) => dependencies.resolveChannel(modal, channelId)),
+        );
+        if (targetChannels.some((channel) => !channel || channel.type !== ChannelType.GuildText)) {
           await repaint(interaction, route.locale, "whitelist", "channels", 0, scope, {
             tone: "error",
             heading: localizer(route.locale, "commands.moderation.whitelist_channel_add_failed"),
@@ -1260,10 +1247,10 @@ export function createModerationInteractionRoute(
           return;
         }
 
-        const result = await dependencies.operations.upsertWhitelistChannel({
+        const result = await dependencies.operations.upsertWhitelistChannels({
           guildId: channelAddScope.guildId,
           serverId: channelAddScope.serverId,
-          channelId: targetChannel.id,
+          channelIds: rawChannelIds,
           requestedCooldownType: parsedCooldownType,
           requestedCooldownLength: parsedCooldownLength,
           serverConfig: channelAddScope.config,
@@ -1276,22 +1263,35 @@ export function createModerationInteractionRoute(
             serverId: channelAddScope.serverId,
             userDiscId: interaction.user?.id ?? "",
           });
+          const writtenChannel =
+            result.written.length === 1
+              ? targetChannels.find((channel) => channel?.id === result.written[0]?.channelId)
+              : undefined;
           panelReceipt = {
             tone: "success",
             heading: localizer(route.locale, "commands.moderation.whitelist_channel_add_success"),
-            detail: localizer(route.locale, "commands.moderation.whitelist_channel_add_success_detail", {
-              channel_name: targetChannel.name,
-              channel_id: targetChannel.id,
-            }),
+            detail: writtenChannel
+              ? localizer(route.locale, "commands.moderation.whitelist_channel_add_success_detail", {
+                  channel_name: writtenChannel.name,
+                  channel_id: writtenChannel.id,
+                })
+              : localizer(route.locale, "commands.moderation.whitelist_channel_add_success_count_detail", {
+                  count: result.written.length,
+                }),
           };
         } else if (result.status === "unchanged") {
+          const onlyChannel = targetChannels.length === 1 ? targetChannels[0] : null;
           panelReceipt = {
             tone: "info",
             heading: localizer(route.locale, "commands.moderation.whitelist_channel_add_unchanged"),
-            detail: localizer(route.locale, "commands.moderation.whitelist_channel_add_unchanged_detail", {
-              channel_name: targetChannel.name,
-              channel_id: targetChannel.id,
-            }),
+            detail: onlyChannel
+              ? localizer(route.locale, "commands.moderation.whitelist_channel_add_unchanged_detail", {
+                  channel_name: onlyChannel.name,
+                  channel_id: onlyChannel.id,
+                })
+              : localizer(route.locale, "commands.moderation.whitelist_channel_add_unchanged_count_detail", {
+                  count: result.unchangedChannelIds.length,
+                }),
           };
         } else {
           panelReceipt = {
@@ -1949,20 +1949,22 @@ export function createModerationInteractionRoute(
       if (route.action === "persona-channel-add-submit") {
         await interaction.deferUpdate();
         const personaValue = dependencies.takePersonaChannelPersonaValue(interaction.id, route.nonce);
-        const channelId = dependencies.takePersonaChannelChannelValue(interaction.id, route.nonce);
+        const channelIds = dependencies.takePersonaChannelChannelValues(interaction.id, route.nonce) ?? [];
         if (!isAuthorized(interaction)) {
           await interaction.editReply(terminalPayload(route.locale, "commands.moderation.permission_denied"));
           return;
         }
         let scope = await dependencies.resolveScope(interaction, false);
         const personaId = personaValue && /^\d+$/.test(personaValue) ? Number(personaValue) : 0;
-        const channel = channelId ? await dependencies.resolveChannel(interaction, channelId) : null;
+        const channels = await Promise.all(
+          channelIds.map((channelId) => dependencies.resolveChannel(interaction, channelId)),
+        );
         if (
           !scope ||
           scope.readStatus !== "fresh" ||
           !scope.whitelist.personaNames.has(personaId) ||
-          !channel ||
-          channel.type !== ChannelType.GuildText
+          channels.length === 0 ||
+          channels.some((channel) => !channel || channel.type !== ChannelType.GuildText)
         ) {
           await interaction.editReply(
             terminalPayload(route.locale, scope ? "commands.moderation.unavailable" : "commands.moderation.not_setup"),
@@ -1972,7 +1974,8 @@ export function createModerationInteractionRoute(
         const currentIds = scope.whitelist.personaChannels
           .filter((row) => row.persona_id === personaId)
           .map((row) => row.channel_disc_id);
-        const selectedChannelIds = new Set([...currentIds, channel.id]);
+        const selectedChannelIds = new Set([...currentIds, ...channelIds]);
+        const addedChannelIds = [...new Set(channelIds)].filter((channelId) => !currentIds.includes(channelId));
         const result = await dependencies.operations.replacePersonaChannelWhitelist({
           guildId: scope.guildId,
           serverId: scope.serverId,
@@ -2004,10 +2007,16 @@ export function createModerationInteractionRoute(
               : {
                   tone: "success",
                   heading: localizer(route.locale, "commands.moderation.persona_channel_add_success"),
-                  detail: localizer(route.locale, "commands.moderation.persona_channel_add_success_detail", {
-                    channel: `<#${channel.id}>`,
-                    persona,
-                  }),
+                  detail:
+                    addedChannelIds.length === 1
+                      ? localizer(route.locale, "commands.moderation.persona_channel_add_success_detail", {
+                          channel: `<#${addedChannelIds[0]}>`,
+                          persona,
+                        })
+                      : localizer(route.locale, "commands.moderation.persona_channel_add_success_count_detail", {
+                          count: addedChannelIds.length,
+                          persona,
+                        }),
                 };
         scope = (await dependencies.resolveScope(interaction, false)) ?? { ...scope, readStatus: "unavailable" };
         await repaint(interaction, route.locale, "whitelist", "persona-channels", 0, scope, receipt);

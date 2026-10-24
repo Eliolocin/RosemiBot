@@ -2,6 +2,15 @@ import { describe, expect, it } from "bun:test";
 import { normalizeProviderUsage, sumTurnUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 describe("normalizeProviderUsage", () => {
+  it("preserves finite nonnegative costs and discards invalid costs without dropping tokens", () => {
+    for (const cost of [0, 0.0012, -1, Number.NaN, Number.POSITIVE_INFINITY, "0.0012", null]) {
+      const raw = { prompt_tokens: 10, completion_tokens: 5, cost };
+      const usage = normalizeProviderUsage(raw);
+      expect(usage).toMatchObject({ inputTokens: 10, outputTokens: 5 });
+      expect(usage?.costUsd).toBe(typeof cost === "number" && Number.isFinite(cost) && cost >= 0 ? cost : undefined);
+    }
+  });
+
   it("normalizes OpenAI-compatible snake_case usage", () => {
     // The shape openaiCompatibleStreamAdapter stores in metadata.usage.
     const usage = normalizeProviderUsage({ prompt_tokens: 1200, completion_tokens: 340, total_tokens: 1540 });

@@ -19,7 +19,8 @@ export default {
     stale_warning:
       "Saved data may be out of date because the read failed. Actions are unavailable until a fresh read succeeds.",
     outdated_panel: `This provider panel is outdated. Run {command} again.`,
-    not_setup: `This workspace is not set up yet. Run /setup first.`,
+    not_setup: `This server is not set up yet. Run /setup first.`,
+    not_setup_dm: `This DM is not set up yet. Run /setup first.`,
     capability_models_explanation: `These models are available through this provider:`,
     entry_no_models: `No models are registered here yet.`,
     model_selector_guidance: `Use the dropdown below to add or edit a model capability:`,
@@ -46,7 +47,7 @@ export default {
     remove_endpoint: `Remove Endpoint`,
     remove_key: `Remove Key`,
     remove_title: `Remove saved entry?`,
-    remove_impact_provider: `Removing **{name}** deletes its encrypted credential, rotation pool, and workspace-added model registrations. This cannot be undone.`,
+    remove_impact_provider: `Removing **{name}** deletes its encrypted credential, rotation pool, and associated model registrations. This cannot be undone.`,
     remove_impact_endpoint: `Removing **{name}** deletes every grouped connection, encrypted credential, and registered model under this endpoint. This cannot be undone.`,
     remove_impact_brave: `Removing **{name}** deletes its encrypted search API key. This cannot be undone.`,
     remove_confirm: `Continue and Remove`,

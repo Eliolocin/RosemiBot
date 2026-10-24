@@ -47,6 +47,7 @@ import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import { ColorCode } from "@/utils/misc/logger";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { formatUTCOffset, formatUtcOffsetInput, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { buildLegalDocUrl } from "@/utils/misc/docsUrl";
 import { orderPersonaPresetChoices } from "@/utils/persona/presetOrdering";
 import type { ComponentsV2MessagePayload } from "@/utils/discord/ui/componentsV2Limits";
@@ -103,6 +104,13 @@ const SETUP_ENDPOINT_CAPABILITY_KEYS: Record<
   },
 };
 
+export interface SetupProviderOptionSummary {
+  value: string;
+  labelKey: string;
+  descriptionKey: string;
+  summaryKey: string;
+}
+
 export interface SetupWizardPayloadInput {
   draft: SetupDraftRecord;
   locale: string;
@@ -119,6 +127,9 @@ export interface SetupWizardPayloadInput {
    * selection nothing could confirm. An object is the resolved catalog set.
    */
   settingsCatalogs?: SetupSettingsCatalogs | null;
+  providerOptions?: readonly SetupProviderOptionSummary[];
+  optionComponents?: readonly ComponentInContainerData[];
+  optionReady?: boolean;
 }
 
 /** Values a Starting Settings editor can offer, derived from the live catalogs on every open. */
@@ -135,10 +146,8 @@ export interface SetupSettingsCatalogs {
   promptTexts: Map<string, string>;
 }
 
-/** Discord's maximum option count for a single modal string select. */
 const SETUP_MODAL_SELECT_OPTION_LIMIT = 25;
 
-/** Discord's maximum length for one select option's value, which is compared verbatim when read back. */
 const SETUP_OPTION_VALUE_LIMIT = 100;
 
 /**
@@ -228,10 +237,16 @@ export function isSetupStartingSettingsResolvable(
   return catalogs.prompts.some((prompt) => prompt.name === systemPrompt.presetName);
 }
 
-function resolveProviderSummary(draft: SetupDraftRecord, locale: string): string {
+function resolveProviderSummary(draft: SetupDraftRecord, locale: string, optionSummaryKey?: string): string {
   const access = draft.providerAccess;
   if (!access) {
     return `> ${localizer(locale, "commands.setup.wizard.provider_pending")}`;
+  }
+
+  if (access.mode === "option") {
+    return optionSummaryKey
+      ? `> ${localizer(locale, optionSummaryKey)}`
+      : `> ${localizer(locale, "commands.setup.wizard.provider_pending")}`;
   }
 
   if (access.mode === "catalog") {
@@ -258,23 +273,6 @@ function resolveProviderSummary(draft: SetupDraftRecord, locale: string): string
 
 function resolveHumanizerLabel(humanizer: number, locale: string): string {
   return localizer(locale, (HUMANIZER_KEYS[humanizer as keyof typeof HUMANIZER_KEYS] ?? HUMANIZER_KEYS[2]).label);
-}
-
-/**
- * The stored timezone as the dashboard shows it, spelled out so a UTC offset never reads as an
- * unfinished field.
- *
- * This is a display form and must not be fed back into {@link parseSetupTimezoneOffset}: the `UTC`
- * prefix is prose, and the modal's re-parse of a pre-filled value rejects it. The editor pre-fills
- * with {@link formatTimezoneOffsetInput} for that reason.
- */
-function formatTimezoneOffsetDisplay(timezoneOffset: number): string {
-  return timezoneOffset >= 0 ? `UTC+${timezoneOffset}` : `UTC${timezoneOffset}`;
-}
-
-/** The stored timezone as the editor's own input value, so reopening a saved step parses cleanly. */
-function formatTimezoneOffsetInput(timezoneOffset: number): string {
-  return String(timezoneOffset);
 }
 
 function resolveSettingsSummary(
@@ -310,7 +308,7 @@ function resolveSettingsSummary(
       style: resolveHumanizerLabel(settings.humanizer, locale),
     }),
     localizer(locale, "commands.setup.wizard.settings_summary_timezone", {
-      tz: formatTimezoneOffsetDisplay(settings.timezoneOffset),
+      tz: formatUTCOffset(settings.timezoneOffset),
     }),
     localizer(locale, "commands.setup.wizard.settings_summary_system_prompt", {
       prompt: promptName,
@@ -333,7 +331,12 @@ export function buildSetupWizardPayload(
     });
   }
 
-  const providerComplete = isSetupDraftProviderAccessComplete(draft.providerAccess);
+  const providerOption = input.providerOptions?.find(
+    (option) => draft.providerAccess?.mode === "option" && draft.providerAccess.value === option.value,
+  );
+  const providerComplete =
+    isSetupDraftProviderAccessComplete(draft.providerAccess) &&
+    (draft.providerAccess?.mode !== "option" || input.optionReady === true);
   // The stored identities are resolved against the live catalogs, so a persona or prompt row removed
   // since the save re-pends the step here rather than only at the final commit. A catalog read that
   // failed re-pends it too: the alternative is claiming a selection is complete when nothing could
@@ -347,7 +350,7 @@ export function buildSetupWizardPayload(
   // The catalog-aware verdict governs the whole ready state, not only the step rows. Gating the
   // finish action on the catalog-blind draft predicate instead would leave it enabled and Primary
   // beside a step the same panel had just re-pended.
-  const isComplete = isSetupDraftComplete(draft) && settingsComplete;
+  const isComplete = isSetupDraftComplete(draft) && settingsComplete && providerComplete;
 
   const total = isHosted ? 3 : 2;
   const done = (isHosted && policiesComplete ? 1 : 0) + (providerComplete ? 1 : 0) + (settingsComplete ? 1 : 0);
@@ -389,7 +392,7 @@ export function buildSetupWizardPayload(
   }
 
   const providerStatus = providerComplete ? "✓" : "○";
-  const providerSummary = resolveProviderSummary(draft, locale);
+  const providerSummary = resolveProviderSummary(draft, locale, providerOption?.summaryKey);
   const providerHint = localizer(locale, "commands.setup.wizard.provider_hint", {
     help: commandRegistry.getCommandMention("help"),
   });
@@ -398,7 +401,13 @@ export function buildSetupWizardPayload(
     content: `### ${providerStatus} ${localizer(locale, "commands.setup.wizard.provider_name")}\n${localizer(locale, "commands.setup.wizard.provider_description")}\n${providerSummary}\n-# ${providerHint}`,
   });
 
-  const providerOptions: SelectMenuComponentOptionData[] = [
+  const providerOptions: SelectMenuComponentOptionData[] = (input.providerOptions ?? []).map((option) => ({
+    label: safeSelectOptionText(localizer(locale, option.labelKey), SETUP_OPTION_VALUE_LIMIT),
+    description: safeSelectOptionText(localizer(locale, option.descriptionKey), SETUP_OPTION_VALUE_LIMIT),
+    value: `option:${option.value}`,
+    default: draft.providerAccess?.mode === "option" && draft.providerAccess.value === option.value,
+  }));
+  providerOptions.push(
     {
       label: localizer(locale, "commands.setup.wizard.provider_option_catalog"),
       description: localizer(locale, "commands.setup.wizard.provider_option_catalog_description"),
@@ -411,7 +420,7 @@ export function buildSetupWizardPayload(
       value: "custom-endpoint",
       default: draft.providerAccess?.mode === "custom-endpoint",
     },
-  ];
+  );
 
   if (draft.context !== "dm") {
     providerOptions.push({
@@ -435,6 +444,10 @@ export function buildSetupWizardPayload(
       },
     ],
   });
+
+  if (draft.providerAccess?.mode === "option" && input.optionComponents?.length) {
+    components.push(...input.optionComponents);
+  }
 
   if (draft.providerAccess?.mode === "custom-endpoint") {
     const access = draft.providerAccess;
@@ -667,12 +680,16 @@ interface SetupReceiptInput {
   learnMore: string;
   /** Footer locale key for the skipped or failed avatar update, when one applies. */
   footerKey?: string;
+  optionReceiptDescriptionKey?: string;
 }
 
 function resolveReceiptDescriptionKey(input: SetupReceiptInput): string {
   const isDm = input.context === "dm";
   const { providerAccess } = input;
 
+  if (providerAccess.mode === "option") {
+    return input.optionReceiptDescriptionKey ?? "commands.setup.wizard.provider_invalid";
+  }
   if (providerAccess.mode === "user-byok") {
     return isDm ? "commands.setup.wizard.receipt_desc_byok_dm" : "commands.setup.wizard.receipt_desc_byok";
   }
@@ -1131,10 +1148,7 @@ export function parseSetupHumanizerChoice(value: string | undefined): number | n
 export function parseSetupTimezoneOffset(value: string | undefined): number | null {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return 0;
-
-  const parsed = Number.parseFloat(trimmed);
-  if (Number.isNaN(parsed) || parsed < -12 || parsed > 14) return null;
-  return Math.round(parsed);
+  return parseUtcOffsetInput(trimmed);
 }
 
 export function buildSetupSettingsModal(
@@ -1153,7 +1167,7 @@ export function buildSetupSettingsModal(
   // The plan's contract for this modal is that its selects reopen on their placeholders, so the
   // `default` flags below are a best-effort hint the client is free to ignore rather than a
   // pre-fill. Only the text input is expected to come back carrying its stored value.
-  const timezoneValue = existing ? formatTimezoneOffsetInput(existing.timezoneOffset) : undefined;
+  const timezoneValue = existing ? formatUtcOffsetInput(existing.timezoneOffset) : undefined;
   const storedPrompt = existing?.systemPrompt;
 
   return {

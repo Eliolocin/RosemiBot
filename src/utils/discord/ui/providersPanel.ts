@@ -15,7 +15,9 @@ import type {
   ProviderPanelCapabilitySection,
   ProviderPanelEntry,
   ProviderPanelModel,
+  ProviderPanelOptionAction,
 } from "@/types/discord/providerPanel";
+import { findProviderOption, type ProviderOptionScope } from "@/utils/provider/providerOptionRegistry";
 import type { CustomEndpointApiStyle, CustomEndpointCapability } from "@/types/db/schema";
 import type { PanelReadStatus, PanelReceipt } from "@/types/discord/panel";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
@@ -252,6 +254,10 @@ const ENTRY_KIND_KEYS: Record<ProviderPanelEntry["kind"], { label: string; impac
 export const PROVIDERS_ENTRIES_PER_SELECTOR_PAGE = DISCORD_SELECT_OPTIONS_MAX - 2;
 export const PROVIDERS_ADD_PROVIDER_VALUE = "action:add-provider";
 export const PROVIDERS_ADD_ENDPOINT_VALUE = "action:add-endpoint";
+
+export function providersEntriesPerPage(optionActionCount: number): number {
+  return Math.max(1, PROVIDERS_ENTRIES_PER_SELECTOR_PAGE - optionActionCount);
+}
 
 export type AddProviderModalField = "provider" | "api-key";
 
@@ -970,6 +976,10 @@ export interface ProvidersPanelRenderInput {
   enabledActions?: ReadonlySet<"add-provider" | "add-endpoint" | "model" | "edit" | "remove">;
   routeNamespace?: ProvidersRouteNamespace;
   footerCommand?: { root: string; subcommandGroup?: string; subcommand?: string };
+  optionActions?: ProviderPanelOptionAction[];
+  optionOwnerId?: number;
+  viewerId?: string;
+  canManageServer?: boolean;
 }
 
 function buildRetryRow(locale: string, routeNamespace: ProvidersRouteNamespace): ActionRowData<ButtonComponentData> {
@@ -1028,6 +1038,10 @@ const PROVIDER_NAME_PREVIEW_BUDGET = 600;
  * only stops a future formatter that wraps differently at each length from looping forever.
  */
 const ENTRY_FIT_ATTEMPTS = 3;
+
+function entryDisplayName(locale: string, entry: ProviderPanelEntry): string {
+  return entry.copyKey ? localizer(locale, entry.copyKey) : entry.displayName;
+}
 
 function renderProviderName(locale: string, value: string): string {
   const preview = buildTextPreview(value, PROVIDER_NAME_PREVIEW_BUDGET);
@@ -1143,7 +1157,20 @@ function buildEntryActions(
   readStatus: PanelReadStatus,
   enabledActions: ProvidersPanelRenderInput["enabledActions"],
   routeNamespace: ProvidersRouteNamespace,
-): ActionRowData<ButtonComponentData> {
+  input: ProvidersPanelRenderInput,
+): ActionRowData<ButtonComponentData> | null {
+  const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
+  if (option) {
+    return (
+      option.panel?.entryActions?.({
+        locale,
+        scope: providerOptionScopeForPanel(routeNamespace, input),
+        entry,
+        data: entry.optionData,
+        canManageServer: input.canManageServer ?? false,
+      }) ?? null
+    );
+  }
   const unavailable = readStatus !== "fresh";
   const buttons: ButtonComponentData[] = [];
   buttons.push(
@@ -1289,10 +1316,52 @@ function buildEntryModelSelector(
   return components;
 }
 
+function optionEntryDescriptionKey(
+  locale: string,
+  entry: ProviderPanelEntry,
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): string | null {
+  if (entry.kind !== "provider") return null;
+  const option = findProviderOption(entry.provider);
+  if (!option) return null;
+  const context = {
+    locale,
+    scope: providerOptionScopeForPanel(routeNamespace, input),
+    entry,
+    data: entry.optionData,
+    canManageServer: input.canManageServer ?? false,
+  };
+  const scopeKind = context.scope.kind;
+  const owned = option.panel?.entryOwned?.(context) ?? false;
+  if (owned && option.copy.entryDescriptionKeys.owned) return option.copy.entryDescriptionKeys.owned;
+  return option.copy.entryDescriptionKeys[scopeKind];
+}
+
+function entryDescriptionKey(
+  locale: string,
+  entry: ProviderPanelEntry,
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): string {
+  return optionEntryDescriptionKey(locale, entry, routeNamespace, input) ?? ENTRY_KIND_KEYS[entry.kind].label;
+}
+
 function selectedEntryId(input: ProvidersPanelRenderInput): string | null {
   if (input.page.kind === "entry") return input.page.entryId ?? input.initialEntryId;
   if (input.page.kind === "remove") return input.page.entryId;
   return null;
+}
+
+function providerOptionScopeForPanel(
+  routeNamespace: ProvidersRouteNamespace,
+  input: ProvidersPanelRenderInput,
+): ProviderOptionScope {
+  return {
+    kind: routeNamespace === PROVIDERS_ROUTE_NAMESPACE ? "server" : "personal",
+    ownerId: input.optionOwnerId ?? 0,
+    discordId: input.viewerId,
+  };
 }
 
 export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): ProvidersPanelPayload {
@@ -1317,7 +1386,6 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
 
   const selectedId = selectedEntryId(input);
   const selectedIndex = selectedId ? entries.findIndex((entry) => entry.id === selectedId) : -1;
-  const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / PROVIDERS_ENTRIES_PER_SELECTOR_PAGE);
   const actionOptions: SelectMenuComponentOptionData[] = [
     {
       label: localizer(locale, "commands.providers.select_add_provider"),
@@ -1331,16 +1399,28 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
       description: localizer(locale, "commands.providers.select_add_endpoint_description"),
     },
   ];
+  for (const action of input.optionActions ?? []) {
+    actionOptions.unshift({
+      label: safeSelectOptionText(localizer(locale, action.labelKey), DISCORD_SELECT_OPTION_LABEL_MAX),
+      value: action.value,
+      description: safeSelectOptionText(
+        localizer(locale, action.descriptionKey),
+        DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
+      ),
+    });
+  }
+  const entryPageSize = providersEntriesPerPage(actionOptions.length - 2);
+  const implicitRangeIndex = selectedIndex < 0 ? 0 : Math.floor(selectedIndex / entryPageSize);
   const selection = resolveRangeSelection(entries, input.rangeIndex ?? implicitRangeIndex, {
     reservedOptions: actionOptions.length,
   });
   const options: SelectMenuComponentOptionData[] = [
     ...actionOptions,
     ...selection.visibleItems.map((entry) => ({
-      label: safeSelectOptionText(entry.displayName, 100),
+      label: safeSelectOptionText(entryDisplayName(locale, entry), DISCORD_SELECT_OPTION_LABEL_MAX),
       value: entry.id,
       description: safeSelectOptionText(
-        localizer(locale, ENTRY_KIND_KEYS[entry.kind].label),
+        localizer(locale, entryDescriptionKey(locale, entry, routeNamespace, input)),
         DISCORD_SELECT_OPTION_DESCRIPTION_MAX,
       ),
       default: entry.id === selectedId,
@@ -1402,12 +1482,13 @@ export function buildProvidersPanelPayload(input: ProvidersPanelRenderInput): Pr
     const entry = entries.find((candidate) => candidate.id === removalPage.entryId);
     if (entry) {
       const removalFields = removalRouteFields(entry);
+      const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
       components.push(
         {
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.providers.remove_title")}
-${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
-  name: renderProviderName(locale, entry.displayName),
+${localizer(locale, option?.copy.removeImpactKey ?? ENTRY_KIND_KEYS[entry.kind].impact, {
+  name: renderProviderName(locale, entryDisplayName(locale, entry)),
 })}`,
         },
         {
@@ -1464,9 +1545,19 @@ ${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
       );
       const guidance =
         modelSelector.length > 0 ? `\n\n${localizer(locale, "commands.providers.model_selector_guidance")}` : "";
+      const option = entry.kind === "provider" ? findProviderOption(entry.provider) : undefined;
+      const optionComponents = option?.panel?.entryComponents?.({
+        locale,
+        scope: providerOptionScopeForPanel(routeNamespace, input),
+        entry,
+        data: entry.optionData,
+        canManageServer: input.canManageServer ?? false,
+      });
       const fixedTextLength =
         measureFormattedPanelTextLength([...components, ...footerComponents]) +
+        (optionComponents ? measureFormattedPanelTextLength([...optionComponents]) : 0) +
         (input.receipt ? measureFormattedPanelTextLength(buildPanelReceiptContainer(input.receipt)) : 0);
+      const entryActions = buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace, input);
       components.push(
         {
           type: ComponentType.TextDisplay,
@@ -1479,7 +1570,8 @@ ${localizer(locale, ENTRY_KIND_KEYS[entry.kind].impact, {
           ),
         },
         ...modelSelector,
-        buildEntryActions(locale, entry, readStatus, input.enabledActions, routeNamespace),
+        ...(optionComponents ?? []),
+        ...(entryActions ? [entryActions] : []),
       );
     } else {
       components.push({

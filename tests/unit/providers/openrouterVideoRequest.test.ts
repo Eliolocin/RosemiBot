@@ -38,6 +38,15 @@ function createRequest(
 }
 
 describe("OpenRouter stable video request", () => {
+  it("defaults Grok Lite to 480p while preserving explicit resolution choices", () => {
+    const model = "x-ai/grok-imagine-video-1.5-lite";
+    const capabilities = createCapabilities({ id: model, supportedResolutions: ["480p", "720p", "1080p"] });
+    for (const resolution of [undefined, "720p", "1080p"] as const) {
+      const request = createRequest({ model, resolution });
+      for (const catalog of [capabilities, undefined])
+        expect(normalizeOpenRouterVideoOptions(request, catalog).resolution).toBe(resolution ?? "480p");
+    }
+  });
   it("normalizes options from the dedicated video model metadata", () => {
     const normalized = normalizeOpenRouterVideoOptions(createRequest(), createCapabilities());
 

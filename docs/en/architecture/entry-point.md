@@ -25,6 +25,10 @@ aiGenerated: true
 
 The HTTP health server binds only in production mode. Container healthcheck configuration belongs
 to the deployment guides; gateway login errors are reported in process logs.
+Optional modules can call `registerHealthServerRoute()` during startup to register a method and path
+on the same server. The base installation has no extra routes. Built-in health probes take precedence,
+and registered handlers receive the parsed request URL. Invalid URLs return 400, and failed handlers
+return 500 or close the response if headers have already been sent.
 
 ## Startup sequence
 
@@ -122,7 +126,8 @@ Once the gateway connection is confirmed, `eventHandler` runs sorted handlers un
 2. `02_guildMcpLifecycle.ts`: Registers guild MCP shutdown cleanup and, outside production, pre-connects enabled guild servers. No local MCP process starts.
 3. `03_initCommandRegistry.ts`: Builds fast-lookup routing maps for slash commands.
 4. `04_syncCommandCatalog.ts`: Synchronizes command metadata and descriptions with database tables.
-5. `status.ts`: Configures the bot's user status and activity message.
+5. `05_backfillLegacyChannelScopes.ts`: Resolves the legacy `#name` channel scopes migration 111 set aside into channel IDs from the guild channel cache (`src/utils/memory/legacyChannelScopeBackfill.ts`). A row stays pending, and its item active in every channel, until a name matches or an admin saves the item. `src/events/guildAvailable/` reruns it for a guild that returns from an outage.
+6. `status.ts`: Configures the bot's user status and activity message.
 
 Deferred timers registered in `src/init/timers.ts` trigger on the same `clientReady` event.
 

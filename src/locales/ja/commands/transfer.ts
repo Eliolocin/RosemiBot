@@ -50,6 +50,8 @@ export default {
     section_speech_description: `音声設定。`,
     section_access_label: `アクセス`,
     section_access_description: `サーバーアクセスと権限の設定。`,
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description: "Natural Nudgesの設定とカスタムアイドルナッジ（許可チャンネルを除く）。",
     section_profile_label: `プロフィール`,
     section_profile_description: `個人プロフィール設定。`,
     section_privacy_label: `プライバシー`,

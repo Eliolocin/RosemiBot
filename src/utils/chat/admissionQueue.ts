@@ -25,6 +25,7 @@ import {
   type ChatAccessState,
 } from "@/utils/chat/admissionGuards";
 import { shouldBotReply } from "@/utils/chat/replyDecision";
+import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
 import { shouldSurfaceChatUserErrors } from "@/utils/chat/errorVisibility";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import type { ChatIncoming, NonRunnableChatAdmission } from "@/utils/chat/types";
@@ -117,6 +118,11 @@ async function evaluateLockedChannelAdmission(
     locale: "en-US",
     reason,
   });
+
+  // A queued nudge would speak after the turn that made the channel busy, so it is dropped instead.
+  if (incoming.naturalNudge) {
+    return ignored("locked_natural_nudge");
+  }
 
   if (StreamOrchestrator.hasStopRequest(channelId) && !StreamOrchestrator.isFollowUpRequest(channelId)) {
     return ignored("locked_stop_requested");
@@ -211,7 +217,9 @@ async function evaluateLockedChannelAdmission(
     shouldBotReply(triggerMessage, stateForQueueCheck, earlyAllPersonas, {
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
+      personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     });
 
   if (!wouldReply) {
@@ -257,6 +265,10 @@ async function evaluateLockedChannelAdmission(
     }
   }
 
+  if (!applyWelcomeHandoff(incoming, userDiscId)) {
+    return ignored("answered_by_welcome");
+  }
+
   enqueueBusyChannelMessage({
     lockEntry,
     channelId,
@@ -282,11 +294,13 @@ async function evaluateLockedChannelAdmission(
       forcedMentions: incoming.forcedMentions,
       manualTriggerInvoker: incoming.manualTriggerInvoker,
       systemTriggerIdentity: incoming.systemTriggerIdentity,
+      borrowsTriggerMessage: incoming.borrowsTriggerMessage,
       reminderRecipientID: incoming.reminderRecipientID,
       reminderData: incoming.reminderData,
       onGenerationResult: incoming.onGenerationResult,
       onQueueDiscard: incoming.onQueueDiscard,
       sceneTurn: incoming.sceneTurn,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
       manualStreamingContextOverrides: incoming.manualStreamingContextOverrides
         ? {
             ...(incoming.manualStreamingContextOverrides.disableCrossChannelMessage
@@ -372,6 +386,7 @@ async function evaluatePreLockReplyGate(args: AdmissionQueueAndTriggerArgs): Pro
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     })
   ) {
     return null;

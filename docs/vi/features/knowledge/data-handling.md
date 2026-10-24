@@ -36,13 +36,13 @@ Nhà cung cấp AI mà bạn đã chọn (Google, OpenRouter, NovelAI, …) xử
 ### Tùy chọn Duyệt bản nháp phản hồi
 <!-- anchor: response-drafting-selections -->
 
-`/config` > `Plugin` > `Duyệt phản hồi` lưu trữ các lựa chọn người duyệt, model Quyết định, công cụ kiểm tra quy tắc tùy chọn, prompt và các mục duyệt được bật cho không gian làm việc. Khi Bật, câu trả lời sẽ được duyệt trước khi gửi. Yêu cầu công cụ chỉ được duyệt trước khi thực thi khi `Lệnh gọi công cụ` được bật. Một công cụ kiểm tra tùy chọn sẽ nhận văn bản câu trả lời đang chờ xử lý và chỉ gửi các phát hiện khuyến nghị cho người duyệt. Việc bỏ qua quyết định sẽ không hoạt động cho đến khi có xác thực được gắn nhãn, và các lựa chọn Quyết định đã lưu sẽ không thực hiện các cuộc gọi trả phí khi chưa có hiệu chuẩn. Tắt tính năng này sẽ giữ nguyên các câu trả lời và công cụ thông thường mà không cần yêu cầu duyệt.
+`/config` > `Plugin` > `Duyệt phản hồi` lưu trữ các lựa chọn người duyệt, model Quyết định, công cụ kiểm tra quy tắc tùy chọn, prompt và các mục duyệt được bật cho máy chủ hoặc DM đó. Khi Bật, câu trả lời sẽ được duyệt trước khi gửi. Yêu cầu công cụ chỉ được duyệt trước khi thực thi khi `Lệnh gọi công cụ` được bật. Một công cụ kiểm tra tùy chọn sẽ nhận văn bản câu trả lời đang chờ xử lý và chỉ gửi các phát hiện khuyến nghị cho người duyệt. Việc bỏ qua quyết định sẽ không hoạt động cho đến khi có xác thực được gắn nhãn, và các lựa chọn Quyết định đã lưu sẽ không thực hiện các cuộc gọi trả phí khi chưa có hiệu chuẩn. Tắt tính năng này sẽ giữ nguyên các câu trả lời và công cụ thông thường mà không cần yêu cầu duyệt.
 
 Người duyệt được chọn luôn nhận được câu trả lời đang chờ xử lý, tin nhắn kích hoạt và đích phản hồi. `Mục cần kiểm tra` kiểm soát ngữ cảnh bổ sung nào đã cấp cho tác giả mà người duyệt sẽ nhận: chỉ dẫn nhân cách, hội thoại mẫu, hội thoại gần đây, ký ức và ngữ cảnh khác, cùng các lệnh gọi công cụ. Chỉ dẫn nhân cách, hội thoại mẫu và hội thoại gần đây bắt đầu ở trạng thái bật. Ký ức và ngữ cảnh khác bao gồm mối quan hệ giữa những người tham gia có thể thấy và tài liệu. Khi `Lệnh gọi công cụ` được bật, người duyệt sẽ nhận kết quả đã hoàn thành và định nghĩa công cụ có sẵn; một yêu cầu đề xuất bao gồm mục tiêu chính xác và các đối số, bao gồm bất kỳ văn bản tin nhắn nào. Việc duyệt không bổ sung tra cứu hồ sơ cá nhân. Thông tin xác thực và đối số xác thực sẽ được ẩn đi. Bằng chứng bắt buộc phải phù hợp; phạm vi phương tiện không đầy đủ, đối số công cụ ẩn hoặc thiếu giới hạn model sẽ khiến việc duyệt không khả dụng. Việc duyệt không khả dụng vẫn giữ nguyên các kiểm tra ứng dụng thông thường; hành động bị từ chối trước đó vẫn bị chặn.
 
-Kế thừa sử dụng model và thông tin xác thực thực sự trả lời, bao gồm định tuyến cá nhân, luân chuyển khóa, ghi đè và dự phòng. Người duyệt được ghim sử dụng thông tin đăng ký không gian làm việc và khóa nhà cung cấp đã lưu của chính nó. Nhà cung cấp của nó có chính sách bảo mật riêng. Việc chọn người duyệt ghim sẽ không làm thay đổi nhà cung cấp phản hồi chính. Các câu trả lời đang chờ xử lý và các gói sửa lỗi chỉ tồn tại trong lượt đó. Chỉ các cuộc đối thoại được Discord chấp nhận mới đi vào bộ nhớ cuộc trò chuyện; việc tính toán token bao gồm các lần thử thực tế không thành công khi nhà cung cấp báo cáo việc sử dụng. Chẩn đoán chứa siêu dữ liệu và số lượng, không có bản nháp, bằng chứng, bản sửa lỗi, nội dung phản hồi của nhà cung cấp hoặc khóa.
+Kế thừa sử dụng model và thông tin xác thực thực sự trả lời, bao gồm định tuyến cá nhân, luân chuyển khóa, ghi đè và dự phòng. Người duyệt được ghim sử dụng thông tin đăng ký và khóa nhà cung cấp đã lưu cho máy chủ hoặc DM đó. Nhà cung cấp của nó có chính sách bảo mật riêng. Việc chọn người duyệt ghim sẽ không làm thay đổi nhà cung cấp phản hồi chính. Các câu trả lời đang chờ xử lý và các gói sửa lỗi chỉ tồn tại trong lượt đó. Chỉ các cuộc đối thoại được Discord chấp nhận mới đi vào bộ nhớ cuộc trò chuyện; việc tính toán token bao gồm các lần thử thực tế không thành công khi nhà cung cấp báo cáo việc sử dụng. Chẩn đoán chứa siêu dữ liệu và số lượng, không có bản nháp, bằng chứng, bản sửa lỗi, nội dung phản hồi của nhà cung cấp hoặc khóa.
 
-Xuất cấu hình bao gồm các cài đặt này mà không có khóa API hoặc token xác thực MCP. Nhập cấu hình chỉ giữ nguyên các tham chiếu model và trình kiểm tra khi chúng khả dụng cho không gian làm việc nhận. Hãy đăng ký một mục tương đương cục bộ hoặc xóa các lựa chọn không khả dụng trước khi nhập. Đặt lại cấu hình máy chủ sẽ khôi phục về trạng thái Tắt, kế thừa người duyệt, không có model Quyết định, prompt mặc định và không có trình kiểm tra.
+Xuất cấu hình bao gồm các cài đặt này mà không có khóa API hoặc token xác thực MCP. Nhập cấu hình chỉ giữ nguyên các tham chiếu model và trình kiểm tra khi chúng khả dụng cho máy chủ hoặc DM nhận. Hãy đăng ký một mục tương đương cục bộ hoặc xóa các lựa chọn không khả dụng trước khi nhập. Đặt lại cấu hình máy chủ sẽ khôi phục về trạng thái Tắt, kế thừa người duyệt, không có model Quyết định, prompt mặc định và không có trình kiểm tra.
 
 ## Xuất dữ liệu của bạn
 
@@ -50,7 +50,7 @@ Dữ liệu có thể xuất được gửi tới DM của bạn dưới dạng 
 
 - `/export config`: giá trị cấu hình máy chủ (không bao gồm khóa và thông tin xác thực API).
 - `/export personal config`: cài đặt hồ sơ cá nhân (quyền riêng tư, thẻ xuất hiện, đặt tên).
-- `/export memories`: bộ nhớ máy chủ, trong phạm vi persona chính, một persona hoặc tất cả các persona.
+- `/export memories`: bộ nhớ máy chủ, trong phạm vi persona chính, một persona hoặc tất cả các persona. Giới hạn kênh không được xuất, do đó bộ nhớ đã nhập sẽ áp dụng trong mọi kênh cho đến khi bạn chọn lại kênh.
 - `/export personal memories`: ký ức cá nhân, có phạm vi toàn cầu hoặc từng cá nhân.
 - `/persona export`: định nghĩa đầy đủ về tính cách.
 
@@ -87,7 +87,7 @@ Những hành động này sẽ xóa vĩnh viễn hoặc đặt lại dữ liệ
 
 ## Từ chối tham gia
 
-- `/personal config`: kiểm soát khả năng hiển thị của bạn, tối đa khả năng tàng hình hoàn toàn (chọn không tham gia bối cảnh bộ nhớ).
+- `/personal config`: kiểm soát mức hiển thị của bạn, đến mức ẩn hoàn toàn (không tham gia vào ngữ cảnh bộ nhớ), và tắt [Persona tag bạn](/features/chatting-personality/natural-nudges/#ping-user), những gợi ý nhàn rỗi mà persona tag bạn để bắt đầu cuộc trò chuyện.
 - `/config` > `Quyền hạn`: người quản lý máy chủ có thể tắt các tính năng tự học và bộ nhớ.
 
 Xem [Bộ nhớ](/vi/features/knowledge/memory/) để biết cách quản lý bộ nhớ hàng ngày.

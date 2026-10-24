@@ -40,6 +40,10 @@ export interface NormalizedOpenRouterVideoOptions {
   aspectRatio: string;
 }
 
+export function getDefaultOpenRouterVideoResolution(model: string): ProviderNativeVideoResolution {
+  return model === "x-ai/grok-imagine-video-1.5-lite" ? "480p" : "720p";
+}
+
 function selectClosestSupportedDuration(requestedDuration: number | undefined, supportedDurations: readonly number[]) {
   const fallbackTarget = requestedDuration ?? 5;
   return supportedDurations.reduce((best, current) =>
@@ -124,11 +128,12 @@ export function normalizeOpenRouterVideoOptions(
   request: Pick<ProviderNativeVideoGenerationRequest, "model" | "durationSeconds" | "resolution" | "aspectRatio">,
   capabilities: OpenRouterVideoModelCapabilities | undefined,
 ): NormalizedOpenRouterVideoOptions {
+  const requestedResolution = request.resolution ?? getDefaultOpenRouterVideoResolution(request.model);
   if (!capabilities) {
     return normalizeLegacyOpenRouterOptions(
       request.model,
       request.durationSeconds,
-      request.resolution,
+      requestedResolution,
       request.aspectRatio,
     );
   }
@@ -139,8 +144,8 @@ export function normalizeOpenRouterVideoOptions(
       : Math.min(Math.max(request.durationSeconds ?? 5, 1), 20);
   const resolution =
     capabilities.supportedResolutions.length > 0
-      ? selectClosestSupportedResolution(request.resolution, capabilities.supportedResolutions)
-      : (request.resolution ?? "720p");
+      ? selectClosestSupportedResolution(requestedResolution, capabilities.supportedResolutions)
+      : requestedResolution;
   const requestedAspectRatio = request.aspectRatio ?? "16:9";
   const aspectRatio = capabilities.supportedAspectRatios.includes(requestedAspectRatio)
     ? requestedAspectRatio

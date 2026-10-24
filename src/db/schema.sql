@@ -519,8 +519,8 @@ CREATE TABLE IF NOT EXISTS decision_models (
   is_deprecated BOOLEAN NOT NULL DEFAULT false,
   input_token_limit INT NOT NULL CHECK (input_token_limit BETWEEN 512 AND 10000000),
   sees_images BOOLEAN NOT NULL DEFAULT false,
-  supported_primitives JSONB NOT NULL DEFAULT '["predicate"]'::jsonb
-    CHECK (supported_primitives = '["predicate"]'::jsonb),
+  supported_primitives JSONB NOT NULL DEFAULT '["predicate", "choice"]'::jsonb
+    CHECK (supported_primitives IN ('["predicate"]'::jsonb, '["predicate", "choice"]'::jsonb)),
   input_price_per_million NUMERIC CHECK (input_price_per_million >= 0),
   output_price_per_million NUMERIC CHECK (output_price_per_million >= 0),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -777,6 +777,9 @@ SELECT add_column_if_not_exists('persona_presets', 'preset_avatar_hash', 'TEXT')
 SELECT add_column_if_not_exists('persona_presets', 'preset_naming_config', 'JSONB', '''{"prefixes":{},"suffixes":{},"addressTerms":{}}''::JSONB', 'NOT NULL');
 -- is_nsfw (migration 094): hides the preset from `/persona default`; only `/nsfw persona default` lists it.
 SELECT add_column_if_not_exists('persona_presets', 'is_nsfw', 'BOOLEAN', 'false', 'NOT NULL');
+-- Natural Nudges preset defaults (migration 110): pointer personas live-resolve these.
+SELECT add_column_if_not_exists('persona_presets', 'natural_nudge_interests', 'JSONB', '''[]''::JSONB', 'NOT NULL');
+SELECT add_column_if_not_exists('persona_presets', 'natural_nudge_talkativeness', 'SMALLINT', '2', 'NOT NULL');
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_persona_presets_lineage_language_unique
   ON persona_presets(preset_lineage_id, preset_language)
@@ -1026,6 +1029,7 @@ CREATE TABLE IF NOT EXISTS server_memories (
   user_id INT, -- Creator of this server memory (nullable - set to NULL if user deleted)
   content TEXT NOT NULL,
   tags TEXT[] DEFAULT '{}',
+  channel_disc_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[], -- Empty = active in every channel
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
@@ -1038,6 +1042,19 @@ SELECT add_column_if_not_exists('server_memories', 'persona_id', 'INTEGER');
 SELECT add_column_if_not_exists('server_memories', 'persona_lineage_id', 'BIGINT');
 -- Add tags column for existing databases
 SELECT add_column_if_not_exists('server_memories', 'tags', 'TEXT[]', 'ARRAY[]::TEXT[]');
+-- Add channel scope column for existing databases
+SELECT add_column_if_not_exists('server_memories', 'channel_disc_ids', 'TEXT[]', 'ARRAY[]::TEXT[]', 'NOT NULL');
+
+-- Legacy `#name` channel scopes migration 111 set aside; a row with resolved_at NULL keeps its document
+-- or server memory active in every channel until the startup backfill or an admin resolves it.
+CREATE TABLE IF NOT EXISTS legacy_channel_scope_tags (
+  source_table TEXT NOT NULL CHECK (source_table IN ('documents', 'server_memories')),
+  row_id INT NOT NULL,
+  server_id INT NOT NULL,
+  channel_tags TEXT[] NOT NULL,
+  resolved_at TIMESTAMPTZ,
+  PRIMARY KEY (source_table, row_id)
+);
 
 -- Backfill server memories to the current main persona for each server
 DO $$
@@ -1645,6 +1662,7 @@ SELECT add_column_if_not_exists('reminders', 'self_reminder', 'BOOLEAN', 'false'
 -- Delivery retries must not replace reminder_time because recurring schedules use it as their cadence anchor.
 SELECT add_column_if_not_exists('reminders', 'next_attempt_at', 'TIMESTAMP WITH TIME ZONE');
 SELECT add_column_if_not_exists('reminders', 'delivery_retry_count', 'INTEGER', '0', 'NOT NULL');
+SELECT add_column_if_not_exists('reminders', 'failed_occurrence_count', 'INTEGER', '0', 'NOT NULL');
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -2708,7 +2726,7 @@ SELECT add_column_if_not_exists('user_saved_provider_configs', 'llm_disabled_par
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'thinking_level', 'TEXT', '''auto''');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'enabled_capabilities', 'TEXT[]', 'ARRAY[]::TEXT[]');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'assigned_capabilities', 'TEXT[]', 'ARRAY[]::TEXT[]');
-SELECT add_column_if_not_exists('user_saved_provider_configs', 'fallback_model_refs', 'JSONB', '''[]''::JSONB');
+-- fallback_model_refs, model_randomizer_enabled: moved to user_personalization_configs by migration 116
 
 DROP TRIGGER IF EXISTS update_user_saved_provider_configs_timestamp ON user_saved_provider_configs;
 CREATE TRIGGER update_user_saved_provider_configs_timestamp
@@ -2767,7 +2785,6 @@ CREATE INDEX IF NOT EXISTS idx_voice_samples_server ON voice_samples(server_id);
 -- User-configurable generation length cap per saved provider. NULL = use provider default (8192 or hardcoded fallback).
 SELECT add_column_if_not_exists('saved_provider_configs', 'llm_max_output_tokens', 'INTEGER', 'NULL');
 SELECT add_column_if_not_exists('user_saved_provider_configs', 'llm_max_output_tokens', 'INTEGER', 'NULL');
-SELECT add_column_if_not_exists('user_saved_provider_configs', 'model_randomizer_enabled', 'BOOLEAN', 'false', 'NOT NULL');
 
 -- ============================================================
 -- Server Config Split Tables (migration 002)
@@ -2786,7 +2803,7 @@ CREATE TABLE IF NOT EXISTS server_chat_configs (
   send_message_limit               INT         NOT NULL DEFAULT 0,
   match_limit                      INT         NOT NULL DEFAULT 3,
   cascade_limit                    INT         NOT NULL DEFAULT 3,
-  timezone_offset                  INT         NOT NULL DEFAULT 0,
+  timezone_offset                  REAL        NOT NULL DEFAULT 0,
   self_debug_enabled               BOOLEAN     NOT NULL DEFAULT false,
   model_randomizer_enabled         BOOLEAN     NOT NULL DEFAULT false,
   system_prompt                    TEXT,
@@ -3173,12 +3190,15 @@ CREATE TABLE IF NOT EXISTS user_personalization_configs (
   personal_dtm                       TEXT    NOT NULL DEFAULT 'follow',
   personal_deliberate_tool_mode      TEXT    NOT NULL DEFAULT 'follow',
   personal_server_fallback_enabled   BOOLEAN NOT NULL DEFAULT true,
-  timezone_offset                    SMALLINT CHECK (timezone_offset IS NULL OR timezone_offset BETWEEN -12 AND 14),
+  natural_nudge_opt_out              BOOLEAN NOT NULL DEFAULT false,
+  timezone_offset                    REAL    CHECK (timezone_offset IS NULL OR (timezone_offset BETWEEN -12 AND 14 AND timezone_offset * 4 = round(timezone_offset * 4))),
   prefix_override                    TEXT,
   suffix_override                    TEXT,
   gender_identity                    TEXT,
   pronouns                           TEXT,
   addressing_style                   TEXT CHECK (addressing_style IS NULL OR addressing_style IN ('masculine', 'feminine', 'neutral')),
+  fallback_model_refs                JSONB   NOT NULL DEFAULT '[]'::JSONB,
+  model_randomizer_enabled           BOOLEAN NOT NULL DEFAULT false,
   created_at                         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at                         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -3374,6 +3394,130 @@ CREATE INDEX IF NOT EXISTS idx_stat_counters_user_metric_bucket
   ON stat_counters(user_id, metric, bucket);
 CREATE INDEX IF NOT EXISTS idx_stat_counters_user_lineage_metric
   ON stat_counters(user_id, persona_lineage_id, metric);
+
+-- Natural Nudges (migrations 110, 114, and 118). Meters derive from the fire log instead of being stored,
+-- and agendas key by the opener message so they leave the context window with it.
+CREATE TABLE IF NOT EXISTS server_natural_nudge_configs (
+  server_id                 INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
+  idle_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
+  active_nudges_enabled          BOOLEAN  NOT NULL DEFAULT true,
+  channel_disc_ids          TEXT[]   NOT NULL DEFAULT '{}',
+  llm_id                    INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
+  checker_llm_id            INT      REFERENCES llms(llm_id) ON DELETE SET NULL,
+  checker_decision_model_id INT      REFERENCES decision_models(decision_model_id) ON DELETE SET NULL,
+  idle_nudge_frequency         SMALLINT NOT NULL DEFAULT 1 CHECK (idle_nudge_frequency BETWEEN 0 AND 3),
+  active_nudge_frequency        SMALLINT NOT NULL DEFAULT 1 CHECK (active_nudge_frequency BETWEEN 0 AND 3),
+  disabled_builtin_idle_nudges TEXT[]   NOT NULL DEFAULT '{}',
+  created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT server_natural_nudge_configs_one_checker
+    CHECK (num_nonnulls(checker_llm_id, checker_decision_model_id) <= 1)
+);
+
+SELECT add_column_if_not_exists('server_natural_nudge_configs', 'checker_llm_id', 'INT REFERENCES llms(llm_id) ON DELETE SET NULL');
+SELECT add_column_if_not_exists('server_natural_nudge_configs', 'checker_decision_model_id', 'INT REFERENCES decision_models(decision_model_id) ON DELETE SET NULL');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'server_natural_nudge_configs_one_checker') THEN
+    ALTER TABLE server_natural_nudge_configs ADD CONSTRAINT server_natural_nudge_configs_one_checker
+      CHECK (num_nonnulls(checker_llm_id, checker_decision_model_id) <= 1);
+  END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS update_server_natural_nudge_configs_timestamp ON server_natural_nudge_configs;
+CREATE TRIGGER update_server_natural_nudge_configs_timestamp
+  BEFORE UPDATE ON server_natural_nudge_configs
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS server_natural_nudge_custom_idle_nudges (
+  custom_idle_nudge_id        SERIAL   PRIMARY KEY,
+  server_id         INT      NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
+  category          TEXT     NOT NULL CHECK (category IN ('ping_user', 'revive_topic', 'start_topic', 'play_scene')),
+  title             TEXT     NOT NULL CHECK (char_length(btrim(title)) BETWEEN 1 AND 80),
+  brief             TEXT     NOT NULL CHECK (char_length(btrim(brief)) BETWEEN 1 AND 1000),
+  agenda_hint       TEXT     CHECK (agenda_hint IS NULL OR char_length(agenda_hint) <= 500),
+  prerequisites     TEXT[]   NOT NULL DEFAULT '{}',
+  recommended_tools TEXT[]   NOT NULL DEFAULT '{}',
+  enabled           BOOLEAN  NOT NULL DEFAULT true,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_natural_nudge_custom_idle_nudges_server ON server_natural_nudge_custom_idle_nudges(server_id);
+
+DROP TRIGGER IF EXISTS update_server_natural_nudge_custom_idle_nudges_timestamp ON server_natural_nudge_custom_idle_nudges;
+CREATE TRIGGER update_server_natural_nudge_custom_idle_nudges_timestamp
+  BEFORE UPDATE ON server_natural_nudge_custom_idle_nudges
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+-- Persona IDs are a JSONB array, not foreign-keyed rows, so deleting every scoped persona cannot cascade a
+-- scope to empty (which would read as open to everyone).
+CREATE TABLE IF NOT EXISTS server_natural_nudge_persona_scopes (
+  server_id      INT   NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
+  idle_nudge_key TEXT  NOT NULL,
+  persona_ids    JSONB NOT NULL
+                 CHECK (jsonb_typeof(persona_ids) = 'array' AND jsonb_array_length(persona_ids) > 0),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (server_id, idle_nudge_key)
+);
+
+DROP TRIGGER IF EXISTS update_server_natural_nudge_persona_scopes_timestamp ON server_natural_nudge_persona_scopes;
+CREATE TRIGGER update_server_natural_nudge_persona_scopes_timestamp
+  BEFORE UPDATE ON server_natural_nudge_persona_scopes
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS persona_natural_nudge_configs (
+  persona_id    INT      PRIMARY KEY REFERENCES personas(persona_id) ON DELETE CASCADE,
+  talkativeness SMALLINT NOT NULL DEFAULT 2 CHECK (talkativeness BETWEEN 0 AND 4),
+  interests     JSONB    NOT NULL DEFAULT '[]'::JSONB
+                CHECK (jsonb_typeof(interests) = 'array' AND jsonb_array_length(interests) <= 8),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+DROP TRIGGER IF EXISTS update_persona_natural_nudge_configs_timestamp ON persona_natural_nudge_configs;
+CREATE TRIGGER update_persona_natural_nudge_configs_timestamp
+  BEFORE UPDATE ON persona_natural_nudge_configs
+  FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+
+CREATE TABLE IF NOT EXISTS server_natural_nudge_runtime_state (
+  server_id            INT      PRIMARY KEY REFERENCES servers(server_id) ON DELETE CASCADE,
+  idle_nudge_jitter       REAL     NOT NULL DEFAULT 1,
+  consecutive_failures SMALLINT NOT NULL DEFAULT 0,
+  stopped_at           TIMESTAMPTZ,
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS natural_nudge_fires (
+  fire_id                BIGSERIAL PRIMARY KEY,
+  server_id              INT  NOT NULL REFERENCES servers(server_id) ON DELETE CASCADE,
+  channel_disc_id        TEXT NOT NULL,
+  persona_id             INT  NOT NULL REFERENCES personas(persona_id) ON DELETE CASCADE,
+  mode                   TEXT NOT NULL CHECK (mode IN ('active', 'idle')),
+  category               TEXT CHECK (category IN ('ping_user', 'revive_topic', 'start_topic', 'play_scene')),
+  idle_nudge_key            TEXT,
+  target_user_id         INT  REFERENCES users(user_id) ON DELETE CASCADE,
+  opener_message_disc_id TEXT NOT NULL,
+  answered               BOOLEAN,
+  detour                 BOOLEAN NOT NULL DEFAULT false,
+  fired_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_natural_nudge_fires_server_time ON natural_nudge_fires(server_id, fired_at);
+CREATE INDEX IF NOT EXISTS idx_natural_nudge_fires_target_time ON natural_nudge_fires(target_user_id, fired_at)
+  WHERE target_user_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS natural_nudge_agendas (
+  message_disc_id TEXT NOT NULL,
+  persona_id      INT  NOT NULL REFERENCES personas(persona_id) ON DELETE CASCADE,
+  agenda          TEXT NOT NULL CHECK (char_length(btrim(agenda)) BETWEEN 1 AND 500),
+  target_user_id  INT  REFERENCES users(user_id) ON DELETE CASCADE,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (message_disc_id, persona_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_natural_nudge_agendas_created ON natural_nudge_agendas(created_at);
 
 -- ============================================================================
 -- Message-proxy identities and durable message attribution
