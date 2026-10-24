@@ -70,6 +70,8 @@ Thuộc tính nhật ký suy nghĩ lần lượt sử dụng khóa cá nhân c�
 
 Nếu yêu cầu không thành công khi sử dụng nhà cung cấp cá nhân của bạn, các mẹo xử lý lỗi sẽ hướng bạn đến các lệnh cá nhân của bạn (`/personal providers`, `/personal config`) thay vì cài đặt máy chủ.
 
+Trong `/personal config` > `Model` > Dự phòng, bạn có thể liệt kê tối đa năm model dự phòng. Chúng có thể đến từ bất kỳ nhà cung cấp đã lưu nào của bạn và được thử theo thứ tự khi model văn bản cá nhân của bạn bị lỗi. Việc chuyển đổi model văn bản cá nhân vẫn giữ nguyên danh sách, nhưng sẽ xóa model mới khỏi danh sách nếu model đó đã có trong đó.
+
 Khi mọi model trên tuyến văn bản cá nhân của bạn bị lỗi, TomoriBot có thể quay trở lại model văn bản mặc định của máy chủ thay vì bị lỗi âm thầm. Dự phòng máy chủ chạy dựa trên thông tin xác thực của máy chủ, được tính vào hạn ngạch văn bản của máy chủ và hiển thị nút `Đã dùng dự phòng` kèm theo thông tin chi tiết.
 
 Bạn có thể tắt tính năng dự phòng máy chủ trong `/personal config` > `Model` > Dự phòng trong `Dự phòng bằng model máy chủ`. Cài đặt này áp dụng cho toàn bộ tài khoản và được bật theo mặc định.
@@ -83,7 +85,7 @@ Máy chủ có thể yêu cầu các thành viên cung cấp khóa API của ri�
 Sử dụng `/personal config` để tùy chỉnh các tính năng bổ sung:
 
 - **Giao diện** (`Hồ sơ` > `Diện mạo`): lưu các thẻ giao diện kiểu booru được sử dụng bất cứ khi nào [tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/#tag-customization) tham chiếu đến bạn. Gửi một hộp trống để xóa chúng.
-- **Kiểm soát quyền riêng tư** (`Quyền riêng tư` > `Kiểm soát quyền riêng tư`): chọn mức độ hiển thị của bạn (`Không có`, `Một phần` hoặc `Đầy đủ`) hoặc chuyển đổi chia sẻ bộ nhớ ngắn hạn trên nhiều máy chủ.
+- **Kiểm soát quyền riêng tư** (`Quyền riêng tư` > `Kiểm soát quyền riêng tư`): chọn mức độ hiển thị của bạn (`Không có`, `Một phần` hoặc `Đầy đủ`), bật/tắt chia sẻ bộ nhớ ngắn hạn giữa các máy chủ, hoặc tắt [Persona tag bạn](/features/chatting-personality/natural-nudges/#ping-user) để persona không bao giờ tag bạn để bắt đầu cuộc trò chuyện.
 - **Chế độ phản hồi** (`Nâng cao` > `Chế độ phản hồi`): chuyển đổi tùy chỉnh cá nhân của bạn cho [Chế độ kích hoạt có chủ ý](/vi/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Mạo danh** (`Nâng cao` > `Mạo danh`): đặt lời nhắc có thể sử dụng lại được sử dụng khi ai đó gọi `/impersonate user` cho bạn.
 

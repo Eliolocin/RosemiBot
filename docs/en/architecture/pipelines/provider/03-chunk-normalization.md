@@ -24,6 +24,10 @@ The returned `ProcessedChunk` carries one of four primary types:
 Any chunk variant may attach `thoughts` (`ThoughtLogEntry[]`) for chain-of-thought capture and
 `servingProvider` to track upstream backends on routed endpoints.
 
+Token usage can arrive in a trailing chunk with empty `choices`. OpenRouter and OpenAI-compatible
+adapters preserve its metadata on an empty text chunk, so the orchestrator carries the counts into
+`StreamResult.usage` for statistics and quotas. Reported `usage.cost` is preserved alongside the token counts.
+
 ## Reasoning extraction and spill guards
 
 Reasoning content travels through dedicated fields or in-band tags:
@@ -86,14 +90,16 @@ the status or fixed text in `details`, which reaches both `/generate voice-messa
 ## Credential-scoped recovery tips
 <!-- anchor: credential-scoped-recovery-tips -->
 
-The resolved credential source of the turn (`StreamContext.textCredentialSource`, either `"server"`
-or `"personal"`) governs the troubleshooting tips displayed in error embeds:
+The resolved credential source of the turn (`StreamContext.textCredentialSource`, `"server"`,
+`"personal"`, or `"supporter"`) governs the troubleshooting tips displayed in error embeds:
 
 - **Server scope:** Tips recommend administrative actions, such as adding API keys to rotation pools
   or configuring server fallback chains.
 - **Personal scope:** Server key rotation tips are suppressed because standard members cannot manage
   server pools. Error embeds instead recommend checking personal credentials or disabling the personal
   text override to revert to server defaults.
+- **Subscription scope:** Subscription denials use the billing module's classified recovery copy
+  and suppress provider troubleshooting tips.
 
 ## Source pointers
 

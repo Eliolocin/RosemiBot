@@ -31,6 +31,11 @@ export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] =
     coverage: { kind: "suite", suites: ["tests/unit/discord/expressionsPanel.test.ts"] },
   },
   {
+    modulePath: "src/modules/natural-nudges/discord/studioPanel.ts",
+    builderName: "buildNudgeStudioPayload",
+    coverage: { kind: "suite", suites: ["tests/unit/discord/nudgeStudioPanel.test.ts"] },
+  },
+  {
     modulePath: "src/utils/discord/ui/configPanel.ts",
     builderName: "buildConfigPanelPayload",
     coverage: {
@@ -75,6 +80,16 @@ export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] =
     modulePath: "src/utils/discord/ui/providersPanel.ts",
     builderName: "buildProvidersPanelPayload",
     coverage: { kind: "suite", suites: ["tests/unit/discord/providersPanelLimits.test.ts"] },
+  },
+  {
+    modulePath: "src/modules/supporter-billing/subscribe/panel.ts",
+    builderName: "buildSubscribePanel",
+    coverage: { kind: "suite", suites: ["tests/unit/supporterBilling/subscribePanel.test.ts"] },
+  },
+  {
+    modulePath: "src/modules/supporter-billing/subscribe/components.ts",
+    reason: "Subscription route delivery and billing-disabled notice",
+    coverage: { kind: "suite", suites: ["tests/unit/supporterBilling/subscribePanel.test.ts"] },
   },
   {
     modulePath: "src/utils/discord/ui/stPresetsPanel.ts",

@@ -176,7 +176,7 @@ Bất kỳ ai cũng có thể chạy `/config` > Persona > Memories, `/personal 
 
 ### Cấu hình STM
 
-Người quản lý không gian làm việc có thể tinh chỉnh bộ nhớ ngắn hạn từ `/config` → `Hành vi` → Memory & STM. Các cài đặt này áp dụng cho các bản ghi STM đang hoạt động của không gian làm việc:
+Người quản lý máy chủ có thể tinh chỉnh bộ nhớ ngắn hạn từ `/config` → `Hành vi` → Memory & STM. Các cài đặt này áp dụng cho các bản ghi STM đang hoạt động của máy chủ:
 
 - Nhịp làm mới kiểm soát số lượt tương tác của bot trôi qua giữa các lần nhắc làm mới. Phạm vi cho phép là 1-100.
 - Chế độ hiển thị chọn xem các giá trị danh mục có thay thế các lượt gần đây hay xuất hiện dưới dạng tóm tắt thô.

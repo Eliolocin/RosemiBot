@@ -413,16 +413,6 @@ export async function executeAutoImageCommand(
     return;
   }
 
-  if (!tomoriState.config.api_key) {
-    await replyInfoEmbed(interaction, locale, {
-      titleKey: "commands.generate.image.no_api_key_title",
-      descriptionKey: "commands.generate.image.no_api_key_description",
-      color: ColorCode.ERROR,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-
   const provider = tomoriState.llm.llm_provider.toLowerCase();
   const backendAvailability = await resolveSceneImageBackendAvailability({
     provider,

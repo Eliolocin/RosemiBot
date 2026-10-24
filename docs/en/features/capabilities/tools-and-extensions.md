@@ -64,7 +64,7 @@ correct names at context-assembly time and degrade gracefully when a tool is not
 `{manage_message_tool}` and `{message_metadata_tool}`. The web search and URL tools below
 have macros too: `{web_search_tool}`, `{image_search_tool}`, `{video_search_tool}`,
 `{news_search_tool}`, `{url_fetch_tool}`, and `{url_metadata_tool}`. These resolve
-dynamically to the best available engine, including guild MCP replacements.
+dynamically to the best available engine, including server MCP replacements.
 :::
 
 
@@ -82,7 +82,7 @@ Do not promise to save long-term memories.
 
 Use `capability:<name>` for an enabled TomoriBot setting, or `tool:<function_name>` when
 the text should appear only if that exact tool is available to the active provider and
-model. Use `tool_family:url_fetch` when either the bundled URL reader or a guild MCP
+model. Use `tool_family:url_fetch` when either the bundled URL reader or a server MCP
 replacement is available. Prefix a condition with `!` to invert it. Blocks can be nested
 and may contain one `{{else}}`; general `and`/`or` expressions are not supported.
 

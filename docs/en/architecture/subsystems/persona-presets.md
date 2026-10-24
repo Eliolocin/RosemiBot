@@ -22,6 +22,7 @@ When a server adopts an official preset via `/setup` or `/persona default`, the 
 
 - **Live content resolution**: Runtime state loading resolves prompt text, attributes, public attribute flags, and sample dialogues directly from `persona_presets`.
 - **Trigger deduplication**: Trigger words normally resolve live from `persona_presets` and pass through `applyTriggerWordOwnership()` to prevent collisions on shared keywords (see [Multi-Persona System](/architecture/subsystems/multi-persona/)). Resynced pointers keep their local trigger words and naming habits through `persona_configs.preserve_preset_identity`.
+- **Natural Nudges defaults**: Talkativeness and interests resolve live from `persona_presets` until the persona has its own `persona_natural_nudge_configs` row. Editing them on the Nudges page writes that row without forking the pointer, which makes `Resync with Preset` available to delete just that row. Materializing copies the preset values into the row, and re-pointing deletes it.
 - **Lineage separation**: `preset_lineage_id` identifies the official preset row, while `persona_lineage_id` scopes server memories, personal memories, and conditioning history. Applying a preset stamps `persona_lineage_id` with the preset lineage, but memory updates never fork the pointer.
 
 ## Shared assets and reconciliation
@@ -81,6 +82,17 @@ The first local edit to prompt text, attributes, sprites, or naming forks the po
   IDs stay pending for cleanup with the original credentials. Importing a card does not activate a
   speech provider or change the workspace's Design and Clone targets.
 - **Image captioning**: During `/persona generate`, an uploaded image is paired with the primary model. If the primary model cannot accept images, `analyzeImageWithVisionModel()` requests a description from the configured vision model and passes that text via `appearanceDescription`, keeping raw images out of text-only model requests.
+
+OpenRouter persona generation requests strict JSON output with six attributes and five dialogue
+pairs, including after successful search tool calls. A failed search tool result aborts persona
+generation before another model request. Google likewise aborts when its search stage fails.
+The command owns the failure reply and preserves the inputs with a retry hint; background tools
+suppress their public denial notices. Search engines can still fall back within one tool call.
+OpenRouter's initial model request chooses the search tool, so it can incur usage before search fails.
+Anthropic requests omit unsupported array constraints.
+The shared schema used by other providers stays unchanged. Local validation still rejects
+noncompliant output without exporting a card; validation receipts preserve the inputs and show the
+failed requirement without suggesting an API-key problem.
 
 ## Source pointers
 

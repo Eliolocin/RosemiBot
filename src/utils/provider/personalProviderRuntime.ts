@@ -7,7 +7,11 @@ import type {
 } from "@/types/db/schema";
 import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { hasConfiguredPersonalModel } from "@/utils/provider/personalProviderHelpers";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
 import { log } from "@/utils/misc/logger";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveSupporterFunding } from "@/modules/supporter-billing/runtime/funding";
+import { resolveEnvironment } from "@/types/config";
 
 export interface PersonalProviderOverlayResult {
   tomoriState: TomoriState;
@@ -32,9 +36,9 @@ function collectActiveConfigs(
     // The model check keeps this in step with what the commands call active. Without
     // it an enabled row whose model pointer went NULL would swap its credential in
     // under the server's model, while the UI still reported the server default.
-    const matches = rows.filter(
-      (row) => row.enabled_capabilities.includes(capability) && hasConfiguredPersonalModel(row, capability),
-    );
+    const matches = rows
+      .filter((row) => row.provider !== SUPPORTER_PROVIDER_VALUE || isSupporterBillingEnabled(resolveEnvironment()))
+      .filter((row) => row.enabled_capabilities.includes(capability) && hasConfiguredPersonalModel(row, capability));
     if (matches.length === 0) {
       continue;
     }
@@ -69,7 +73,9 @@ async function resolvePersonalFallbackChain(refs: FallbackModelRef[], userId: nu
   return refs.flatMap((ref): FallbackEntry[] => {
     if (ref.type === "llm") {
       const model = llmMap.get(ref.id);
-      return model ? [{ kind: "llm", model }] : [];
+      return model
+        ? [{ kind: "llm", model, ...(ref.credentialProvider ? { credentialProvider: ref.credentialProvider } : {}) }]
+        : [];
     }
 
     const endpoint = endpointMap.get(ref.id);
@@ -80,6 +86,7 @@ async function resolvePersonalFallbackChain(refs: FallbackModelRef[], userId: nu
 export async function applyPersonalProviderSelectionsToTomoriState(
   tomoriState: TomoriState,
   userId: number | null | undefined,
+  retainUnavailableText = false,
 ): Promise<PersonalProviderOverlayResult> {
   if (!userId) {
     return {
@@ -88,7 +95,30 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     };
   }
 
-  const rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  let rows = await llmProviderRepo.loadUserSavedProviderConfigs(userId);
+  if (
+    rows.some((row) => row.provider === SUPPORTER_PROVIDER_VALUE) &&
+    isSupporterBillingEnabled(resolveEnvironment())
+  ) {
+    const funding = await resolveSupporterFunding({ scope: { kind: "personal", userId }, capability: "text" });
+    if (!funding.ok && (funding.reason === "missing_subscription" || funding.reason === "inactive_entitlement")) {
+      rows = rows.flatMap((row) =>
+        row.provider !== SUPPORTER_PROVIDER_VALUE
+          ? [row]
+          : retainUnavailableText
+            ? [{ ...row, enabled_capabilities: row.enabled_capabilities.filter((capability) => capability === "text") }]
+            : [],
+      );
+    }
+  }
+  const eligible = await Promise.all(
+    rows.map(async (row) => {
+      const option = findProviderOption(row.provider);
+      if (!option) return row;
+      return (await option.availability({ kind: "personal", ownerId: userId })).eligible ? row : null;
+    }),
+  );
+  rows = eligible.filter((row): row is UserSavedProviderConfigRow => row !== null);
   if (rows.length === 0) {
     return {
       tomoriState,
@@ -98,8 +128,9 @@ export async function applyPersonalProviderSelectionsToTomoriState(
 
   const activeConfigs = collectActiveConfigs(rows);
   const nextConfig = { ...tomoriState.config };
+  const fallbackSettings = activeConfigs.text ? await llmProviderRepo.loadPersonalFallbackSettings(userId) : null;
 
-  if (activeConfigs.text) {
+  if (activeConfigs.text && fallbackSettings) {
     nextConfig.llm_id = activeConfigs.text.llm_id ?? nextConfig.llm_id;
     nextConfig.api_key = activeConfigs.text.api_key;
     nextConfig.key_version = activeConfigs.text.key_version ?? nextConfig.key_version;
@@ -113,10 +144,8 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     nextConfig.llm_disabled_params = activeConfigs.text.llm_disabled_params ?? nextConfig.llm_disabled_params;
     nextConfig.llm_logit_biases = activeConfigs.text.llm_logit_biases ?? nextConfig.llm_logit_biases;
     nextConfig.thinking_level = activeConfigs.text.thinking_level ?? nextConfig.thinking_level;
-    nextConfig.model_randomizer_enabled = activeConfigs.text.model_randomizer_enabled;
-    const personalFallbackIds = (activeConfigs.text.fallback_model_refs ?? [])
-      .filter((r) => r.type === "llm")
-      .map((r) => r.id);
+    nextConfig.model_randomizer_enabled = fallbackSettings.model_randomizer_enabled;
+    const personalFallbackIds = fallbackSettings.fallback_model_refs.filter((r) => r.type === "llm").map((r) => r.id);
     nextConfig.fallback_llm_ids = personalFallbackIds;
     // custom_endpoint_url/name/ctx are no longer on user saved configs; resolved from custom_endpoints at runtime
   }
@@ -162,8 +191,8 @@ export async function applyPersonalProviderSelectionsToTomoriState(
     }
   }
 
-  const personalFallbackChain = activeConfigs.text
-    ? await resolvePersonalFallbackChain(activeConfigs.text.fallback_model_refs ?? [], userId)
+  const personalFallbackChain = fallbackSettings
+    ? await resolvePersonalFallbackChain(fallbackSettings.fallback_model_refs, userId)
     : null;
   const nextFallbackChain = activeConfigs.text
     ? personalFallbackChain && personalFallbackChain.length > 0

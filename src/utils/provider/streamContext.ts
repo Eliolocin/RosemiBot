@@ -81,6 +81,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     locale: params.userLocale ?? "en-US", // Use user's preferred locale, fallback to en-US
     suppressUserErrors: streamingContext?.suppressUserErrors,
     textCredentialSource: streamingContext?.textCredentialSource,
+    usageContext: streamingContext?.usageContext,
     suppressTextOutput: streamingContext?.suppressTextOutput,
     holdResponseText: streamingContext?.holdResponseText,
     pendingResponseLimit: streamingContext?.pendingResponseLimit,
@@ -94,6 +95,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     prefixStrippingName: params.prefixStrippingName,
 
     forcedMentions: streamingContext?.forcedMentions,
+    mentionableUserIds: streamingContext?.mentionableUserIds,
     impersonatedSpeakerLabel: streamingContext?.impersonatedSpeakerLabel,
 
     // NAI GLM-4.6 prompt continuation: trailing fragment from a previous truncated stream.

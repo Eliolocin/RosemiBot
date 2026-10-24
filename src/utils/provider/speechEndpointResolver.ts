@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import { createHash } from "node:crypto";
 import type { CustomEndpointRow } from "@/types/db/schema";
@@ -5,6 +6,11 @@ import { loadHostedSpeechSelection, type HostedSpeechSelection } from "@/utils/d
 import { log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { decryptApiKey } from "@/utils/security/crypto";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 import {
   loadActiveEndpoint,
   loadEndpointCredentials,
@@ -19,7 +25,12 @@ export interface SpeechEndpointResult {
 
 export type SpeechTargetResult =
   | (SpeechEndpointResult & { kind: "custom-endpoint"; owner: { kind: "server"; ownerId: number } })
-  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & { kind: "hosted-model"; endpoint: null; apiKey: string });
+  | (Omit<HostedSpeechSelection, "apiKey" | "keyVersion"> & {
+      kind: "hosted-model";
+      endpoint: null;
+      apiKey: string;
+      usageContext?: ProviderUsageContext;
+    });
 
 export function speechTargetSource(target: SpeechTargetResult | null | undefined) {
   return target?.kind === "hosted-model" ? target.model : (target?.endpoint ?? null);
@@ -40,6 +51,8 @@ export function speechTargetFingerprint(target: SpeechTargetResult | null | unde
               target.owner,
               target.credentialId,
               target.credentialRevision,
+              target.usageContext,
+              target.apiKey,
             ]
           : [
               target.kind,
@@ -128,12 +141,64 @@ export async function resolveActiveTranscriptionEndpoint(serverId: number): Prom
 export async function resolveSpeechTargets(
   serverId: number,
   userId?: number,
-): Promise<{ design: SpeechTargetResult | null; clone: SpeechTargetResult | null }> {
-  const serverAllowed = userId === undefined || (await loadSpeechRoutingPolicy(serverId, userId)).serverAllowed;
+): Promise<{
+  design: SpeechTargetResult | null;
+  clone: SpeechTargetResult | null;
+  denials?: Partial<Record<VoiceSourceMode, SupporterRequestDeniedError>>;
+}> {
+  const denials: Partial<Record<VoiceSourceMode, SupporterRequestDeniedError>> = {};
+  const policy =
+    userId === undefined
+      ? { serverAllowed: true, fallbackEnabled: true }
+      : await loadSpeechRoutingPolicy(serverId, userId);
+  const serverAllowed = policy.serverAllowed;
+  const billingEnabled = isSupporterBillingEnabled(resolveEnvironment());
   async function resolve(mode: VoiceSourceMode): Promise<SpeechTargetResult | null> {
-    const hosted = await loadHostedSpeechSelection(serverId, mode, userId);
+    const hosted = await loadHostedSpeechSelection(serverId, mode, userId, billingEnabled);
     if (hosted) {
       if (hosted.owner.kind === "server" && !serverAllowed) return null;
+      if (hosted.model.provider === "openrouter" && billingEnabled && hosted.subscription) {
+        try {
+          const credentials = await resolveSupporterCapabilityCredentials({
+            scope:
+              hosted.owner.kind === "personal"
+                ? { kind: "personal", userId: hosted.owner.ownerId }
+                : { kind: "server", serverId },
+            capability: "voice",
+            modelId: hosted.model.speech_model_id,
+          });
+          return {
+            ...hosted,
+            kind: "hosted-model",
+            endpoint: null,
+            apiKey: credentials.apiKey,
+            usageContext: getSupporterUsageContext(credentials.funding),
+          };
+        } catch (error) {
+          if (
+            hosted.owner.kind === "personal" &&
+            error instanceof SupporterRequestDeniedError &&
+            (error.reason === "inactive_entitlement" || error.reason === "missing_subscription")
+          ) {
+            if (!serverAllowed || !policy.fallbackEnabled) return null;
+            const fallback = await resolveSpeechTargets(serverId);
+            if (fallback.denials?.[mode]) denials[mode] = fallback.denials[mode];
+            return fallback[mode];
+          }
+          if (hosted.owner.kind === "personal" && error instanceof SupporterRequestDeniedError) throw error;
+          log.warn("SpeechResolver: subscription credential unavailable", error, {
+            serverId,
+            metadata: {
+              mode,
+              owner: hosted.owner,
+              ...(error instanceof SupporterRequestDeniedError ? { reason: error.reason } : {}),
+            },
+          });
+          if (error instanceof SupporterRequestDeniedError) denials[mode] = error;
+          return null;
+        }
+      }
+      if (!hosted.apiKey) return null;
       try {
         const apiKey = await decryptApiKey(hosted.apiKey, hosted.keyVersion);
         return apiKey ? { ...hosted, kind: "hosted-model", endpoint: null, apiKey } : null;
@@ -147,5 +212,5 @@ export async function resolveSpeechTargets(
     return endpoint ? { ...endpoint, kind: "custom-endpoint", owner: { kind: "server", ownerId: serverId } } : null;
   }
   const [design, clone] = await Promise.all([resolve("design"), resolve("clone")]);
-  return { design, clone };
+  return { design, clone, ...(Object.keys(denials).length > 0 ? { denials } : {}) };
 }

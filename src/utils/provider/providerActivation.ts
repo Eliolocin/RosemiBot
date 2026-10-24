@@ -3,7 +3,7 @@ import { invalidateTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import { configRepository, llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { isCustomProvider } from "@/utils/provider/customProviderUtils";
 import { buildFallbackModelPersistence } from "@/utils/provider/fallbackModelIdentity";
-import { assignPersonalCapabilityToProvider, withPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
+import { setPersonalTextPrimary } from "@/utils/provider/personalProviderHelpers";
 import { resolveLogitBiasEntriesForLlm } from "@/utils/provider/logitBiasResolver";
 import type { OpenRouterModelScope } from "@/utils/db/repositories/LlmModelRepository";
 import { hasSpeechDesignSelection, setHostedSpeechSelection } from "@/utils/db/repositories/SpeechRepository";
@@ -63,6 +63,7 @@ export async function activateServerTextModelFromSavedConfig(params: {
     params.tomoriState.config.fallback_model_refs ?? [],
     promotedLlmId,
     customEndpoints,
+    normalizedProvider,
   );
   const resolvedLogitBiases = resolveLogitBiasEntriesForLlm(
     params.savedConfig.llm_logit_biases ?? params.tomoriState.config.llm_logit_biases ?? [],
@@ -70,18 +71,22 @@ export async function activateServerTextModelFromSavedConfig(params: {
   );
 
   const [updatedModel, updatedChat] = await Promise.all([
-    configRepository.updateModelConfig(params.tomoriState.server_id, {
-      llm_id: selectedModel.llm_id,
-      api_key: params.savedConfig.api_key,
-      key_version: params.savedConfig.key_version ?? 1,
-      thinking_level: params.savedConfig.thinking_level ?? "auto",
-      fallback_llm_ids: fallbackLlmIds,
-      llm_temperature: params.savedConfig.llm_temperature ?? params.tomoriState.config.llm_temperature ?? 1.0,
-      llm_disabled_params: params.savedConfig.llm_disabled_params ?? [],
-      custom_model_name: null,
-      custom_endpoint_url: null,
-      custom_num_ctx: null,
-    }),
+    configRepository.updateModelConfig(
+      params.tomoriState.server_id,
+      {
+        llm_id: selectedModel.llm_id,
+        api_key: params.savedConfig.api_key,
+        key_version: params.savedConfig.key_version ?? 1,
+        thinking_level: params.savedConfig.thinking_level ?? "auto",
+        fallback_llm_ids: fallbackLlmIds,
+        llm_temperature: params.savedConfig.llm_temperature ?? params.tomoriState.config.llm_temperature ?? 1.0,
+        llm_disabled_params: params.savedConfig.llm_disabled_params ?? [],
+        custom_model_name: null,
+        custom_endpoint_url: null,
+        custom_num_ctx: null,
+      },
+      normalizedProvider,
+    ),
     configRepository.updateChatConfig(params.tomoriState.server_id, {
       llm_top_p: params.savedConfig.llm_top_p ?? params.tomoriState.config.llm_top_p ?? 0.95,
       llm_top_k: params.savedConfig.llm_top_k ?? params.tomoriState.config.llm_top_k ?? 0,
@@ -95,11 +100,10 @@ export async function activateServerTextModelFromSavedConfig(params: {
     }),
   ]);
 
+  if (updatedModel || updatedChat) invalidateTomoriStateCache(params.serverDiscId);
   if (!updatedModel || !updatedChat) {
     return { status: "update_failed" };
   }
-
-  invalidateTomoriStateCache(params.serverDiscId);
   return { status: "activated", modelName: selectedModel.llm_codename };
 }
 
@@ -120,9 +124,7 @@ export async function activatePersonalProviderTextModel(params: {
   const customEndpoints = isCustomProvider(params.provider)
     ? await llmProviderRepo.loadCustomEndpointsForUser(params.userId)
     : [];
-  const updated = await assignPersonalCapabilityToProvider(params.userId, params.provider, "text", (row) =>
-    withPersonalTextPrimary(row, selectedModel.llm_id ?? null, customEndpoints),
-  );
+  const updated = await setPersonalTextPrimary(params.userId, params.provider, selectedModel.llm_id, customEndpoints);
 
   return updated ? { status: "activated", modelName: selectedModel.llm_codename } : { status: "update_failed" };
 }

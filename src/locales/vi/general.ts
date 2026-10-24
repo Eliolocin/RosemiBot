@@ -1,5 +1,9 @@
 export default {
   general: {
+    oauth: {
+      invalid_callback: `Liên kết đăng nhập này không hợp lệ hoặc đã hết hạn. Vui lòng đăng nhập lại từ TomoriBot.`,
+      server_error: `TomoriBot không thể hoàn tất đăng nhập do lỗi dịch vụ. Vui lòng thử lại sau.`,
+    },
     language_name: `Tiếng Việt`,
     yes: `Có`,
     confirm: `Xác nhận`,

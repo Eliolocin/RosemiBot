@@ -70,6 +70,8 @@ Los registros de pensamiento le atribuyen turnos utilizando su clave personal. P
 
 Si una solicitud falla mientras usa su proveedor personal, los consejos de error lo dirigen a sus comandos personales (`/personal providers`, `/personal config`) en lugar de a la configuración del servidor.
 
+En `/personal config` > `Modelos` > Alternativas puedes enumerar hasta cinco modelos alternativos. Pueden provenir de cualquiera de tus proveedores guardados y se prueban en orden cuando tu modelo de texto personal falla. Al cambiar tu modelo de texto personal se conserva la lista, pero se elimina el nuevo modelo de ella si ya estaba allí.
+
 Cuando todos los modelos de su ruta de texto personal fallan, TomoriBot puede recurrir al modelo de texto predeterminado del servidor en lugar de fallar silenciosamente. Las reservas del servidor se ejecutan en las credenciales del servidor, cuentan con la cuota de texto del servidor y muestran un botón `Respaldo utilizado` con detalles.
 
 Puede deshabilitar el respaldo del servidor en `/personal config` > `Modelos` > Respaldos en `Respaldo al modelo del servidor`. La configuración es para toda la cuenta y está habilitada de forma predeterminada.
@@ -83,7 +85,7 @@ Un servidor puede requerir que los miembros proporcionen sus propias claves API 
 Utilice `/personal config` para personalizar funciones adicionales:
 
 - **Apariencia** (`Perfil` > `Apariencia`): guarde las etiquetas de apariencia de estilo booru que se utilizan cada vez que una [generación de imagen](/es-419/features/capabilities/media-generation/image-generation/#tag-customization) hace referencia a usted. Envíe un cuadro vacío para borrarlos.
-- **Controles de privacidad** (`Privacidad` > `Controles de privacidad`): elija su nivel de visibilidad (`Ninguno`, `Parcial` o `Completo`) o alterne el uso compartido de memoria a corto plazo entre servidores.
+- **Controles de privacidad** (`Privacidad` > `Controles de privacidad`): elige tu nivel de visibilidad (`Ninguno`, `Parcial` o `Completo`), activa o desactiva la memoria a corto plazo compartida entre servidores, o desactiva las [Menciones de personas](/features/chatting-personality/natural-nudges/#ping-user) para que las personas nunca te mencionen para iniciar una conversación.
 - **Modos de respuesta** (`Avanzado` > `Modos de Respuesta`): alterna tu anulación personal para [Modo de activación deliberada](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Suplantación** (`Avanzado` > `Imitación`): establece un mensaje reutilizable que se utilizará cuando alguien invoque `/impersonate user` por usted.
 

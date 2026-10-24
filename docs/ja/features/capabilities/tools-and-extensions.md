@@ -52,7 +52,7 @@ aiGenerated: true
 | 音声メッセージを生成する | `{voice_message_tool}` | ElevenLabsキー+ペルソナボイス+`voice_message_enabled` | Discord音声応答を音声で送信します。|
 
 :::note[For prompt authors]
-システムプロンプトまたはペルソナの指示をカスタマイズするときは、ツール名をハードコーディングするのではなく、上の表の **プロンプトマクロ**でツールを参照してください。これは、マクロはコンテキストアセンブリ時に正しい名前に展開され、ツールが使用できない場合には適切に機能が低下するためです。`{pin_tool}`および`{timestamp_refresh_tool}`は、`{manage_message_tool}`および`{message_metadata_tool}`の互換性エイリアスとして引き続き機能します。以下のWeb検索およびURLツールにもマクロがあります: `{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}`、および`{url_metadata_tool}`。これらは、ギルドMCPの代替品を含め、利用可能な最適なエンジンに動的に解決されます。
+システムプロンプトまたはペルソナの指示をカスタマイズするときは、ツール名をハードコーディングするのではなく、上の表の **プロンプトマクロ**でツールを参照してください。これは、マクロはコンテキストアセンブリ時に正しい名前に展開され、ツールが使用できない場合には適切に機能が低下するためです。`{pin_tool}`および`{timestamp_refresh_tool}`は、`{manage_message_tool}`および`{message_metadata_tool}`の互換性エイリアスとして引き続き機能します。以下のWeb検索およびURLツールにもマクロがあります: `{web_search_tool}`、`{image_search_tool}`、`{video_search_tool}`、`{news_search_tool}`、`{url_fetch_tool}`、および`{url_metadata_tool}`。これらは、サーバーMCPの代替品を含め、利用可能な最適なエンジンに動的に解決されます。
 :::
 
 ### 条件付きプロンプトブロック
@@ -67,7 +67,7 @@ Do not promise to save long-term memories.
 {{/if}}
 ```
 
-有効なTomoriBot設定には`capability:<name>`を使用し、アクティブなプロバイダーとモデルで正確なツールが利用可能な場合にのみテキストを表示する必要がある場合は`tool:<function_name>`を使用します。バンドルされたURLリーダーまたはギルドMCPの代替品が利用可能な場合は、`tool_family:url_fetch`を使用します。条件を反転するには、条件の前に`!`を付けます。ブロックはネストでき、1つの`{{else}}`を含めることができます。一般的な`and`/`or`式はサポートされていません。
+有効なTomoriBot設定には`capability:<name>`を使用し、アクティブなプロバイダーとモデルで正確なツールが利用可能な場合にのみテキストを表示する必要がある場合は`tool:<function_name>`を使用します。バンドルされたURLリーダーまたはサーバーMCPの代替品が利用可能な場合は、`tool_family:url_fetch`を使用します。条件を反転するには、条件の前に`!`を付けます。ブロックはネストでき、1つの`{{else}}`を含めることができます。一般的な`and`/`or`式はサポートされていません。
 
 サポートされている機能名は、`tool_use`、`self_teaching`、`personal_memories`、`emoji_usage`、`sticker_usage`、`web_search`、`manage_message`、`thread_creation`、`image_generation`、`video_generation`、`voice_message`、`user_blocking`、`short_term_memory`、および`time_awareness`。
 

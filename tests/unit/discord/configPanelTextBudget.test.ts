@@ -54,6 +54,13 @@ import {
   validateComponentsV2MessageLimits,
 } from "@/utils/discord/ui/componentsV2Limits";
 import { buildConfigPanelPayload } from "@/utils/discord/ui/configPanel";
+import {
+  defaultServerNaturalNudgeConfig,
+  NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX,
+  NATURAL_NUDGE_INTEREST_LABEL_MAX,
+  NATURAL_NUDGE_INTEREST_LIMIT,
+} from "@/modules/natural-nudges/db/types";
+import type { NaturalNudgesSettingsView } from "@/modules/natural-nudges/discord/operations";
 import { FENCED_PREVIEW_MAX_CHARS } from "@/utils/text/textPreview";
 import { formatPanelProse } from "@/utils/discord/ui/panelProse";
 import { getCapabilitiesManagePermissionDefinitions } from "@/utils/discord/manageConfigMapping";
@@ -79,6 +86,47 @@ const RENDERING_READ_STATUSES: readonly PanelReadStatus[] = ["fresh", "unavailab
 beforeAll(async () => initializeLocalizer());
 
 const GUILD_MANAGER: ConfigActor = { workspaceKind: "guild", isManager: true };
+
+const MAX_NUDGE_INTERESTS = Array.from({ length: NATURAL_NUDGE_INTEREST_LIMIT }, (_, index) => ({
+  label: `${index}`.padEnd(NATURAL_NUDGE_INTEREST_LABEL_MAX, "L"),
+  description: "`D*"
+    .repeat(Math.ceil(NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX / 3))
+    .slice(0, NATURAL_NUDGE_INTEREST_DESCRIPTION_MAX),
+}));
+
+const MAX_NUDGE_CHANNELS = Array.from({ length: 25 }, (_, index) => `1${String(index).padStart(17, "0")}`);
+
+const MAX_NUDGE_SETTINGS: NaturalNudgesSettingsView = {
+  config: {
+    ...defaultServerNaturalNudgeConfig(1),
+    idle_nudges_enabled: true,
+    channel_disc_ids: MAX_NUDGE_CHANNELS,
+    llm_id: null,
+  },
+  runtime: { server_id: 1, idle_nudge_jitter: 1, consecutive_failures: 3, stopped_at: new Date(0) },
+  plannerModels: Array.from({ length: 30 }, (_, index) => ({
+    provider: `custom:provider-${index}`,
+    models: Array.from({ length: index === 0 ? 60 : 1 }, (_, model) => ({
+      id: index * 100 + model + 1,
+      name: `model-${index}-${model}`.padEnd(90, "m"),
+      description: null,
+    })),
+  })),
+  checkerDecisionModels: Array.from({ length: 30 }, (_, index) => ({
+    provider: `custom:decision-${index}`,
+    models: [{ id: 9000 + index, name: `decision-${index}`.padEnd(90, "d"), description: null }],
+  })),
+  trackingEnabled: false,
+  heat: 1234.5,
+  perDay: 3,
+  activeNudgeRange: { min: 160, max: 320 },
+  status: {
+    effectiveChannelIds: MAX_NUDGE_CHANNELS,
+    plannerModel: { kind: "unusable", llmId: 7, source: "chat", reason: "unavailable" },
+    chatModel: { codename: "chat-model".padEnd(90, "c"), provider: "custom:provider-chat" },
+    checker: { source: "recommended", model: "decision-model".padEnd(200, "d") },
+  },
+};
 
 /** Server 9 and the id-derived nickname are this suite's defaults, so both stay off the factory. */
 function makePersona(overrides: Partial<TomoriState> & { persona_id: number }): TomoriState {
@@ -711,6 +759,45 @@ describe("config page text budgeting at stored maxima", () => {
       },
     },
     {
+      name: "Persona Nudges",
+      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
+      buildPayload: (locale: string, receipt: boolean) =>
+        buildConfigPanelPayload({
+          locale,
+          actor: GUILD_MANAGER,
+          category: "persona",
+          page: "nudges",
+          personas: [makePersona({ persona_id: 55, is_pointer: true })],
+          selectedPersonaId: 55,
+          readStatus: "fresh",
+          naturalNudges: {
+            personaConfig: { persona_id: 55, talkativeness: 4, interests: MAX_NUDGE_INTERESTS, has_override: false },
+          },
+          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
+        }),
+    },
+    {
+      name: "Plugins Natural Nudges",
+      maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
+      buildPayload: (locale: string, receipt: boolean) =>
+        buildConfigPanelPayload({
+          locale,
+          actor: GUILD_MANAGER,
+          category: "plugins",
+          page: "natural-nudges",
+          personas: [
+            makePersona({
+              persona_id: 55,
+              config: { ...makePersona({ persona_id: 55 }).config, user_byok_mode: true },
+            }),
+          ],
+          selectedPersonaId: null,
+          readStatus: "fresh",
+          naturalNudges: { settings: MAX_NUDGE_SETTINGS },
+          receipt: receipt ? { tone: "success", heading: "Saved", detail: "Configuration was saved." } : undefined,
+        }),
+    },
+    {
       name: "Channels Overrides",
       maxTolerance: PREVIEW_TIGHTNESS_TOLERANCE,
       buildPayload: (locale: string, receipt: boolean) => {
@@ -1217,7 +1304,8 @@ describe("Switch Models capability notice budgeting", () => {
                 const videoHasUsableModel = slotState.isUsable("video");
                 const imageHealthy = flags.imageGenerationEnabled && imageHasUsableModel;
                 const videoHealthy = flags.videoGenerationEnabled && videoHasUsableModel;
-                const expectedComponentCount = receipt ? 36 : 34;
+                const noticeShown = !imageHealthy || !videoHealthy;
+                const expectedComponentCount = (receipt ? 36 : 34) - (noticeShown ? 0 : 1);
                 expect(countRenderedComponents(payload)).toBe(expectedComponentCount);
 
                 const renderedText = getTextDisplays(payload).join("\n");
@@ -1259,9 +1347,9 @@ describe("Switch Models capability notice budgeting", () => {
                   );
                   expect(capabilityNotice).toBeUndefined();
                 }
-                expect(renderedText).toContain(
-                  `**${localizer(locale, "commands.config.panel.capability_notice_title")}**`,
-                );
+                expect(
+                  renderedText.includes(`**${localizer(locale, "commands.config.panel.capability_notice_title")}**`),
+                ).toBe(noticeShown);
               },
             );
           }
@@ -1764,7 +1852,9 @@ describe("Persona Voice page text and component budgeting", () => {
     });
     assertValid(missing);
     expect(JSON.stringify(missing)).toMatch(
-      localizedProse("en-US", "commands.config.panel.voice_page_no_model_notice", { providers: "`/providers`" }),
+      localizedProse("en-US", "commands.config.panel.voice_page_no_model_notice", {
+        models: `\`/config\` > ${localizedCopy("en-US", "commands.config.panel.category_models")}`,
+      }),
     );
     expect(JSON.stringify(missing)).toContain("voice-design-open");
   });

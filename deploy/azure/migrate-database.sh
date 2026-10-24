@@ -18,6 +18,15 @@ set -euo pipefail
 : "${dockerHubTokenB64:?dockerHubTokenB64 is required}"
 : "${tomoribotImage:?tomoribotImage is required}"
 allowMigrationDowntime="${allowMigrationDowntime:-false}"
+supporterBillingEnabled="${supporterBillingEnabled:-false}"
+if [[ "$supporterBillingEnabled" != true && "$supporterBillingEnabled" != false ]]; then
+  echo "supporterBillingEnabled must be true or false." >&2
+  exit 1
+fi
+schema_args=()
+if [ "$supporterBillingEnabled" = true ]; then
+  schema_args+=(--supporter-billing)
+fi
 if [[ "$allowMigrationDowntime" != true && "$allowMigrationDowntime" != false ]]; then
   echo "allowMigrationDowntime must be true or false." >&2
   exit 1
@@ -112,7 +121,7 @@ docker run --rm \
   -e RUN_ENV=production \
   -e SECRET_FILE=/run/secrets/tomoribot.json \
   -v "$stage_dir/migration-secrets.json:/run/secrets/tomoribot.json:ro" \
-  "$tomoribotImage" bun run src/db/initializeCli.ts
+  "$tomoribotImage" bun run src/db/initializeCli.ts "${schema_args[@]}"
 
 echo "TomoriBot database migration completed."
 echo "TOMORIBOT_DATABASE_MIGRATION_SUCCEEDED"

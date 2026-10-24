@@ -1,5 +1,18 @@
 export default {
   providers: {
+    subscribe: `Đăng ký TomoriBot`,
+    subscribe_personal_description: `Đăng ký qua Patreon để truy cập AI mà không cần API key`,
+    sponsor_server_description: `Dùng gói đăng ký TomoriBot của bạn để cấp quyền cho máy chủ này`,
+    subscription_personal_description: `Dùng gói đăng ký TomoriBot của bạn để truy cập AI cá nhân`,
+    subscription_owned_description: `Bạn hiện đang tài trợ cho máy chủ này`,
+    subscription_server_description: `Máy chủ này được hỗ trợ bởi gói đăng ký TomoriBot`,
+    remove_sponsorship: `Hủy tài trợ`,
+    sponsorship_by: `Được tài trợ bởi {name}`,
+    unknown_sponsor: `một người đăng ký`,
+    subscription_model_description: `Sử dụng hạn mức gói đăng ký dùng chung của bạn`,
+    subscription_label: `Gói đăng ký TomoriBot`,
+    manage_subscription: `Quản lý gói đăng ký`,
+    remove_impact_subscription: `Dừng dùng {name} cho quyền truy cập AI cá nhân. Tư cách thành viên Patreon của bạn vẫn được liên kết và hoạt động bình thường.`,
     description: `Thêm, xem, chỉnh sửa và xóa thông tin xác thực nhà cung cấp, endpoint và danh mục model.`,
     title: `Nhà cung cấp của máy chủ`,
     personal_title: `Nhà cung cấp cá nhân`,

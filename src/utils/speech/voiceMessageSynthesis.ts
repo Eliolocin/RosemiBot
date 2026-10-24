@@ -1,3 +1,9 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import {
+  findProviderRequestDeniedError,
+  type ProviderRequestDeniedError,
+  reportProviderUsage,
+} from "@/utils/provider/providerUsage";
 import type { CustomEndpointRow } from "@/types/db/schema";
 import type { ElevenLabsTtsErrorKind } from "@/utils/audio/elevenLabsTts";
 import { synthesizeSpeechViaElevenLabsAdapter } from "@/providers/custom/styles/elevenLabsAdapter";
@@ -42,6 +48,11 @@ import {
 } from "@/utils/audio/elevenLabsShared";
 import { ZodError } from "zod";
 import { ResponseSizeError } from "@/utils/security/boundedResponse";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import {
+  getSupporterFundingFromUsageContext,
+  getSupporterUsageContext,
+} from "@/modules/supporter-billing/runtime/types";
 import { reportProviderFailure } from "@/utils/provider/providerErrorMetrics";
 
 /** Metric key recorded against the `audio_generated` stat. */
@@ -90,6 +101,7 @@ export interface VoiceMessageSynthesisResult {
   targetLabel?: string;
   usedServerFallback?: boolean;
   cleanupPending?: boolean;
+  requestDenied?: ProviderRequestDeniedError;
 }
 
 interface VoiceSynthesisAttempt {
@@ -312,6 +324,7 @@ async function synthesizeHostedVoiceMessage(
   );
   const startedAt = Date.now();
   let cleanupPending = false;
+  let usageContext = target.usageContext;
   try {
     signal.throwIfAborted();
     if (
@@ -326,19 +339,42 @@ async function synthesizeHostedVoiceMessage(
       !!source.designPrompt.trim() &&
       source.designPrompt.length <= HOSTED_SPEECH_LIMITS.descriptionCharacters;
     let audio: Buffer;
+    const targetFunding = getSupporterFundingFromUsageContext(target.usageContext);
+    if (target.model.provider === "openrouter" && targetFunding) {
+      const credentials = await resolveSupporterCapabilityCredentials({
+        scope:
+          target.owner.kind === "personal"
+            ? { kind: "personal", userId: target.owner.ownerId }
+            : { kind: "server", serverId: target.owner.ownerId },
+        capability: "voice",
+        modelId: target.model.speech_model_id,
+      }).catch((error: unknown) => {
+        const denied = findProviderRequestDeniedError(error);
+        if (denied) usageContext = denied.usageContext;
+        throw error;
+      });
+      if (
+        credentials.funding.sponsorIdentityId !== targetFunding.sponsorIdentityId ||
+        credentials.apiKey !== target.apiKey
+      )
+        throw new HostedSpeechError("invalid_request");
+      usageContext = getSupporterUsageContext(credentials.funding);
+    }
     if (target.model.provider === "openrouter" && source.kind === "design") {
       if (!validDesign) throw new HostedSpeechError("invalid_request");
-      audio = await synthesizeOpenRouterSpeech({
-        shape: "design",
-        model: target.model.codename,
-        apiKey: target.apiKey,
-        description: source.designPrompt,
-        script: request.script,
-        direction: request.voiceInstructions,
-        signal,
-        maxBytes,
-        operations: attempt.operations,
-      });
+      audio = await withProviderUsageContext(usageContext, async () =>
+        synthesizeOpenRouterSpeech({
+          shape: "design",
+          model: target.model.codename,
+          apiKey: target.apiKey,
+          description: source.designPrompt,
+          script: request.script,
+          direction: request.voiceInstructions,
+          signal,
+          maxBytes,
+          operations: attempt.operations,
+        }),
+      );
     } else if (target.model.provider === "openrouter") {
       if (source.kind !== "clone" && source.kind !== "clone-buffer") throw new HostedSpeechError("invalid_request");
       const sample = source.kind === "clone" ? await loadVoiceSampleById(source.voiceSampleId) : null;
@@ -367,18 +403,20 @@ async function synthesizeHostedVoiceMessage(
       const { format } = await parseBuffer(wav, { mimeType: "audio/wav" });
       if (!format.duration || format.duration > SPEECH_SAMPLE_MAX_DURATION_SECS)
         throw new HostedSpeechError("invalid_request");
-      audio = await synthesizeOpenRouterSpeech({
-        shape: "clone",
-        model: target.model.codename,
-        apiKey: target.apiKey,
-        script: request.script,
-        direction: request.voiceInstructions,
-        reference: wav,
-        transcript,
-        signal,
-        maxBytes,
-        operations: attempt.operations,
-      });
+      audio = await withProviderUsageContext(usageContext, async () =>
+        synthesizeOpenRouterSpeech({
+          shape: "clone",
+          model: target.model.codename,
+          apiKey: target.apiKey,
+          script: request.script,
+          direction: request.voiceInstructions,
+          reference: wav,
+          transcript,
+          signal,
+          maxBytes,
+          operations: attempt.operations,
+        }),
+      );
     } else {
       if (source.kind !== "design" || !validDesign) throw new HostedSpeechError("invalid_request");
       const transport = createGoogleSpeechTransport(target.model.provider, target.apiKey);
@@ -408,6 +446,14 @@ async function synthesizeHostedVoiceMessage(
     }
     request.abortSignal?.throwIfAborted();
     attempt.synthesisSuccess = true;
+    if (target.model.provider === "openrouter") {
+      const synthesis = attempt.operations.find((operation) => operation.operation === "synthesize");
+      reportProviderUsage(usageContext, {
+        modelCodename: target.model.codename,
+        costUsd: attempt.operations.find((operation) => operation.operation === "cost")?.actualCost,
+        providerRequestId: synthesis?.generationId,
+      });
+    }
     return {
       success: true,
       audioBuffer: audio,
@@ -418,6 +464,10 @@ async function synthesizeHostedVoiceMessage(
       cleanupPending,
     };
   } catch (error) {
+    const requestDenied = findProviderRequestDeniedError(error, usageContext);
+    if (requestDenied) {
+      return { success: false, backendKey, requestDenied, cleanupPending };
+    }
     const errorKind: HostedSpeechErrorKind = request.abortSignal?.aborted
       ? "cancelled"
       : signal.aborted
@@ -577,5 +627,10 @@ export async function synthesizeVoiceMessage(
   )
     return result;
   const fallback = await run({ ...request, target, source });
-  return { ...fallback, usedServerFallback: true, cleanupPending: result.cleanupPending || fallback.cleanupPending };
+  return {
+    ...fallback,
+    usedServerFallback: true,
+    requestDenied: fallback.requestDenied ?? result.requestDenied,
+    cleanupPending: result.cleanupPending || fallback.cleanupPending,
+  };
 }

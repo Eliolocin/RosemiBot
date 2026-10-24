@@ -13,6 +13,10 @@ try {
 
   await loadDatabaseSecretsFromFile(secretFile);
   await initializeDatabase();
+  if (process.argv.includes("--supporter-billing")) {
+    const { initializeSupporterBillingSchema } = await import("@/modules/supporter-billing/db/schema");
+    await initializeSupporterBillingSchema();
+  }
   log.success("Production schema initialization and migrations completed");
   process.exit(0);
 } catch (error) {

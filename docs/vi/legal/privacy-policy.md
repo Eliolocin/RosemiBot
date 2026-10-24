@@ -1,143 +1,141 @@
 ---
 title: Chính sách quyền riêng tư
-description: Cách instance TomoriBot chính thức được lưu trữ thu thập, lưu trữ và xóa dữ liệu của bạn.
+description: Cách TomoriBot chính thức được host thu thập, sử dụng và xóa dữ liệu của bạn.
 aiGenerated: false
 ---
 
 *Bản dịch này chỉ nhằm mục đích thuận tiện cho bạn tham khảo. Trong trường hợp có sự mâu thuẫn giữa bản dịch và bản tiếng Anh, bản tiếng Anh sẽ được ưu tiên áp dụng.*
 
-Cập nhật lần cuối: 2026-09-12
+Cập nhật lần cuối: 2026-10-22
 
-Chính sách quyền riêng tư này giải thích cách thức instance TomoriBot chính thức được lưu trữ xử lý dữ liệu. Nếu bạn tự self-host TomoriBot từ repository này, bạn nắm toàn quyền kiểm soát dữ liệu của chính mình; tài liệu này đóng vai trò là một mẫu tham chiếu và không chi phối bản triển khai self-hosted của bạn.
+Chính sách này áp dụng cho TomoriBot chính thức được host trên Discord, gồm sử dụng cá nhân, trong Máy chủ và các yêu cầu được tài trợ. Nếu bạn self-hosting TomoriBot, bạn kiểm soát dữ liệu của mình; chính sách này không áp dụng cho bản sao đó.
 
-Các thuật ngữ như "Máy chủ" (Server), "Bộ nhớ" (Memories), "Persona/Preset", "Nhà cung cấp" (Provider), "Kích hoạt" (Trigger) và "Khóa API" (API Key) được định nghĩa trong [Điều khoản dịch vụ](/vi/legal/terms-of-service/) của chúng tôi. Vui lòng tham khảo tài liệu đó để biết định nghĩa chi tiết.
+## Tóm tắt về quyền riêng tư
 
-## Tổng quan về quyền riêng tư
+- TomoriBot đọc tin nhắn gần đây để trả lời và gửi ngữ cảnh liên quan đến nhà cung cấp AI đã chọn. Chúng tôi không lưu bản sao lịch sử chat, nhưng bộ nhớ ngắn hạn tùy chọn lưu các bản tóm tắt.
+- Chúng tôi giữ các cài đặt, bộ nhớ và tệp mà bạn hoặc Máy chủ chọn lưu. Một số bộ nhớ máy chủ có thể mô tả thành viên không cung cấp thông tin đó.
+- Gói thành viên trả phí bổ sung liên kết tài khoản, tài trợ và bản ghi sử dụng để cung cấp quyền lợi và theo dõi hạn mức dùng chung. Chúng tôi không thu thập mật khẩu Patreon hay thông tin thẻ của bạn.
+- Bạn có thể xem hoặc xóa phần lớn dữ liệu đã lưu bằng lệnh. Bản ghi gói đăng ký cần yêu cầu riêng qua hỗ trợ. Xóa dữ liệu bot không hủy việc tính phí trên Patreon.
 
-- Chúng tôi không lưu giữ bản sao lịch sử trò chuyện Discord của bạn. TomoriBot đọc các tin nhắn gần đây trong khi trả lời, sau đó hủy chúng.
-- Nếu bộ nhớ ngắn hạn được bật, TomoriBot sẽ lưu trữ các bản tóm tắt ngắn gọn được rút ra từ các cuộc trò chuyện đó. Các bản tóm tắt này sẽ hết hạn sau một khoảng thời gian không hoạt động (mặc định là 90 ngày).
-- Mọi nội dung bạn chủ động dạy TomoriBot (bộ nhớ, cài đặt persona, tài liệu đã tải lên) sẽ được lưu trữ cho đến khi có người xóa chúng.
-- Khi TomoriBot trả lời, bot sẽ gửi prompt và ngữ cảnh gần đây của bạn đến nhà cung cấp AI được cấu hình cho máy chủ đó. Nhà cung cấp đó có các điều khoản và quy định về quyền riêng tư riêng mà chúng tôi không kiểm soát.
-- Lệnh `/personal nuke` sẽ xóa sạch mọi thông tin chúng tôi lưu trữ về bạn trên tất cả các máy chủ.
+## 1) Đối tượng áp dụng
 
-Các phần bên dưới cung cấp thông tin chi tiết cho từng nội dung nêu trên.
+Bao gồm cả thành viên có tin nhắn được TomoriBot đọc dù chưa bao giờ dùng lệnh. Người quản lý Máy chủ phải thông báo cho thành viên về bot và chính sách này. Đọc tài liệu hiện hành bằng `/legal privacy-policy` và `/legal terms-of-service`, hoặc xem [Điều khoản dịch vụ](/legal/terms-of-service/).
 
-## 1) Phạm vi áp dụng của chính sách
+## 2) Dữ liệu lưu trữ và mục đích
 
-Chính sách này áp dụng cho instance TomoriBot chính thức được lưu trữ. Những người quản trị máy chủ cấu hình TomoriBot cho một Máy chủ, nhưng mọi thành viên có tin nhắn được TomoriBot xử lý đều thuộc phạm vi điều chỉnh của chính sách này, bất kể họ có tự mình thực hiện lệnh hay không.
+Chúng tôi dùng dữ liệu đã lưu để cung cấp tính năng bạn chọn, ghi nhớ tùy chọn, quản lý quyền truy cập trả phí và duy trì dịch vụ.
 
-Người quản lý máy chủ chấp nhận Điều khoản dịch vụ trong quá trình `/setup` và xác nhận tại đó rằng họ sẽ công khai thông tin này cho các thành viên của mình. Bất kỳ thành viên nào cũng có thể đọc các chính sách hiện hành bất kỳ lúc nào bằng lệnh `/legal privacy-policy` và `/legal terms-of-service`.
+### 2.1) Tài khoản và tùy chọn
 
-## 2) Dữ liệu chúng tôi lưu trữ
+Chúng tôi lưu ID người dùng Discord, lựa chọn quyền riêng tư cùng thông tin hồ sơ và tùy chọn mà bạn chọn lưu. Chúng tôi cũng giữ tổng mức sử dụng để bạn xem thống kê của mình, Máy chủ và các persona của Máy chủ. Các tùy chọn đã lưu của bạn bao gồm việc persona có được phép tag bạn để bắt đầu cuộc trò chuyện hay không (Persona tag bạn).
 
-### 2.1) Về bạn
-- Danh tính và tùy chọn: ID người dùng Discord, tùy chọn ngôn ngữ và trạng thái từ chối quyền riêng tư của bạn.
-- Cài đặt cá nhân hóa: biệt danh bạn chọn, đại từ, bản dạng giới, cách xưng hô, thẻ ngoại hình, prompt giả lập nhân vật, URL hình ảnh tham chiếu nhân vật, độ lệch múi giờ và các tùy chỉnh tiền tố/hậu tố tin nhắn.
-- Tùy chọn xưng hô: cách mà từng persona sẽ gọi bạn.
-- Bộ nhớ cá nhân: các thông tin bạn dạy TomoriBot về bản thân, hoặc thông tin bot tự lưu về bạn khi tính năng bộ nhớ cá nhân được bật.
-- Spotlight: cấu hình spotlight cá nhân mà bạn thiết lập cho từng máy chủ.
-- Hồ sơ điều hướng hành vi: văn bản và lý do bạn cung cấp qua `/reward` và `/punish`, nhằm định hình cách persona hành xử trong Máy chủ đó.
-- Bộ đếm sử dụng: số lượng lệnh, model và công cụ bạn đã sử dụng hàng ngày, cùng với tổng số token, được liên kết với bạn, Máy chủ và persona. Dữ liệu này dùng cho lệnh `/stats`.
+### 2.2) Bộ nhớ và cài đặt Máy chủ
 
-### 2.2) Về máy chủ của bạn
-- Cấu hình máy chủ: các thuộc tính persona, đoạn hội thoại mẫu, từ kích hoạt, lựa chọn nhà cung cấp và model, quyền hạn kênh và vai trò, hạn mức, múi giờ và các nút bật/tắt tính năng.
-- Bộ nhớ máy chủ: các thông tin được dạy cho TomoriBot áp dụng cho toàn bộ Máy chủ. Những thông tin này có thể mô tả các thành viên, bao gồm cả những thành viên không trực tiếp viết ra chúng.
-- Metadata của emoji và sticker: ID Discord, tên, mô tả và cờ định dạng. Bản thân các tệp hình ảnh không được lưu trữ.
-- Lời nhắc nhở: nội dung lời nhắc, ID Discord và biệt danh của người dùng mục tiêu, kênh, lịch trình và mọi cài đặt lặp lại.
-- Bản tóm tắt bộ nhớ ngắn hạn: khi bộ nhớ ngắn hạn được bật, TomoriBot sẽ ghi các bản tóm tắt ngắn rút ra từ cuộc trò chuyện gần đây vào cơ sở dữ liệu để duy trì ngữ cảnh giữa các lần Kích hoạt. Những bản tóm tắt này sẽ bị xóa sau một khoảng thời gian không hoạt động (mặc định là 90 ngày).
-- Liên kết tích hợp: liên kết phòng và kênh Matrix, cùng với các URL, tên công cụ được phát hiện và token xác thực được mã hóa cho bất kỳ máy chủ MCP nào mà người quản lý kết nối.
+Chúng tôi giữ bộ nhớ cá nhân và máy chủ, tùy chỉnh persona, lời nhắc và cài đặt Máy chủ để cung cấp các tính năng bạn cấu hình.
 
-### 2.3) Thông tin xác thực
-- Khóa API của nhà cung cấp mà bạn chọn lưu trữ, ở cấp độ Máy chủ hoặc cá nhân.
-- Định nghĩa endpoint tùy chỉnh, bao gồm URL endpoint và bất kỳ bearer token nào.
+Khi một persona tự mình bắt đầu cuộc trò chuyện (Natural Nudges), chúng tôi ghi lại persona nào đã nói, kênh, liệu có ai trả lời hay không và thành viên được tag. Chúng tôi cũng lưu mục tiêu riêng của persona cho cuộc trò chuyện đó, mục tiêu này có thể đề cập đến thành viên đó.
 
-Tất cả thông tin xác thực đều được mã hóa khi lưu trữ (at rest).
+Bộ nhớ ngắn hạn tùy chọn lưu bản tóm tắt cuộc trò chuyện. Các bộ nhớ khác được giữ đến khi xóa và có thể mô tả người không viết chúng.
 
-### 2.4) Nội dung bạn tải lên
-- Tài liệu: toàn bộ văn bản được trích xuất từ các tệp tải lên cơ sở tri thức của Máy chủ, cùng với tên tệp, loại phương tiện, kích thước và vector embedding tìm kiếm được tạo ra từ văn bản đó.
-- Hình ảnh persona: avatar, sprite và hình ảnh tham chiếu nhân vật, được lưu trữ trong bộ lưu trữ đối tượng để persona có thể hiển thị nhất quán.
-- Mẫu giọng nói: các mẫu âm thanh và bản ghi tham chiếu của chúng, khi tính năng nhân bản giọng nói được cấu hình.
+### 2.3) Khóa API và dịch vụ kết nối
 
-### 2.5) Hồ sơ vận hành
-- Nhật ký lỗi: ID tương tác, ID người dùng và Máy chủ, tên lệnh, loại lỗi và stack trace. Nội dung tin nhắn và cuộc trò chuyện không được ghi nhật ký. Được lưu giữ trong 90 ngày.
-- Số liệu hiệu năng: các mẫu đo thời gian và tài nguyên dùng để duy trì sự ổn định của dịch vụ. Được lưu giữ trong 30 ngày.
-- Ánh xạ tin nhắn persona: ID tin nhắn và kênh Discord liên kết một tin nhắn đã gửi với sprite persona được sử dụng, để TomoriBot có thể cập nhật hoặc dọn dẹp tin nhắn của chính mình. Được lưu giữ trong 30 ngày.
+Chúng tôi lưu khóa API, địa chỉ dịch vụ và thông tin xác thực bạn cung cấp cho nhà cung cấp AI, endpoint tùy chỉnh và máy chủ MCP, cùng liên kết giữa kênh Discord và phòng Matrix. Dịch vụ được host cũng quản lý thông tin xác thực truy cập qua gói đăng ký. Thông tin xác thực đã lưu được mã hóa.
 
-## 3) Dữ liệu chúng tôi không lưu trữ
+### 2.4) Tệp bạn lưu
 
-Những thông tin sau chỉ được đọc trong khi TomoriBot chuẩn bị câu trả lời và không được ghi vào cơ sở dữ liệu của chúng tôi:
+Chúng tôi giữ văn bản và thông tin tệp của tài liệu cơ sở kiến thức để bot tìm kiếm. Chúng tôi cũng lưu ảnh persona và, với nhân bản giọng nói, mẫu giọng cùng bản chép lời.
 
-- Tin nhắn Discord: các tin nhắn gần đây trong kênh (thường là 80 tin nhắn gần nhất) được đọc vào bộ nhớ tạm để xây dựng ngữ cảnh và gửi đến Nhà cung cấp được cấu hình. Chúng sẽ bị hủy sau khi câu trả lời được tạo ra. Các bản tóm tắt có thể được giữ lại riêng nếu bộ nhớ ngắn hạn được bật, như đã mô tả trong Mục 2.2.
-- Tệp đính kèm và phương tiện: hình ảnh, video và ảnh hồ sơ được phân tích trong quá trình Kích hoạt sẽ được xử lý trong bộ nhớ tạm và bị hủy sau đó.
-- Metadata của máy chủ và kênh: tên Máy chủ, mô tả, tên kênh và chủ đề được đọc mới hoàn toàn trong mỗi lần tương tác.
-- Thông tin trạng thái hoạt động: hoạt động hiện tại hoặc trạng thái của bạn, khi có sẵn.
-- Hình ảnh emoji và sticker: được lấy từ Discord mỗi khi sử dụng.
+### 2.5) Bản ghi dịch vụ
 
-## 4) Dữ liệu chúng tôi gửi cho bên thứ ba
+Bản ghi lỗi và hiệu suất giúp điều tra sự cố. Chúng có thể gồm ID Discord, tên lệnh và chi tiết lỗi, nhưng không gồm cuộc trò chuyện hay nội dung tin nhắn. Chúng tôi cũng giữ mã định danh tin nhắn để quản lý tin nhắn bot đã gửi.
 
-- Nhà cung cấp AI: prompt của bạn, ngữ cảnh gần đây như mô tả ở trên, dữ liệu persona và mọi tệp đính kèm sẽ được gửi đến Nhà cung cấp được cấu hình cho Máy chủ đó hoặc cho cá nhân bạn, chẳng hạn như Google, OpenRouter, NovelAI hoặc một endpoint tùy chỉnh. Điều này bao gồm các yêu cầu về văn bản, thị giác, embedding, hình ảnh, video, giọng nói và phiên âm. Các điều khoản, chính sách quyền riêng tư, bộ lọc an toàn và quy tắc lưu giữ dữ liệu của họ sẽ áp dụng cho nội dung đó, và chúng tôi không kiểm soát những điều này.
-- Nhà cung cấp tìm kiếm: nếu tính năng tìm kiếm web được bật, các truy vấn tìm kiếm và ngữ cảnh liên quan sẽ được gửi đến nhà cung cấp tìm kiếm được cấu hình.
-- Matrix: nếu cầu nối Matrix được cấu hình cho một kênh, tin nhắn sẽ được chuyển tiếp qua lại giữa Discord và phòng Matrix được liên kết.
+### 2.6) Thành viên và sử dụng gói đăng ký
 
-Chúng tôi không bán dữ liệu cá nhân. Chúng tôi chỉ chia sẻ dữ liệu khi cần thiết để vận hành các tính năng bạn yêu cầu, hoặc khi pháp luật có quy định bắt buộc.
+Liên kết Patreon kết nối tài khoản Discord với tư cách thành viên Patreon của bạn. Chúng tôi nhận cấp gói, trạng thái thanh toán và ngày tính phí từ Patreon để xác định quyền lợi.
 
-## 5) Thời gian lưu giữ dữ liệu
+Chúng tôi giữ thông tin tài trợ, sự cho phép tài trợ, tổng hạn mức và chi tiêu, cùng chi tiết yêu cầu như model, tính năng, chi phí, số token, thời gian và mã định danh. Mức sử dụng tại Máy chủ được tài trợ gắn với Máy chủ đó và trừ vào hạn mức của người tài trợ.
 
-| Dữ liệu | Thời gian lưu giữ |
+Bản ghi đăng nhập và cập nhật thành viên tạm thời giúp bảo vệ liên kết tài khoản và tránh cập nhật trùng lặp. Token đăng nhập Patreon của chính bạn không được giữ sau khi liên kết.
+
+## 3) Dữ liệu đọc nhưng không lưu
+
+TomoriBot tạm đọc tin nhắn gần đây, nội dung đa phương tiện liên quan, thông tin Máy chủ và kênh, cùng trạng thái hiện diện có sẵn để trả lời. Những dữ liệu này không được lưu thành lịch sử chat. Bản tóm tắt bộ nhớ ngắn hạn và tệp bạn chủ động lưu được xử lý như mô tả ở trên.
+
+## 4) Bên nhận dữ liệu
+
+- **Nhà cung cấp AI:** nhà cung cấp đã chọn nhận prompt, ngữ cảnh trò chuyện liên quan, thông tin persona và nội dung đa phương tiện cần cho văn bản, ảnh, video, giọng nói hoặc tìm tài liệu. Trước khi persona tag ai đó để bắt đầu trò chuyện, model nhận tên hiển thị, hoạt động hiện tại và bộ nhớ gần đây của họ trừ khi họ đã ẩn chúng. Yêu cầu qua gói đăng ký dùng OpenRouter và các nhà cung cấp của model đã chọn. Chúng tôi kiểm tra chi tiêu với OpenRouter để áp dụng hạn mức.
+- **Patreon:** việc liên kết cho phép chúng tôi xác minh tư cách thành viên. Patreon cung cấp cập nhật tài khoản và thành viên; Patreon và các đơn vị thanh toán của họ xử lý thanh toán và thông tin thanh toán.
+- **Nhà cung cấp tìm kiếm:** khi dùng tìm kiếm web, nhà cung cấp nhận truy vấn và ngữ cảnh liên quan.
+- **Matrix:** khi cấu hình cầu nối, tin nhắn được chia sẻ giữa kênh Discord và phòng Matrix đã liên kết.
+- **Nhà cung cấp hosting và lưu trữ:** xử lý và lưu dữ liệu cần thiết để chạy TomoriBot.
+
+Các dịch vụ này có thể xử lý dữ liệu ngoài quốc gia của bạn và có chính sách riêng về quyền riêng tư và thời gian lưu giữ. Chúng tôi không bán dữ liệu cá nhân; chỉ chia sẻ để cung cấp tính năng bạn dùng hoặc khi pháp luật yêu cầu.
+
+## 5) Thời gian lưu giữ
+
+| Dữ liệu | Thời gian lưu |
 |---|---|
-| Bản tóm tắt bộ nhớ ngắn hạn | 90 ngày kể từ hoạt động cuối cùng (mặc định) |
+| Bản tóm tắt bộ nhớ ngắn hạn | Mặc định 90 ngày sau hoạt động gần nhất |
 | Nhật ký lỗi | 90 ngày |
-| Số liệu hiệu năng | 30 ngày |
-| Ánh xạ tin nhắn persona | 30 ngày |
-| Mọi dữ liệu khác trong Mục 2 | Cho đến khi bị xóa thông qua các lệnh trong Mục 6 |
+| Bản ghi hiệu suất và mã định danh tin nhắn bot | 30 ngày |
+| Bản ghi Natural Nudges | 30 ngày; mục tiêu riêng của persona tối đa 90 ngày |
+| Bản ghi cập nhật thành viên Patreon | Mặc định 30 ngày |
+| Bản ghi đăng nhập Patreon đã hoàn tất hoặc hết hạn | Mặc định đủ điều kiện xóa sau một giờ |
+| Chi tiết sử dụng gói đăng ký | 90 ngày; bản ghi kỳ hiện tại giữ đến khi kỳ kết thúc nếu muộn hơn |
+| Bản sao phục hồi cơ sở dữ liệu | Bảy ngày |
+| Bản sao tự động khi khởi động | Tối đa năm bản; bản cũ bị xóa khi có bản mới |
+| Liên kết thành viên, trạng thái truy cập, tài trợ và khóa được quản lý | Trong thời gian liên kết; liên hệ hỗ trợ để hủy liên kết hoặc xóa |
+| Mã định danh thành viên và tổng hạn mức/chi tiêu giữ sau hủy liên kết | 90 ngày từ thời điểm muộn nhất trong ba mốc: hủy liên kết, hết kỳ trả phí và hoàn tất xóa khóa nhà cung cấp |
+| Cài đặt, bộ nhớ, thông tin xác thực và tệp khác đã lưu | Đến khi xóa bằng các công cụ tại Mục 6 |
 
-Khi TomoriBot bị xóa khỏi một Máy chủ, dữ liệu của Máy chủ đó vẫn được giữ lại để cấu hình không bị mất khi mời lại bot. Người quản lý muốn xóa toàn bộ dữ liệu nên chạy lệnh `/nuke` trước khi xóa bot.
+Bản ghi hết hạn được xóa trong đợt dọn dẹp định kỳ. Chúng tôi có thể giữ bản ghi kế toán liên quan lâu hơn vì một tranh chấp cụ thể chưa giải quyết hoặc nghĩa vụ pháp lý, rồi xóa khi không còn cần thiết. Tổng chi tiêu có thể còn sau khi chi tiết sử dụng bị xóa. Dữ liệu đã xóa có thể còn trong bản sao lưu: bản sao phục hồi cơ sở dữ liệu hết hạn sau bảy ngày, còn bản sao lúc khởi động giữ đến khi bị thay thế. Bản sao riêng cho phục hồi hoặc di chuyển được xóa khi công việc hoàn tất.
 
-## 6) Quyền kiểm soát của bạn
+Gỡ bot vẫn giữ dữ liệu Máy chủ để dùng khi mời lại; hãy chạy `/nuke` trước nếu muốn xóa. Hủy tính phí không xóa bản ghi thành viên.
 
-| Mục đích | Lệnh |
+## 6) Xem, xuất hoặc xóa dữ liệu
+
+| Việc bạn muốn làm | Nơi thực hiện |
 |---|---|
-| Ngừng việc TomoriBot lưu bộ nhớ cá nhân về bạn | `/personal config` |
-| Xem lại hoặc xóa từng mục bộ nhớ cá nhân | `/personal memories` |
-| Xem lại hoặc xóa bộ nhớ máy chủ và tài liệu | `/memories` |
-| Tải bản sao dữ liệu cá nhân của bạn | `/export personal config`, `/export personal memories` |
-| Tải bản sao dữ liệu của Máy chủ | `/export config`, `/export memories` |
-| Đặt lại cài đặt cá nhân về mặc định | `/reset personal config` |
-| Xóa mọi dữ liệu chúng tôi lưu trữ về bạn trên tất cả Máy chủ | `/personal nuke` |
-| Xóa dữ liệu của Máy chủ (chỉ dành cho người quản lý) | `/nuke` |
+| Kiểm soát mức hiển thị tin nhắn và việc dùng bộ nhớ cá nhân | `/personal config` |
+| Chặn persona tag bạn để bắt đầu trò chuyện | `/personal config` > `Quyền riêng tư` > `Persona tag bạn` |
+| Xem hoặc xóa bộ nhớ cá nhân | `/personal memories` |
+| Xem hoặc xóa bộ nhớ và tài liệu Máy chủ | `/memories` |
+| Xuất cài đặt hoặc bộ nhớ cá nhân | `/export personal config`, `/export personal memories` |
+| Xuất cài đặt hoặc bộ nhớ Máy chủ | `/export config`, `/export memories` |
+| Đặt lại cài đặt cá nhân | `/reset personal config` |
+| Xóa dữ liệu cá nhân mô tả dưới đây trên mọi Máy chủ | `/personal nuke` |
+| Xóa dữ liệu một Máy chủ (chỉ người quản lý) | `/nuke` |
 
-Lệnh `/personal nuke` sẽ xóa bộ nhớ cá nhân, cài đặt cá nhân hóa và xưng hô, spotlight, các khóa nhà cung cấp và endpoint cá nhân đã lưu, các model đã đăng ký, bộ đếm sử dụng, dữ liệu điều hướng persona bạn đã đóng góp, cùng mọi lời nhắc bạn đã tạo hoặc được đặt cho bạn. Có hai hệ quả bạn cần biết trước khi chạy lệnh:
+`/personal nuke` xóa cài đặt cá nhân, bộ nhớ, thông tin xác thực và cấu hình nhà cung cấp đã lưu, số lượt sử dụng, cùng lời nhắc bạn tạo hoặc được đặt cho bạn. Xóa phản hồi của bạn cũng có thể ảnh hưởng cách persona hành xử với thành viên khác.
 
-- Dữ liệu điều hướng persona bạn đã đóng góp qua `/reward` và `/punish` định hình cách persona hành xử cho tất cả mọi người trong Máy chủ đó, do đó việc xóa dữ liệu này sẽ làm thay đổi hành vi chung.
-- Bộ nhớ máy chủ bạn đã dạy và các tài liệu bạn đã tải lên thuộc quyền sở hữu của Máy chủ và sẽ được giữ lại, nhưng thông tin tác giả của bạn sẽ bị gỡ bỏ. Nếu có mục nào mô tả về bạn, hãy yêu cầu người quản lý xóa mục đó bằng lệnh `/memories`.
+Bộ nhớ và tài liệu Máy chủ bạn cung cấp vẫn còn, nhưng bỏ liên kết tác giả; hãy nhờ người quản lý xóa bằng `/memories`. Nếu bộ nhớ hoặc tài liệu chung chứa dữ liệu cá nhân về bạn mà bạn không thể yêu cầu xóa, hãy liên hệ trực tiếp theo Mục 9. Không cần người quản lý cho phép để yêu cầu xem xét và xóa.
 
-Cài đặt từ chối (opt-out) của bạn được chủ ý giữ lại sau khi xóa, để việc xóa dữ liệu không âm thầm bật lại việc thu thập thông tin về bạn.
+Cài đặt quyền riêng tư giới hạn mức hiển thị tin nhắn và cá nhân hóa; không xóa bộ nhớ hiện có. Lựa chọn từ chối thu thập được giữ sau khi xóa để việc thu thập không âm thầm bật lại. Lựa chọn Persona tag bạn là một cài đặt cá nhân hóa, vì vậy `/personal nuke` sẽ xóa nó; hãy tắt lại Persona tag bạn sau đó nếu bạn vẫn muốn tắt.
 
-Đối với bất kỳ yêu cầu nào mà các lệnh trên không thể thực hiện, vui lòng liên hệ với chúng tôi theo Mục 9 và chúng tôi sẽ xử lý thủ công.
+Với gói đăng ký, dùng bảng đăng ký để xem hạn mức, tài trợ hoặc ngừng tài trợ một Máy chủ. Hủy gia hạn trên Patreon; ngừng tài trợ hoặc xóa dữ liệu bot không ngừng tính phí.
 
-## 7) Bảo mật
+Liên hệ theo Mục 9 để truy cập, hủy liên kết hoặc xóa bản ghi gói đăng ký; xuất dữ liệu thông thường và `/personal nuke` không bao gồm chúng. Hủy liên kết xóa liên kết tài khoản, quyền truy cập, tài trợ và chi tiết sử dụng cục bộ, đồng thời yêu cầu xóa khóa nhà cung cấp được quản lý. Một số bản ghi kế toán giới hạn có thể còn như Mục 5 mô tả.
 
-- Khóa API của nhà cung cấp, bearer token và thông tin xác thực MCP được mã hóa khi lưu trữ.
-- Kết nối cơ sở dữ liệu sử dụng TLS có xác thực chứng chỉ.
-- Quyền truy cập cơ sở dữ liệu chỉ giới hạn trong môi trường thực thi của bot và các quản trị viên có quyền truy cập cơ sở hạ tầng.
+## 7) Bảo vệ dữ liệu
 
-Không có hệ thống nào an toàn tuyệt đối. Vui lòng không cung cấp cho TomoriBot các thông tin nhạy cảm cao hoặc thuộc diện quản lý nghiêm ngặt.
+Thông tin xác thực truy cập đã lưu được mã hóa. Kết nối cơ sở dữ liệu được mã hóa và xác minh danh tính máy chủ. Quyền truy cập giới hạn cho môi trường chạy bot và người vận hành có quyền truy cập hạ tầng.
+
+Không hệ thống nào hoàn toàn an toàn. Tránh cung cấp thông tin rất nhạy cảm hoặc dữ liệu cần xử lý đặc biệt.
 
 ## 8) Dữ liệu trẻ em
 
-TomoriBot không hướng đến bất kỳ ai dưới độ tuổi tối thiểu mà Discord quy định tại quốc gia của họ, tối thiểu là 13 tuổi. Chúng tôi không cố ý thu thập dữ liệu từ người dùng dưới độ tuổi đó. Nếu bạn tin rằng chúng tôi đang lưu giữ dữ liệu về người dưới độ tuổi tối thiểu theo quy định, hãy liên hệ với chúng tôi theo Mục 9 và chúng tôi sẽ xóa dữ liệu đó.
+TomoriBot không hướng đến người chưa đủ tuổi tối thiểu của Discord tại quốc gia của họ, ít nhất là 13 tuổi. Chúng tôi không cố ý thu thập dữ liệu của người dưới tuổi đó. Hãy liên hệ nếu bạn cho rằng chúng tôi đang giữ dữ liệu như vậy; chúng tôi sẽ xóa. Một số nhà cung cấp và tính năng đăng ký yêu cầu tuổi cao hơn, như Điều khoản dịch vụ giải thích.
 
 ## 9) Liên hệ
 
-Đối với các câu hỏi hoặc yêu cầu về quyền riêng tư ngoài các lệnh nêu trên, vui lòng gửi email đến `bredrumb@gmail.com` hoặc liên hệ với chúng tôi trong [máy chủ Discord hỗ trợ chính thức của TomoriBot](https://discord.gg/bjCfHm9QsB). Vui lòng sử dụng email hoặc tin nhắn trực tiếp thay vì tạo issue công khai trên GitHub cho bất kỳ vấn đề nào liên quan đến dữ liệu cá nhân của bạn.
+Với câu hỏi về quyền riêng tư hoặc yêu cầu không thể thực hiện bằng lệnh, gửi email đến `bredrumb@gmail.com` hoặc liên hệ trong [máy chủ Discord hỗ trợ TomoriBot chính thức](https://discord.gg/bjCfHm9QsB). Dùng email hoặc tin nhắn trực tiếp cho dữ liệu cá nhân và vấn đề bảo mật, thay vì issue GitHub công khai.
 
-## 10) Thay đổi chính sách
+## 10) Thay đổi
 
-Chúng tôi có thể cập nhật Chính sách quyền riêng tư này, và ngày "Cập nhật lần cuối" ở trên sẽ thay đổi khi có cập nhật. Những thay đổi quan trọng sẽ được thông báo qua Discord hỗ trợ hoặc repository của dự án.
+Chúng tôi thông báo thay đổi quan trọng qua Discord hỗ trợ hoặc repository dự án và cập nhật ngày ở đầu chính sách.
 
 ## 11) Người dùng quốc tế và GDPR
 
-- Dịch vụ lưu trữ của TomoriBot khả dụng trên toàn cầu, và dữ liệu được lưu trữ trên cơ sở hạ tầng do nhà cung cấp dịch vụ lưu trữ của chúng tôi vận hành.
-- Nếu bạn ở Khu vực Kinh tế Châu Âu (EEA), Vương quốc Anh hoặc Thụy Sĩ, bạn có các quyền theo GDPR để truy cập, cải chính, xóa, hạn chế và chuyển dữ liệu cá nhân của mình, cũng như phản đối việc xử lý dữ liệu.
-- Các quyền kiểm soát trong Mục 6 bao gồm trực tiếp việc truy cập, chuyển dữ liệu và xóa dữ liệu. Đối với bất kỳ vấn đề nào khác, vui lòng liên hệ với chúng tôi theo Mục 9.
-- Chúng tôi dựa trên các cơ sở pháp lý sau: thực hiện hợp đồng để vận hành các tính năng bạn yêu cầu; lợi ích hợp pháp cho mục đích bảo mật, ngăn chặn lạm dụng và sự ổn định của dịch vụ; và sự đồng ý đối với các tính năng tùy chọn mà bạn kích hoạt, chẳng hạn như bộ nhớ cá nhân, bộ nhớ ngắn hạn và tìm kiếm web. Bạn có thể rút lại sự đồng ý đó bằng cách tắt tính năng tương ứng.
+Nếu ở EEA, Vương quốc Anh hoặc Thụy Sĩ, luật bảo vệ dữ liệu áp dụng cho bạn quyền truy cập, sửa, xóa, hạn chế và nhận bản sao dữ liệu ở định dạng có thể chuyển, cũng như phản đối xử lý. Dùng các công cụ trên hoặc liên hệ chúng tôi.
+
+Chúng tôi xử lý dữ liệu để thực hiện thỏa thuận với bạn, gồm tính năng bạn yêu cầu và quyền lợi trả phí. Chúng tôi dựa trên lợi ích chính đáng để cung cấp trò chuyện nhóm do Máy chủ cấu hình, bảo vệ dịch vụ, ngăn lạm dụng và cấp hạn mức trùng lặp, duy trì độ tin cậy, đồng thời cân nhắc quyền và lựa chọn riêng tư của thành viên. Người quản lý bật tính năng không có nghĩa mọi thành viên đã đồng ý. Bạn có thể dùng các công cụ riêng tư trên hoặc liên hệ để phản đối xử lý.

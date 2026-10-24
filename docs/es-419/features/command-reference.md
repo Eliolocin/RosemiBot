@@ -11,7 +11,7 @@ sidebar:
 
 Todos los comandos de barra que TomoriBot tiene registrados actualmente, generados a partir de los mismos constructores de comandos y descripciones en español que se usan para el registro en Discord (las descripciones sin traducir aparecen en inglés).
 
-Grupos de comandos de nivel superior: **41**. Comandos de barra ejecutables: **86**.
+Grupos de comandos de nivel superior: **42**. Comandos de barra ejecutables: **89**.
 
 ## `/comment`
 
@@ -208,6 +208,14 @@ Comandos y ajustes con restricción de edad.
 | `/nsfw persona default` | Aplica una configuración de personalidad preajustada NSFW |
 | `/nsfw persona import` | Importa una persona desde un archivo PNG, JSON o CHARX, incluidas las personas NSFW |
 
+## `/nudge-studio`
+
+Elige qué intervenciones espontáneas uso en este servidor y escribe las tuyas.
+
+| Comando | Resumen |
+|---|---|
+| `/nudge-studio` | Elige qué intervenciones espontáneas uso en este servidor y escribe las tuyas. |
+
 ## `/nuke`
 
 Borra completamente todos los datos del servidor. Requiere ejecutar /setup después.
@@ -339,7 +347,9 @@ Ve las estadísticas de uso
 
 | Comando | Resumen |
 |---|---|
-| `/stats generate` | Genera una tarjeta de estadísticas compartible. |
+| `/stats generate persona` | Genera tu tarjeta de Afinidad de Persona con una persona. |
+| `/stats generate personal` | Genera tu tarjeta de Resumen Personal. |
+| `/stats generate server` | Genera la tarjeta de Clasificación del Servidor de este servidor. |
 | `/stats persona` | Ve las estadísticas de uso de una persona en este servidor. |
 | `/stats personal` | Ve tus propias estadísticas de uso. |
 | `/stats server` | Ve las estadísticas de uso de todo el servidor. |

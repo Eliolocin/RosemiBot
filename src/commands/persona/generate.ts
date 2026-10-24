@@ -1,3 +1,10 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Preset Generate Command
  * AI-powered personality generation using supported structured output providers
@@ -23,7 +30,9 @@ import { attachImportNowCollector, importNowButton } from "@/utils/persona/impor
 import { validateAndFallbackPanelPayload } from "@/utils/discord/ui/interactionCore";
 import type { UserRow } from "../../types/db/schema";
 import { personaRepository } from "@/utils/db/repositories";
-import { decryptApiKey } from "../../utils/security/crypto";
+import { getCapabilityCredentialFailureCopy, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 import { memoryGuard, PERSONA_LIMITS, reservePersonaQuota } from "../../utils/security/rateLimiter";
 import { safeDownload } from "../../utils/security/safeDownload";
 import type { GeneratePresetParams } from "../../providers/google/presetGenerator";
@@ -143,7 +152,8 @@ function resolveComponentsV2AccentColor(color: string | number): number {
 function buildGenerateStatusComponents(options: {
   locale: string;
   titleKey: string;
-  descriptionKey: string;
+  descriptionKey?: string;
+  description?: string;
   color: string | number;
   descriptionVars?: Record<string, string | number | boolean>;
   details?: string;
@@ -158,7 +168,7 @@ function buildGenerateStatusComponents(options: {
     },
     {
       type: ComponentType.TextDisplay,
-      content: localizer(options.locale, options.descriptionKey, options.descriptionVars),
+      content: options.description ?? localizer(options.locale, options.descriptionKey ?? "", options.descriptionVars),
     },
   ];
 
@@ -208,7 +218,8 @@ async function editGenerateStatusReply(
   options: {
     locale: string;
     titleKey: string;
-    descriptionKey: string;
+    descriptionKey?: string;
+    description?: string;
     color: string | number;
     descriptionVars?: Record<string, string | number | boolean>;
     details?: string;
@@ -224,6 +235,7 @@ async function editGenerateStatusReply(
           locale: options.locale,
           titleKey: options.titleKey,
           descriptionKey: options.descriptionKey,
+          description: options.description,
           color: options.color,
           descriptionVars: options.descriptionVars,
           details: options.details,
@@ -344,7 +356,7 @@ export async function execute(
     //    /generate image, /memories) and ensures generation uses the
     //    user's personal text provider when configured, instead of always falling
     //    back to the server's configured model.
-    const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(
+    const { tomoriState, activeConfigs } = await applyPersonalProviderSelectionsToTomoriState(
       baseTomoriState,
       userData.user_id ?? null,
     );
@@ -404,44 +416,19 @@ export async function execute(
       return;
     }
 
-    if (!tomoriState.config.api_key) {
-      log.warn(`[Generate Persona] API key missing for provider "${tomoriState.llm.llm_provider}"`, undefined, {
-        userId: userData.user_id,
-        serverId: tomoriState.server_id,
-        personaId: tomoriState.persona_id,
-        metadata: {
-          command: "persona generate",
-          provider: tomoriState.llm.llm_provider,
-        },
-      });
+    if (tomoriState.config.user_byok_mode && !activeConfigs.text) {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.persona.generate.no_api_key_title",
-        descriptionKey: "commands.persona.generate.no_api_key_description",
+        titleKey: "general.errors.personal_provider_required_title",
+        descriptionKey: "general.errors.personal_provider_required_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
       return;
     }
-
-    const keyVersion = tomoriState.config.key_version || 1; // Default to V1 for backward compatibility
-    const decryptedApiKey = await decryptApiKey(tomoriState.config.api_key, keyVersion);
-    if (!decryptedApiKey) {
-      log.warn(
-        `[Generate Persona] Failed to decrypt API key for provider "${tomoriState.llm.llm_provider}"`,
-        undefined,
-        {
-          userId: userData.user_id,
-          serverId: tomoriState.server_id,
-          personaId: tomoriState.persona_id,
-          metadata: {
-            command: "persona generate",
-            provider: tomoriState.llm.llm_provider,
-          },
-        },
-      );
+    if (!tomoriState.config.api_key && !isSupporterBillingEnabled(resolveEnvironment())) {
       await replyInfoEmbed(interaction, locale, {
-        titleKey: "commands.persona.generate.api_key_decrypt_failed_title",
-        descriptionKey: "commands.persona.generate.api_key_decrypt_failed_description",
+        titleKey: "commands.persona.generate.no_api_key_title",
+        descriptionKey: "commands.persona.generate.no_api_key_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -556,6 +543,24 @@ export async function execute(
         imageFilename: imageAttachment?.filename,
         imageMimeType: imageMimeType ?? imageAttachment?.content_type,
       });
+
+    let decryptedApiKey: string;
+    let usageContext: ProviderUsageContext | undefined;
+
+    try {
+      ({ apiKey: decryptedApiKey, usageContext } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
+        userId: userData.user_id,
+      }));
+    } catch (error) {
+      const failure = getCapabilityCredentialFailureCopy(error, locale);
+      if (!failure) throw error;
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        ...failure,
+        color: ColorCode.ERROR,
+        files: [getInputAttachment()],
+      });
+      return;
+    }
 
     // Reserve persona operation quota (atomic check+increment for DDoS protection)
     const quotaReserve = reservePersonaQuota(interaction.user.id);
@@ -847,6 +852,15 @@ export async function execute(
         userId: userData.user_id ?? null,
       });
 
+      if (captionResult.requestDenied) {
+        await editGenerateStatusReply(modalSubmitInteraction, {
+          locale,
+          ...getProviderRequestFailureCopy(captionResult.requestDenied, locale),
+          color: ColorCode.ERROR,
+          inputAttachment: getInputAttachment(),
+        });
+        return;
+      }
       if (!captionResult.ok) {
         const reason = captionResult.failure?.reason ?? "request_failed";
         log.warn(
@@ -913,9 +927,11 @@ export async function execute(
         tomoriState: generationTomoriState,
         locale,
         provider: generationProviderName,
+        usageContext,
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
+        suppressFailureNotices: true,
       };
     } else if (useWebSearch) {
       log.warn("Preset generation web search skipped: no channel context available.");
@@ -923,23 +939,54 @@ export async function execute(
 
     log.info(`Generating preset data with ${generationTomoriState.llm.llm_provider}...`);
 
-    const genResult = await generatePresetForProvider({
-      providerName: generationProviderName,
-      apiKey: generationApiKey,
-      tomoriState: generationTomoriState,
-      params: genParams,
-      locale,
-      toolContext: presetToolContext,
-    });
+    const genResult = await withProviderUsageContext(usageContext, async () =>
+      generatePresetForProvider({
+        providerName: generationProviderName,
+        apiKey: generationApiKey,
+        tomoriState: generationTomoriState,
+        params: genParams,
+        locale,
+        toolContext: presetToolContext,
+        onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
+      }),
+    );
 
-    if (genResult.error || !genResult.preset) {
+    if (genResult.failureStage === "web_search") {
       await editGenerateStatusReply(modalSubmitInteraction, {
         locale,
-        titleKey: "commands.persona.generate.generation_failed_title",
-        descriptionKey: "commands.persona.generate.generation_failed_description",
+        titleKey: "commands.persona.generate.web_search_failed_title",
+        descriptionKey: "commands.persona.generate.web_search_failed_description",
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
+
+    const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
+    if (deniedGeneration) {
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        ...getProviderRequestFailureCopy(deniedGeneration, locale),
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
+
+    if (genResult.error || !genResult.preset) {
+      const invalidGeneratedData = genResult.errorType === "VALIDATION_ERROR";
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        titleKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_title"
+          : "commands.persona.generate.generation_failed_title",
+        descriptionKey: invalidGeneratedData
+          ? "commands.persona.generate.validation_failed_description"
+          : "commands.persona.generate.generation_failed_description",
         descriptionVars: {
           error: genResult.error || "Unknown error",
         },
+        details: invalidGeneratedData ? genResult.error : undefined,
         color: ColorCode.ERROR,
         inputAttachment: getInputAttachment(),
       });
@@ -1135,6 +1182,16 @@ export async function execute(
     // Quota already reserved at step 8 - no increment needed
     log.success(`Preset generated successfully for: ${characterName}`);
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      const copy = getProviderRequestFailureCopy(denied, locale);
+      if (replyUsesComponentsV2) {
+        await editGenerateStatusReply(replyInteraction, { locale, ...copy, color: ColorCode.ERROR });
+      } else {
+        await replyInfoEmbed(replyInteraction, locale, { ...copy, color: ColorCode.ERROR });
+      }
+      return;
+    }
     log.error("Error in preset generate command:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 

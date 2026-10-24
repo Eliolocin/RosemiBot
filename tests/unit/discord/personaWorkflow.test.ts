@@ -1421,7 +1421,7 @@ describe("in-place paginated modal bridge", () => {
   });
 });
 
-describe("retry cache and separate-public policy", () => {
+describe("retry cache", () => {
   it("owns and reuses one avatar cache across picker retries", async () => {
     const harness = makeHarness();
     const firstPersonas = [makePersona(1)];
@@ -1477,42 +1477,5 @@ describe("retry cache and separate-public policy", () => {
     expect(result.outcome).toBe("selected");
     expect(pickerCalls).toHaveLength(2);
     expect(pickerCalls[1]?.avatarSessionCache?.get(0)).toEqual({ type: "url", url: "cached-avatar" });
-  });
-
-  it("compacts the private picker before creating exactly one public response", async () => {
-    const harness = makeHarness();
-    const selectedButton = makeButton(harness);
-    queueSelection(selectedButton, 0);
-    let duplicateFailure: unknown;
-    let ephemeralFailure: unknown;
-
-    const result = await runPersonaPickerWorkflow(harness.root, "en-US", {
-      personas: [makePersona(1)],
-      onSelected: async (selection) => {
-        const publicPhase = await selection.beginSeparatePublicReply(v2Payload("private compacted"));
-        try {
-          await publicPhase.reply({ flags: MessageFlags.Ephemeral, content: "private" });
-        } catch (error) {
-          ephemeralFailure = error;
-        }
-        const publicMessage = await publicPhase.reply({ content: "public result" });
-        expect(publicMessage.id).toBe("public-message");
-        try {
-          await publicPhase.reply({ content: "duplicate" });
-        } catch (error) {
-          duplicateFailure = error;
-        }
-        return completePersonaWorkflow("published");
-      },
-    });
-
-    expect(result.outcome).toBe("selected");
-    const policyCalls = calls.filter((call) => call.method === "button.update" || call.method === "button.followUp");
-    expect(policyCalls.map((call) => call.method)).toEqual(["button.update", "button.followUp"]);
-    expect(getPayload(policyCalls[0] ?? { method: "", source: "" }).flags).toBe(MessageFlags.IsComponentsV2);
-    expect(getPayload(policyCalls[1] ?? { method: "", source: "" }).content).toBe("public result");
-    expectTypedError(ephemeralFailure, "public-reply-must-not-be-ephemeral");
-    expectTypedError(duplicateFailure, "public-reply-already-sent");
-    expectAllInPlacePayloadsAreV2();
   });
 });

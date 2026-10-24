@@ -26,6 +26,7 @@ export interface EmbeddingRequest {
    * when a label hosts several embedding models. Optional; resolution falls back without it.
    */
   modelId?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderImageInput {
@@ -41,6 +42,7 @@ export type StructuredOutputResult<T> =
       error: string;
       failure?: "transport" | "malformed" | "refusal" | "cancelled";
       httpStatus?: number;
+      cause?: Error;
       /** Why a private reply was malformed, so the caller can ask once more with the exact format problem. */
       malformed?: { reason: "empty" | "unparsable" | "schema"; issues?: string[] };
     };
@@ -112,6 +114,8 @@ export interface PresetGenerationResult {
   preset?: PresetExportData;
   error?: string;
   errorType?: PresetGenerationErrorType;
+  failureStage?: "web_search";
+  cause?: Error;
 }
 
 export interface ProviderPresetGenerationRequest {
@@ -121,6 +125,7 @@ export interface ProviderPresetGenerationRequest {
   tomoriState: TomoriState;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderCompactSummaryRequest {
@@ -131,16 +136,19 @@ export interface ProviderCompactSummaryRequest {
   userPrompt: string;
   temperature?: number;
   images?: ProviderImageInput[];
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface CompactConversationResult {
   summary?: string;
   error?: string;
+  cause?: Error;
 }
 
 export interface CompactRoleplayResult {
   summary?: CompactRoleplaySummary;
   error?: string;
+  cause?: Error;
 }
 
 interface ProviderLiveTokenCountRequest {
@@ -270,6 +278,9 @@ export interface ProviderNativeVideoGenerationResult {
   mimeType: string | null;
   filename?: string;
   durationSeconds?: number;
+  costUsd?: number;
+  /** The provider's job identifier, so a cost reported by repeated polling is recorded once. */
+  providerRequestId?: string;
 }
 
 export interface SupportsNativeVideoGeneration {
@@ -317,9 +328,19 @@ interface DecisionPredicateQuestion {
   instructions: string;
 }
 
+/** One answer out of several; option IDs follow the same pattern as question IDs. */
+interface DecisionChoiceQuestion {
+  type: "choice";
+  id: string;
+  instructions: string;
+  options: ReadonlyArray<{ id: string; description: string }>;
+}
+
+type DecisionQuestion = DecisionPredicateQuestion | DecisionChoiceQuestion;
+
 export interface DecisionInput {
   evidence: string;
-  questions: readonly DecisionPredicateQuestion[];
+  questions: readonly DecisionQuestion[];
   abortSignal?: AbortSignal;
   /** Report validated usage before verdict validation, including late cancelled responses. */
   onUsage?: (usage: DecisionUsage) => void;
@@ -335,7 +356,10 @@ export interface ProviderDecisionRequest extends DecisionInput {
   correlationId: string;
 }
 
-export type DecisionAnswer = { type: "predicate"; id: string; probability: number } | { type: "refusal"; id: string };
+export type DecisionAnswer =
+  | { type: "predicate"; id: string; probability: number }
+  | { type: "choice"; id: string; choice: string; probabilities: Record<string, number> }
+  | { type: "refusal"; id: string };
 
 export interface DecisionUsage {
   inputTokens?: number;
@@ -357,6 +381,7 @@ export type DecisionFailureCategory =
   | "credentials";
 
 export type DecisionResult =
+  | { status: "denied"; error: Error; correlationId: string; errorLogged: false }
   | {
       status: "completed" | "refused";
       answers: DecisionAnswer[];
@@ -372,7 +397,7 @@ export type DecisionResult =
       correlationId: string;
       errorLogged: false;
     }
-  | { status: "failed"; category: DecisionFailureCategory; correlationId: string; errorLogged: true };
+  | { status: "failed"; category: DecisionFailureCategory; correlationId: string; errorLogged: true; cause?: Error };
 
 export interface SupportsDecisions {
   callDecisions(request: ProviderDecisionRequest): Promise<DecisionResult>;

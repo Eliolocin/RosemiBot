@@ -15,7 +15,6 @@ export default {
       no_personas_description: `Este servidor não tem personas para mostrar estatísticas ainda.`,
       not_found_title: `Persona Não Encontrada`,
       not_found_description: `A persona selecionada não pôde ser encontrada neste servidor.`,
-      chosen_title: `{name} foi selecionada`,
     },
     server: {
       description: `Veja as estatísticas de uso de todo o servidor.`,
@@ -142,18 +141,24 @@ export default {
 
     generate: {
       description: `Gere um cartão de imagem de estatísticas compartilhável.`,
-      type_description: `O tipo de cartão a ser gerado.`,
-      timeframe_description: `A janela de tempo para resumir.`,
-      scope_description: `Contar apenas neste servidor ou em todos. Aplica-se apenas ao Pessoal.`,
-      personal_option: `Retrospectiva Pessoal`,
-      persona_option: `Afinidade da Persona`,
-      server_option: `Tabela de Classificação do Servidor`,
-      privacy_title: `Estatísticas Indisponíveis`,
-      privacy_description: `Cartões de estatísticas pessoais não estão disponíveis para usuários privados.`,
-      picker_title: `Escolha uma Persona`,
-      picker_description: `Selecione uma persona para gerar um cartão de estatísticas.`,
-      no_personas_title: `Sem Personas`,
-      no_personas_description: `Este servidor não tem personas para gerar um cartão de estatísticas ainda.`,
+      personal: {
+        description: `Gere seu cartão de Retrospectiva Pessoal.`,
+        timeframe_description: `A janela de tempo para resumir.`,
+        scope_description: `Contar atividade apenas neste servidor ou em todos os servidores.`,
+        privacy_title: `Estatísticas Indisponíveis`,
+        privacy_description: `Cartões de estatísticas pessoais não estão disponíveis para usuários privados.`,
+      },
+      persona: {
+        description: `Gere seu cartão de Afinidade da Persona com uma persona.`,
+        persona_description: `A persona para a qual gerar um cartão.`,
+        timeframe_description: `A janela de tempo para resumir.`,
+        no_personas_title: `Sem Personas`,
+        no_personas_description: `Este servidor não tem personas para gerar um cartão de estatísticas ainda.`,
+      },
+      server: {
+        description: `Gere o cartão de Tabela de Classificação deste servidor.`,
+        timeframe_description: `A janela de tempo para resumir.`,
+      },
     },
   },
 };

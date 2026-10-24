@@ -35,6 +35,8 @@ export interface TokenUsage {
   inputTokens: number;
   /** Real completion/output tokens billed for this response (incl. reasoning). */
   outputTokens: number;
+  /** Provider-reported charge in USD, when the provider returns one (OpenRouter `usage.cost`). */
+  costUsd?: number;
 }
 
 /**
@@ -77,7 +79,10 @@ export function normalizeProviderUsage(raw: unknown): TokenUsage | null {
     num("thoughtsTokenCount");
 
   if (inputTokens <= 0 && outputTokens <= 0) return null;
-  return { inputTokens, outputTokens };
+  const cost = u.cost;
+  return typeof cost === "number" && Number.isFinite(cost) && cost >= 0
+    ? { inputTokens, outputTokens, costUsd: cost }
+    : { inputTokens, outputTokens };
 }
 
 /**

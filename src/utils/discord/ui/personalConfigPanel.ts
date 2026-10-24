@@ -126,8 +126,8 @@ export interface PersonalConfigModelDisplayInfo {
   parametersProviders: string[];
   selectedParametersConfig?: UserSavedProviderConfigRow | null;
   fallbacksProviders: string[];
-  selectedFallbacksConfig?: UserSavedProviderConfigRow | null;
-  primaryModelName?: string | null;
+  /** The provider whose models the Fallbacks select expands; the slots themselves span providers. */
+  fallbacksProvider: string | null;
   fallbackSlots: PersonalConfigFallbackDisplaySlot[];
   randomizerEnabled: boolean;
   canEnableRandomizer: boolean;
@@ -160,7 +160,6 @@ export interface PersonalConfigPanelRenderInput {
   savedProviders?: UserSavedProviderConfigRow[];
   selectedCapability?: PersonalConfigManagedCapability;
   selectedParametersProvider?: string;
-  selectedFallbacksProvider?: string;
   selectedModelProvider?: string;
   providerStart?: number;
   modelTotalCount?: number;
@@ -1222,6 +1221,38 @@ ${localizer(locale, "commands.personal.config.stm_count_label", { count: stmCoun
             : localizer(locale, "commands.personal.config.crossserver_stm_off"),
         ),
       },
+      {
+        type: ComponentType.TextDisplay,
+        content: `**${localizer(locale, "commands.personal.config.ping_user_section_title")}**`,
+      },
+      buildStateControlRow(
+        [
+          {
+            value: false,
+            label: localizer(locale, "commands.personal.config.mode_off"),
+            customId: buildPersonalConfigRouteId({ action: "ping-user-set", locale, enabled: false }),
+          },
+          {
+            value: true,
+            label: localizer(locale, "commands.personal.config.mode_on"),
+            customId: buildPersonalConfigRouteId({ action: "ping-user-set", locale, enabled: true }),
+          },
+        ],
+        !user.natural_nudge_opt_out,
+        writesDisabled,
+      ),
+      {
+        type: ComponentType.TextDisplay,
+        content: withLinePrefix(
+          "> ",
+          localizer(
+            locale,
+            user.natural_nudge_opt_out
+              ? "commands.personal.config.ping_user_off"
+              : "commands.personal.config.ping_user_on",
+          ),
+        ),
+      },
     );
   } else if (category === "models") {
     if (page === "switch") {
@@ -1270,6 +1301,7 @@ ${localizer(locale, "commands.personal.config.models_description")}`,
 
         components.push(
           buildModelRoutingControl({
+            locale,
             capabilityLabel,
             activeModelName: row?.activeModelName ?? null,
             activeProvider: row?.storedProvider ?? null,
@@ -1359,7 +1391,7 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
           ...buildProviderParameterBlock({
             providerOptions: parameterProviders.map((provider) => ({
               value: encodeProviderParam(provider),
-              label: getProviderDisplayName(provider),
+              label: getProviderDisplayName(provider, locale),
               default: provider.toLowerCase() === selectedProvider.toLowerCase(),
             })),
             copy: {
@@ -1379,7 +1411,7 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
               editGenerationLabel: localizer(locale, "commands.personal.config.edit_params_2_button"),
             },
             values: {
-              providerDisplayName: getProviderDisplayName(selectedProvider),
+              providerDisplayName: getProviderDisplayName(selectedProvider, locale),
               temperature: tempStr,
               minP: minPStr,
               topP: topPStr,
@@ -1407,10 +1439,9 @@ ${localizer(locale, "commands.personal.config.parameters_description")}`,
         );
       }
     } else if (page === "fallbacks") {
-      const selectedProvider = input.selectedFallbacksProvider ?? input.modelDisplayInfo?.fallbacksProviders[0] ?? "";
-      const config = input.modelDisplayInfo?.selectedFallbacksConfig;
+      const selectedProvider = input.modelDisplayInfo?.fallbacksProvider ?? "";
 
-      if (!selectedProvider || !config) {
+      if (!selectedProvider || (input.modelDisplayInfo?.fallbacksProviders.length ?? 0) === 0) {
         components.push({
           type: ComponentType.TextDisplay,
           content: `### ${localizer(locale, "commands.personal.config.fallbacks_title")}
@@ -1481,7 +1512,7 @@ ${localizer(locale, "commands.personal.config.fallbacks_description")}`,
                 placeholder: safeSelectOptionText(
                   fallbackPageCount > 0
                     ? localizer(locale, "commands.personal.config.fallbacks_page_placeholder", {
-                        provider: getProviderDisplayName(selectedProvider),
+                        provider: getProviderDisplayName(selectedProvider, locale),
                       })
                     : localizer(locale, "commands.personal.config.fallbacks_provider_select_placeholder"),
                   100,

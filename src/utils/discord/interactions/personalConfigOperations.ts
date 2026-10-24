@@ -19,22 +19,22 @@ import {
   QUICK_TOGGLE_CAPABILITIES,
   type PersonalConfigManagedCapability,
 } from "@/utils/discord/personalConfigPanelCatalog";
-import { loadAvailableModelsForCapability } from "@/utils/discord/interactions/personalConfigLoaders";
+import {
+  loadAvailableModelsForCapability,
+  loadFallbackSelectionOptions,
+} from "@/utils/discord/interactions/personalConfigLoaders";
 import { parseAndValidateImageTags } from "@/utils/image/tagHelpers";
 import { log } from "@/utils/misc/logger";
 import { isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
-import {
-  buildFallbackModelPersistence,
-  getFallbackModelRefKey,
-  getPrimaryFallbackRefKeys,
-} from "@/utils/provider/fallbackModelIdentity";
+import { findProviderOption } from "@/utils/provider/providerOptionRegistry";
+import { getFallbackModelRefKey, getPrimaryFallbackRefKeys } from "@/utils/provider/fallbackModelIdentity";
 import {
   assignPersonalCapabilityToProvider,
   getActivePersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
   hasConfiguredPersonalModel,
   setPersonalCapabilityEnabled,
-  withPersonalTextPrimary,
+  setPersonalTextPrimary,
 } from "@/utils/provider/personalProviderHelpers";
 import {
   loadUserSavedProvidersForCapability,
@@ -106,6 +106,12 @@ export interface PersonalConfigOperations {
     userDiscId: string;
     enabled: boolean;
   }): Promise<{ status: "success"; enabled: boolean } | { status: "no-changes" } | { status: "write-failed" }>;
+  setNaturalNudgeOptOut(input: {
+    userId: number;
+    userDiscId: string;
+    current: boolean;
+    optedOut: boolean;
+  }): Promise<{ status: "success"; optedOut: boolean } | { status: "no-changes" | "write-failed" }>;
   setCapabilityModel(input: {
     userId: number;
     userDiscId: string;
@@ -148,12 +154,11 @@ export interface PersonalConfigOperations {
   setRandomizer(input: {
     userId: number;
     userDiscId: string;
-    provider: string;
     enabled: boolean;
   }): Promise<
     | { status: "success"; enabled: boolean }
     | { status: "no-changes" }
-    | { status: "requires-fallbacks" | "not-found" | "write-failed" }
+    | { status: "requires-fallbacks" | "write-failed" }
   >;
   setTriggerMode(input: {
     userId: number;
@@ -339,6 +344,13 @@ export const personalConfigOperations: PersonalConfigOperations = {
     return { status: "success", enabled };
   },
 
+  async setNaturalNudgeOptOut({ userId, userDiscId: _userDiscId, current, optedOut }) {
+    if (current === optedOut) return { status: "no-changes" };
+    const updated = await userRepository.update(userId, { natural_nudge_opt_out: optedOut });
+    if (!updated) return { status: "write-failed" };
+    return { status: "success", optedOut };
+  },
+
   async setCapabilityModel({ userId, userDiscId: _userDiscId, capability, provider, modelId }) {
     if (!Number.isInteger(modelId) || modelId <= 0) return { status: "write-failed" };
 
@@ -353,7 +365,7 @@ export const personalConfigOperations: PersonalConfigOperations = {
     if (capability === "speech_design" || capability === "speech_clone") {
       const selected = availableModels.find((model) => model.id === modelId);
       if (
-        provider.toLowerCase() === "openrouter" &&
+        (provider.toLowerCase() === "openrouter" || findProviderOption(provider)) &&
         (!selected ||
           !(await validateOpenRouterSpeechModel(selected.name, capability === "speech_design" ? "design" : "clone")))
       )
@@ -382,12 +394,14 @@ export const personalConfigOperations: PersonalConfigOperations = {
       return { status: "no-changes" };
     }
 
-    const endpoints = await llmProviderRepo.loadCustomEndpointsForUser(userId);
+    if (capability === "text") {
+      const endpoints = await llmProviderRepo.loadCustomEndpointsForUser(userId);
+      return (await setPersonalTextPrimary(userId, provider, modelId, endpoints))
+        ? { status: "success" }
+        : { status: "write-failed" };
+    }
 
     const ok = await assignPersonalCapabilityToProvider(userId, provider, capability, (row) => {
-      if (capability === "text") {
-        return withPersonalTextPrimary(row, modelId, endpoints);
-      }
       if (capability === "vision") {
         return { ...row, vision_llm_id: modelId };
       }
@@ -554,25 +568,38 @@ export const personalConfigOperations: PersonalConfigOperations = {
     if (!eligibleRows.some((row) => row.provider.toLowerCase() === provider.toLowerCase())) {
       return { status: "not-found" };
     }
-    const savedConfig = await llmProviderRepo.loadUserSavedProviderConfig(userId, provider);
-    if (!savedConfig) return { status: "not-found" };
 
-    const endpoints = await llmProviderRepo.loadCustomEndpointsForUser(userId);
+    const [rows, fallbackSettings, endpoints] = await Promise.all([
+      llmProviderRepo.loadUserSavedProviderConfigs(userId),
+      llmProviderRepo.loadPersonalFallbackSettings(userId),
+      llmProviderRepo.loadCustomEndpointsForUser(userId),
+    ]);
+    const primaryLlmId =
+      (getActivePersonalProviderForCapability(rows, "text") ?? getStoredPersonalProviderForCapability(rows, "text"))
+        ?.llm_id ?? null;
     const customProvider = parseCustomProvider(provider);
     const availableModels = isCustomProvider(provider)
       ? []
-      : ((await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-          kind: "personal",
-          ownerId: userId,
-        })) ?? []);
+      : ((await llmModelRepo.loadAvailableModelsForProvider(
+          provider === SUPPORTER_PROVIDER_VALUE ? "openrouter" : provider,
+          false,
+          {
+            kind: "personal",
+            ownerId: userId,
+          },
+        )) ?? []);
     const selectableEndpoints = customProvider
       ? endpoints.filter(
           (endpoint) => endpoint.connection_id === customProvider.connectionId && endpoint.capability === "text",
         )
       : [];
-    const primaryKeys = getPrimaryFallbackRefKeys(savedConfig.llm_id, endpoints);
+    const options = await loadFallbackSelectionOptions(userId, provider);
+    const primaryProvider = (
+      getActivePersonalProviderForCapability(rows, "text") ?? getStoredPersonalProviderForCapability(rows, "text")
+    )?.provider;
+    const primaryKeys = getPrimaryFallbackRefKeys(primaryLlmId, endpoints, primaryProvider);
 
-    const existingRefs = savedConfig.fallback_model_refs ?? [];
+    const existingRefs = fallbackSettings.fallback_model_refs;
     const submittedKeys = new Set<string>();
     const mergedRefs: FallbackModelRef[] = [];
 
@@ -589,16 +616,30 @@ export const personalConfigOperations: PersonalConfigOperations = {
         mergedRefs.push({ type: "custom_endpoint", id });
         submittedKeys.add(`custom_endpoint:${id}`);
       } else if (val.startsWith("llm:") || /^\d+$/.test(val)) {
-        const id = val.startsWith("llm:") ? Number(val.slice("llm:".length)) : Number(val);
+        const match = /^(?:llm:)?(\d+)(:supporter)?$/.exec(val);
+        if (!match) return { status: "write-failed" };
+        const id = Number(match[1]);
         const m = availableModels.find((model) => model.llm_id === id);
         if (!m || m.llm_id === undefined || m.llm_codename === "other-model") return { status: "write-failed" };
-        mergedRefs.push({ type: "llm", id: m.llm_id });
-        submittedKeys.add(`llm:${m.llm_id}`);
+        const ref: FallbackModelRef = {
+          type: "llm",
+          id: m.llm_id,
+          ...(match[2] ? { credentialProvider: "supporter" } : {}),
+        };
+        if (!options.some((option) => option.refKey === getFallbackModelRefKey(ref))) return { status: "write-failed" };
+        mergedRefs.push(ref);
+        submittedKeys.add(getFallbackModelRefKey(ref));
       } else {
         const m = availableModels.find((model) => model.llm_codename === val);
         if (!m || m.llm_id === undefined || m.llm_codename === "other-model") return { status: "write-failed" };
-        mergedRefs.push({ type: "llm", id: m.llm_id });
-        submittedKeys.add(`llm:${m.llm_id}`);
+        const ref: FallbackModelRef = {
+          type: "llm",
+          id: m.llm_id,
+          ...(provider === SUPPORTER_PROVIDER_VALUE ? { credentialProvider: "supporter" } : {}),
+        };
+        if (!options.some((option) => option.refKey === getFallbackModelRefKey(ref))) return { status: "write-failed" };
+        mergedRefs.push(ref);
+        submittedKeys.add(getFallbackModelRefKey(ref));
       }
     }
 
@@ -614,8 +655,8 @@ export const personalConfigOperations: PersonalConfigOperations = {
 
     if ([...submittedKeys].some((key) => primaryKeys.has(key))) {
       let primaryModelName: string | undefined;
-      if (savedConfig.llm_id) {
-        const primaryLlm = await llmModelRepo.loadById(savedConfig.llm_id);
+      if (primaryLlmId) {
+        const primaryLlm = await llmModelRepo.loadById(primaryLlmId);
         primaryModelName = primaryLlm?.llm_codename;
       }
       return { status: "primary-conflict", primaryModelName };
@@ -623,40 +664,25 @@ export const personalConfigOperations: PersonalConfigOperations = {
 
     const finalRefs = dedupedRefs.filter((ref) => !primaryKeys.has(getFallbackModelRefKey(ref)));
 
-    const currentKeys = (savedConfig.fallback_model_refs ?? []).map(getFallbackModelRefKey).join(",");
+    const currentKeys = existingRefs.map(getFallbackModelRefKey).join(",");
     const newKeys = finalRefs.map(getFallbackModelRefKey).join(",");
     if (currentKeys === newKeys) {
       return { status: "no-changes" };
     }
 
-    const { fallbackModelRefs } = buildFallbackModelPersistence(finalRefs, savedConfig.llm_id, endpoints);
-    const updatedConfig: UserSavedProviderConfigUpsert = {
-      ...savedConfig,
-      fallback_model_refs: fallbackModelRefs,
-    };
-
-    const ok = await llmProviderRepo.upsertUserSavedProviderConfig(userId, updatedConfig);
+    const ok = await llmProviderRepo.updatePersonalFallbackModelRefs(userId, finalRefs);
     if (!ok) return { status: "write-failed" };
-    return { status: "success", fallbacks: fallbackModelRefs };
+    return { status: "success", fallbacks: finalRefs };
   },
 
-  async setRandomizer({ userId, userDiscId: _userDiscId, provider, enabled }) {
-    const eligibleRows = await loadUserSavedProvidersForCapability(userId, "text");
-    if (!eligibleRows.some((row) => row.provider.toLowerCase() === provider.toLowerCase())) {
-      return { status: "not-found" };
-    }
-    const savedConfig = await llmProviderRepo.loadUserSavedProviderConfig(userId, provider);
-    if (!savedConfig) return { status: "not-found" };
-    if (Boolean(savedConfig.model_randomizer_enabled) === enabled) return { status: "no-changes" };
-
-    if (enabled) {
-      const fallbackCount = savedConfig.fallback_model_refs?.length ?? 0;
-      if (fallbackCount === 0) {
-        return { status: "requires-fallbacks" };
-      }
+  async setRandomizer({ userId, userDiscId: _userDiscId, enabled }) {
+    const fallbackSettings = await llmProviderRepo.loadPersonalFallbackSettings(userId);
+    if (fallbackSettings.model_randomizer_enabled === enabled) return { status: "no-changes" };
+    if (enabled && fallbackSettings.fallback_model_refs.length === 0) {
+      return { status: "requires-fallbacks" };
     }
 
-    const ok = await llmProviderRepo.updatePersonalModelRandomizer(userId, provider, enabled);
+    const ok = await llmProviderRepo.updatePersonalModelRandomizer(userId, enabled);
     if (!ok) return { status: "write-failed" };
     return { status: "success", enabled };
   },
@@ -769,3 +795,4 @@ export const personalConfigOperations: PersonalConfigOperations = {
     return { status: "write-failed" };
   },
 };
+import { SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";

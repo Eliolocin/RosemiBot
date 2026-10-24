@@ -78,7 +78,10 @@ class LlmModelRepository {
     return rows.length ? speechModelSchema.parse(rows[0]) : null;
   }
 
-  async loadDecisionModelOptions(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
+  async loadDecisionModelOptions(
+    scope: OpenRouterModelScope,
+    includeManagedOpenRouter = false,
+  ): Promise<DecisionModelOption[]> {
     const serverId = scope.kind === "server" ? scope.ownerId : null;
     const userId = scope.kind === "personal" ? scope.ownerId : null;
     const rows = await withTransientDbRetry(
@@ -105,6 +108,7 @@ class LlmModelRepository {
         AND (
           EXISTS (SELECT 1 FROM saved_provider_configs saved WHERE saved.server_id = ${serverId} AND saved.provider = model.provider)
           OR EXISTS (SELECT 1 FROM user_saved_provider_configs saved WHERE saved.user_id = ${userId} AND saved.provider = model.provider)
+          OR (${includeManagedOpenRouter} AND model.provider = 'openrouter')
         )
       ORDER BY model.provider, model.decision_model_id
     `,
@@ -181,7 +185,7 @@ class LlmModelRepository {
       codename: params.codename,
       input_token_limit: params.inputTokenLimit,
       sees_images: params.seesImages ?? false,
-      supported_primitives: ["predicate"],
+      supported_primitives: ["predicate", "choice"],
       input_price_per_million: params.inputPricePerMillion,
       output_price_per_million: params.outputPricePerMillion,
     });
@@ -1517,8 +1521,8 @@ class LlmModelRepository {
 
   /**
    * Returns true when any config row (server_model_configs, persona_configs,
-   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs)
-   * still references the given LLM ID.
+   * channel_llm_overrides, saved_provider_configs, user_saved_provider_configs,
+   * user_personalization_configs) still references the given LLM ID.
    *
    * @param llmId - Internal LLM ID
    */
@@ -1559,10 +1563,12 @@ class LlmModelRepository {
         SELECT 1 FROM user_saved_provider_configs
         WHERE llm_id = ${llmId}
            OR vision_llm_id = ${llmId}
-           OR EXISTS (
+        UNION ALL
+        SELECT 1 FROM user_personalization_configs
+        WHERE EXISTS (
               SELECT 1 FROM jsonb_array_elements(
-                CASE WHEN jsonb_typeof(COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)) = 'array'
-                  THEN COALESCE(user_saved_provider_configs.fallback_model_refs, '[]'::JSONB)
+                CASE WHEN jsonb_typeof(user_personalization_configs.fallback_model_refs) = 'array'
+                  THEN user_personalization_configs.fallback_model_refs
                   ELSE '[]'::JSONB END
               ) AS ref
               WHERE ref ->> 'type' = 'llm' AND ref ->> 'id' = ${String(llmId)}

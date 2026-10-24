@@ -37,10 +37,8 @@ const personalNaiConfig: UserSavedProviderConfigRow = {
   llm_disabled_params: [],
   llm_logit_biases: [],
   thinking_level: "auto",
-  model_randomizer_enabled: false,
   enabled_capabilities: ["image_nai"],
   assigned_capabilities: ["image_nai"],
-  fallback_model_refs: [],
   saved_at: new Date(),
   updated_at: new Date(),
 };

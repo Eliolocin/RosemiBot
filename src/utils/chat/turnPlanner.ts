@@ -1,4 +1,5 @@
-import type { Guild, Message } from "discord.js";
+import { resolveServerTextModel } from "@/utils/provider/textModelSelection";
+import type { Guild, GuildMember, Message } from "discord.js";
 import type { TomoriState, UserRow } from "@/types/db/schema";
 import { PrivacyLevel } from "@/types/db/schema";
 import { DatabaseUnavailableError } from "@/types/errors";
@@ -14,7 +15,17 @@ import {
   CredentialUnavailableError,
   PersonalProviderRequiredError,
   resolveCapabilityCredentials,
+  resolvePersonalCapabilityCredentials,
+  type ResolvedCredentials,
+  isUnavailablePersonalSubscription,
 } from "@/utils/provider/credentialResolver";
+import {
+  resolveSupporterFunding,
+  type SupporterFundingContext,
+  type SupporterFundingResult,
+} from "@/modules/supporter-billing/runtime";
+import { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
 import {
   checkTextQuotaForAdmission,
   enforceGlobalRateLimit,
@@ -45,7 +56,12 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getLastRespondedPersonaId, getSelfReplyChainState } from "@/utils/chat/selfReplyState";
 import type { TextQuotaTriggerState } from "@/utils/chat/textQuotaState";
-import type { ChatTurn, ChatTurnPlan, LockedChatTurn } from "@/utils/chat/types";
+import {
+  claimCredentialRefusalNotice,
+  hasTextQuotaBeenRefused,
+  markTextQuotaRefused,
+} from "@/utils/chat/textQuotaState";
+import type { ChatIncoming, ChatTurn, ChatTurnPlan, LockedChatTurn, TextCredentialSource } from "@/utils/chat/types";
 import { userNamingRepository, userPersonaNamingPairKey } from "@/utils/db/repositories/UserNamingRepository";
 import { resolveEffectiveUserNaming } from "@/utils/text/userNaming";
 const DEFAULT_CASCADE_LIMIT = 3;
@@ -54,6 +70,7 @@ const DEFAULT_MATCH_LIMIT = 3;
 const MIN_MATCH_LIMIT = 1;
 const MAX_MATCH_LIMIT = 10;
 type SendableChannel = Parameters<typeof sendStandardEmbed>[0];
+
 export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTurnPlan> {
   const admission = lockedTurn.admission;
   const incoming = admission.incoming;
@@ -98,7 +115,11 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   }
 
   const userRow = await loadOrRegisterTriggerUser(message, guild, userDiscId, incoming.manualTriggerInvoker);
-  const locale = userRow.language_pref ?? incoming.manualTriggerInvoker?.locale ?? admission.locale;
+  // A borrowed trigger's author is a bystander, so a guild turn speaks the server's language, not theirs.
+  const locale =
+    incoming.borrowsTriggerMessage && guild
+      ? (guild.preferredLocale ?? "en-US")
+      : (userRow.language_pref ?? incoming.manualTriggerInvoker?.locale ?? admission.locale);
   admission.locale = locale;
   admission.userRow = userRow;
   admission.tomoriState = tomoriState;
@@ -179,8 +200,8 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   // users triggering Tomori, but reminders were authorized at creation time. The channel
   // whitelist (is this channel allowed at all?) still applies via whitelistStatus.isTriggerAllowed,
   // but role-based rejection that derives from the last message author is skipped.
-  const isReminderTurn = !!(incoming.reminderRecipientID || incoming.reminderData?.self_reminder);
-  if (accessState.rejectedByWhitelist && !isReminderTurn) {
+  const isSystemInitiatedTurn = isSystemInitiatedIncoming(incoming);
+  if (accessState.rejectedByWhitelist && !isSystemInitiatedTurn) {
     return { lockedTurn, turns: [] };
   }
 
@@ -191,24 +212,9 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: (userRow.personal_dtm as "off" | "follow" | "on") ?? "follow",
       referencedMessage: admission.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     })
   ) {
-    return { lockedTurn, turns: [] };
-  }
-
-  const credentialPolicy = await resolveTextCredentialPolicy({
-    tomoriState,
-    isSelfMessage,
-    isPersonaJob: incoming.isPersonaJob,
-    isManuallyTriggered: incoming.isManuallyTriggered,
-    isUserImpersonation: incoming.isUserImpersonation,
-    userRow,
-    channel,
-    locale,
-    isDMChannel,
-    shouldSurfaceUserErrors,
-  });
-  if (!credentialPolicy) {
     return { lockedTurn, turns: [] };
   }
 
@@ -235,27 +241,57 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     return { lockedTurn, turns: [] };
   }
 
+  const personaPolicies = new Map<TomoriState, NonNullable<Awaited<ReturnType<typeof resolveTextCredentialPolicy>>>>();
+  const personaQuotas = new Map<TomoriState, Awaited<ReturnType<typeof prepareTextQuota>>>();
+  const refusalNoticeKey = incoming.textQuotaTriggerKey ?? lockedTurn.admission.message.id;
+  for (const persona of personasToRespond) {
+    const policy = await resolveTextCredentialPolicy({
+      tomoriState: persona,
+      isSelfMessage,
+      isPersonaJob: incoming.isPersonaJob,
+      isManuallyTriggered: incoming.isManuallyTriggered,
+      isUserImpersonation: incoming.isUserImpersonation,
+      borrowsTriggerMessage: incoming.borrowsTriggerMessage === true,
+      userRow,
+      channel,
+      locale,
+      isDMChannel,
+      shouldSurfaceUserErrors,
+      llmOverrideCodename: incoming.llmOverrideCodename,
+      refusalNoticeKey,
+    });
+    if (!policy) continue;
+    const quota = await prepareTextQuota(
+      lockedTurn,
+      persona,
+      policy.supporterFunding?.fundingScope === "server" ? "server" : policy.source,
+      userRow,
+      shouldSurfaceUserErrors,
+    );
+    if (!quota.allowed) continue;
+    personaPolicies.set(persona, policy);
+    personaQuotas.set(persona, quota);
+  }
+  personasToRespond = personasToRespond.filter((persona) => personaPolicies.has(persona));
+  if (personasToRespond.length === 0) return { lockedTurn, turns: [] };
+  const textQuota = personaQuotas.get(personasToRespond[0]);
+  if (!textQuota) return { lockedTurn, turns: [] };
+  const guardSource: TextCredentialSource = personasToRespond.some((persona) => {
+    const policy = personaPolicies.get(persona);
+    return policy?.source === "server" || policy?.supporterFunding?.fundingScope === "server";
+  })
+    ? "server"
+    : "personal";
   if (
     !(await enforceTurnGuards(
       lockedTurn,
       tomoriState,
       userRow,
       personasToRespond,
-      credentialPolicy.source,
+      guardSource,
       shouldSurfaceUserErrors,
     ))
   ) {
-    return { lockedTurn, turns: [] };
-  }
-
-  const textQuota = await prepareTextQuota(
-    lockedTurn,
-    tomoriState,
-    credentialPolicy.source,
-    userRow,
-    shouldSurfaceUserErrors,
-  );
-  if (!textQuota.allowed) {
     return { lockedTurn, turns: [] };
   }
 
@@ -281,7 +317,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     incoming.retryCount === 0 &&
     lockEntry
   ) {
-    const rootSceneTurn = incoming.sceneTurn;
+    const { turnContextItems, ...rootSceneTurn } = incoming.sceneTurn;
     const remainingSceneJobs = rootSceneTurn.sequence.slice(1).map((speaker, offset) => {
       const sceneTurn = {
         ...rootSceneTurn,
@@ -294,6 +330,7 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
         sceneTurn,
         manualSystemPrompt: buildSceneTurnDirective(sceneTurn),
         textQuotaTriggerKey: buildSceneTextQuotaTriggerKey(sceneTurn),
+        injectedContextItems: turnContextItems ? turnContextItems[offset + 1] : incoming.injectedContextItems,
       };
     });
 
@@ -309,10 +346,11 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
         textQuotaSource: incoming.textQuotaSource,
         textQuotaUserDiscId: incoming.textQuotaUserDiscId ?? cooldownUserDiscId,
         shouldSurfaceUserErrors,
-        injectedContextItems: incoming.injectedContextItems,
         forcedMentions: incoming.forcedMentions,
         manualTriggerInvoker: incoming.manualTriggerInvoker,
         manualStreamingContextOverrides: incoming.manualStreamingContextOverrides,
+        naturalNudge: incoming.naturalNudge,
+        borrowsTriggerMessage: incoming.borrowsTriggerMessage,
       });
     }
   }
@@ -350,26 +388,29 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
     triggererPrivacyLevel: await getCachedPrivacyLevel(userDiscId),
     preloadedMember: !isDMChannel && guild ? await guild.members.fetch(userDiscId).catch(() => null) : null,
   };
-  const displayName = resolvePreferredDiscordDisplayName({
-    memberDisplayName:
-      incoming.manualTriggerInvoker?.member?.displayName ??
-      requestSnapshot.preloadedMember?.displayName ??
-      message.member?.displayName,
-    user: incoming.manualTriggerInvoker ? { username: incoming.manualTriggerInvoker.username } : message.author,
-    fallback: incoming.manualTriggerInvoker?.username ?? message.author.username,
+  const naming = await resolveNamingSubject({
+    incoming,
+    message,
+    guild,
+    serverDiscId,
+    userRow,
+    preloadedMember: requestSnapshot.preloadedMember,
+    isTriggererBlacklisted: requestSnapshot.isTriggererBlacklisted,
   });
+  if (!naming) {
+    log.warn(`Dropping Ping User turn for message ${message.id}: its target's user row could not be read.`);
+    return { lockedTurn, turns: [] };
+  }
+  const { displayName, row: namingRow } = naming;
   let triggererName =
-    requestSnapshot.isTriggererBlacklisted ||
-    tomoriState.config.personal_memories_enabled === false ||
-    !userRow.user_nickname
+    naming.blacklisted || tomoriState.config.personal_memories_enabled === false || !namingRow.user_nickname
       ? displayName
-      : userRow.user_nickname;
-  const canUsePersonalizedNaming =
-    !requestSnapshot.isTriggererBlacklisted && tomoriState.config.personal_memories_enabled !== false;
-  const namingPreferences = userRow.user_id
+      : namingRow.user_nickname;
+  const canUsePersonalizedNaming = !naming.blacklisted && tomoriState.config.personal_memories_enabled !== false;
+  const namingPreferences = namingRow.user_id
     ? await userNamingRepository.loadPreferences(
         personasToRespond.map((persona) => ({
-          userId: userRow.user_id as number,
+          userId: namingRow.user_id as number,
           personaLineageId: persona.persona_lineage_id,
         })),
       )
@@ -388,16 +429,19 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
   }
 
   const turns: ChatTurn[] = personasToRespond.map((persona, personaIndex) => {
+    const credentialPolicy = personaPolicies.get(persona);
+    const quota = personaQuotas.get(persona);
+    if (!credentialPolicy || !quota) throw new Error("Persona admission state missing");
     const isPersonaSceneTarget = Boolean(incoming.sceneTurn && incoming.sceneTurn.turnIndex > 0);
-    const preference = userRow.user_id
-      ? namingPreferences.get(userPersonaNamingPairKey(userRow.user_id, persona.persona_lineage_id))
+    const preference = namingRow.user_id
+      ? namingPreferences.get(userPersonaNamingPairKey(namingRow.user_id, persona.persona_lineage_id))
       : undefined;
     const effectiveNaming = resolveEffectiveUserNaming({
       global: {
-        userNickname: canUsePersonalizedNaming ? userRow.user_nickname : null,
-        prefixOverride: canUsePersonalizedNaming ? (userRow.prefix_override ?? null) : null,
-        suffixOverride: canUsePersonalizedNaming ? (userRow.suffix_override ?? null) : null,
-        addressingStyle: canUsePersonalizedNaming ? (userRow.addressing_style ?? null) : null,
+        userNickname: canUsePersonalizedNaming ? namingRow.user_nickname : null,
+        prefixOverride: canUsePersonalizedNaming ? (namingRow.prefix_override ?? null) : null,
+        suffixOverride: canUsePersonalizedNaming ? (namingRow.suffix_override ?? null) : null,
+        addressingStyle: canUsePersonalizedNaming ? (namingRow.addressing_style ?? null) : null,
       },
       liveDisplayName: displayName,
       persona: canUsePersonalizedNaming ? persona.naming_config : undefined,
@@ -436,9 +480,10 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       textCredentialSource: credentialPolicy.source,
       personalRoutingUserId: credentialPolicy.personalRoutingUserId,
       personalTextProvider: credentialPolicy.personalTextProvider,
-      shouldApplyTextQuota: textQuota.shouldApply,
-      textQuotaTriggerKey: textQuota.triggerKey,
-      textQuotaState: textQuota.state,
+      supporterFunding: credentialPolicy.supporterFunding,
+      shouldApplyTextQuota: quota.shouldApply,
+      textQuotaTriggerKey: quota.triggerKey,
+      textQuotaState: quota.state,
       shouldSurfaceUserErrors,
       forcedMentions: incoming.forcedMentions,
       isUserImpersonation: incoming.isUserImpersonation,
@@ -453,6 +498,49 @@ export async function planChatTurns(lockedTurn: LockedChatTurn): Promise<ChatTur
       .join(", ")}`,
   );
   return { lockedTurn, turns };
+}
+
+/**
+ * The user whose name `{user}` and the triggerer name carry. A Ping User speaks to its target, not to
+ * whoever posted the message it borrowed as a trigger, so only naming moves to the target: credentials,
+ * quotas, and stats stay with the trigger message's author. Null when the target's row is unreadable.
+ */
+async function resolveNamingSubject(params: {
+  incoming: ChatIncoming;
+  message: Message;
+  guild: Guild | null;
+  serverDiscId: string;
+  userRow: UserRow;
+  preloadedMember: GuildMember | null;
+  isTriggererBlacklisted: boolean;
+}): Promise<{ row: UserRow; displayName: string; blacklisted: boolean } | null> {
+  const { incoming, message } = params;
+  const targetId = incoming.naturalNudge?.targetUserDiscId;
+  if (!targetId) {
+    return {
+      row: params.userRow,
+      blacklisted: params.isTriggererBlacklisted,
+      displayName: resolvePreferredDiscordDisplayName({
+        memberDisplayName:
+          incoming.manualTriggerInvoker?.member?.displayName ??
+          params.preloadedMember?.displayName ??
+          message.member?.displayName,
+        user: incoming.manualTriggerInvoker ? { username: incoming.manualTriggerInvoker.username } : message.author,
+        fallback: incoming.manualTriggerInvoker?.username ?? message.author.username,
+      }),
+    };
+  }
+  const [row, member, blacklisted] = await Promise.all([
+    getCachedUserRow(targetId),
+    params.guild ? params.guild.members.fetch(targetId).catch(() => null) : Promise.resolve(null),
+    getCachedBlacklistStatus(params.serverDiscId, targetId),
+  ]);
+  if (!row) return null;
+  return {
+    row,
+    blacklisted,
+    displayName: resolvePreferredDiscordDisplayName({ memberDisplayName: member?.displayName, user: member?.user }),
+  };
 }
 
 async function loadOrRegisterTriggerUser(
@@ -507,6 +595,16 @@ async function updateAutochatCounter(message: Message, tomoriState: TomoriState,
   }
 }
 
+/**
+ * A borrowed-trigger turn counts as system-initiated because an admin configured it (random trigger
+ * or Natural Nudges allow-list), as creation authorizes a reminder.
+ */
+function isSystemInitiatedIncoming(incoming: ChatIncoming): boolean {
+  return Boolean(
+    incoming.reminderRecipientID || incoming.reminderData?.self_reminder || incoming.borrowsTriggerMessage,
+  );
+}
+
 function isRealUserMessage(message: Message): boolean {
   return (!message.author.bot && !message.webhookId) || isMatrixRelayMessage(message) || isMessageProxyMessage(message);
 }
@@ -516,43 +614,116 @@ function getMatchLimit(tomoriState: TomoriState): number {
   return Math.min(Math.max(rawMatchLimit, MIN_MATCH_LIMIT), MAX_MATCH_LIMIT);
 }
 
-async function resolveTextCredentialPolicy(params: {
+export interface TextCredentialPolicyDependencies {
+  resolvePersonalCapabilityCredentials: typeof resolvePersonalCapabilityCredentials;
+  resolveCapabilityCredentials: typeof resolveCapabilityCredentials;
+  resolveServerTextModel: typeof resolveServerTextModel;
+  resolveSupporterFunding: (
+    params: Parameters<typeof resolveSupporterFunding>[0],
+  ) => Promise<{ ok: true; context: SupporterFundingContext } | Exclude<SupporterFundingResult, { ok: true }>>;
+  sendStandardEmbed: typeof sendStandardEmbed;
+}
+
+export async function resolveTextCredentialPolicy(params: {
   tomoriState: TomoriState;
   isSelfMessage: boolean;
   isPersonaJob: boolean;
   isManuallyTriggered?: boolean;
   isUserImpersonation: boolean;
+  borrowsTriggerMessage: boolean;
   userRow: UserRow;
   channel: Message["channel"];
   locale: string;
   isDMChannel: boolean;
   shouldSurfaceUserErrors: boolean;
+  llmOverrideCodename?: string;
+  refusalNoticeKey?: string;
+  dependencies?: Partial<TextCredentialPolicyDependencies>;
 }): Promise<{
-  source: "server" | "personal";
+  source: TextCredentialSource;
   personalRoutingUserId: number | null;
   personalTextProvider: string | null;
+  supporterFunding: SupporterFundingContext | null;
 } | null> {
+  const dependencies: TextCredentialPolicyDependencies = {
+    resolvePersonalCapabilityCredentials,
+    resolveCapabilityCredentials,
+    resolveServerTextModel,
+    resolveSupporterFunding,
+    sendStandardEmbed,
+    ...params.dependencies,
+  };
+  // A borrowed trigger's author is whoever spoke last, so a personal key there would bill a bystander.
   const personalRoutingUserId =
-    params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation
+    params.borrowsTriggerMessage ||
+    (params.isSelfMessage && !params.isPersonaJob && !params.isManuallyTriggered && !params.isUserImpersonation)
       ? null
       : (params.userRow.user_id ?? null);
+  const sendFailureNotice = async (options: Parameters<typeof sendStandardEmbed>[2]): Promise<void> => {
+    if (params.refusalNoticeKey && !claimCredentialRefusalNotice(params.refusalNoticeKey)) return;
+    await dependencies.sendStandardEmbed(params.channel as SendableChannel, params.locale, options);
+  };
 
   try {
-    const textCreds = await resolveCapabilityCredentials(params.tomoriState.server_id, "text", {
+    let personalCredentials: ResolvedCredentials | null;
+    try {
+      personalCredentials =
+        personalRoutingUserId !== null
+          ? await dependencies.resolvePersonalCapabilityCredentials(personalRoutingUserId, "text")
+          : null;
+    } catch (error) {
+      if (!isUnavailablePersonalSubscription(error)) throw error;
+      return { source: "personal", personalRoutingUserId, personalTextProvider: "supporter", supporterFunding: null };
+    }
+    if (personalCredentials) {
+      if (!personalCredentials.supporterFunding || !params.llmOverrideCodename) {
+        return buildCredentialPolicyFromCredentials(personalCredentials, personalRoutingUserId);
+      }
+      const funding = await dependencies.resolveSupporterFunding({
+        scope: { kind: "personal", userId: personalRoutingUserId as number },
+        capability: "text",
+        requestedModelCodename: params.llmOverrideCodename,
+      });
+      if (!funding.ok) throw new SupporterRequestDeniedError(funding.reason, undefined, "text", "personal");
+      return buildCredentialPolicyFromCredentials(
+        { ...personalCredentials, supporterFunding: funding.context },
+        personalRoutingUserId,
+      );
+    }
+    const effectiveModel = await dependencies.resolveServerTextModel(
+      params.tomoriState,
+      params.channel,
+      params.isUserImpersonation,
+      params.llmOverrideCodename,
+    );
+    const textCreds = await dependencies.resolveCapabilityCredentials(params.tomoriState.server_id, "text", {
       userId: personalRoutingUserId,
+      textModel: effectiveModel,
     });
-    return {
-      source: textCreds.source,
-      personalRoutingUserId,
-      personalTextProvider: textCreds.source === "personal" ? textCreds.provider : null,
-    };
+    return buildCredentialPolicyFromCredentials(textCreds, personalRoutingUserId);
   } catch (error) {
+    if (error instanceof SupporterRequestDeniedError) {
+      if (
+        error.fundingScope === "server" &&
+        error.reason !== "billing_unavailable" &&
+        !params.tomoriState.config.user_byok_mode &&
+        (params.tomoriState.fallback_chain?.length || params.tomoriState.fallback_llms?.length)
+      ) {
+        return { source: "server", personalRoutingUserId, personalTextProvider: null, supporterFunding: null };
+      }
+      if (params.shouldSurfaceUserErrors)
+        await sendFailureNotice({
+          color: ColorCode.ERROR,
+          ...getSupporterRequestFailureCopy(error, params.locale),
+        });
+      return null;
+    }
     // Checked ahead of CredentialUnavailableError because an unreadable database used to arrive
     // here as `no_saved_config` and render "API Key Missing", telling an admin to run
     // /config setup during a transient blip. That embed logged 41 times in one cascade.
     if (error instanceof DatabaseUnavailableError) {
       if (params.shouldSurfaceUserErrors) {
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.database_unavailable_title",
           descriptionKey: "general.errors.database_unavailable_description",
@@ -572,7 +743,7 @@ async function resolveTextCredentialPolicy(params: {
             channelId: params.channel.id,
           },
         });
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: "general.errors.personal_provider_required_title",
           descriptionKey: "general.errors.personal_provider_required_description",
@@ -607,7 +778,7 @@ async function resolveTextCredentialPolicy(params: {
             },
           },
         );
-        await sendStandardEmbed(params.channel as SendableChannel, params.locale, {
+        await sendFailureNotice({
           color: ColorCode.ERROR,
           titleKey: isPersonalError
             ? "general.errors.personal_provider_credentials_error_title"
@@ -628,6 +799,23 @@ async function resolveTextCredentialPolicy(params: {
     }
     throw error;
   }
+}
+
+function buildCredentialPolicyFromCredentials(
+  textCreds: ResolvedCredentials,
+  personalRoutingUserId: number | null,
+): {
+  source: TextCredentialSource;
+  personalRoutingUserId: number | null;
+  personalTextProvider: string | null;
+  supporterFunding: SupporterFundingContext | null;
+} {
+  return {
+    source: textCreds.supporterFunding ? "supporter" : textCreds.source,
+    personalRoutingUserId,
+    personalTextProvider: textCreds.source === "personal" ? textCreds.provider : null,
+    supporterFunding: textCreds.supporterFunding ?? null,
+  };
 }
 
 function selectPersonasForTurn(args: {
@@ -658,10 +846,10 @@ function selectPersonasForTurn(args: {
           (typeof persona.persona_id === "number" && args.allowedPersonaIds.has(persona.persona_id))),
     );
 
-  // Reminder turns are system-initiated: bypass personal spotlight (a user preference
-  // that governs which persona responds *to them*, not system-triggered events). Only
-  // the persona-channel whitelist is still enforced so channel admins can restrict personas.
-  if (incoming.reminderRecipientID || incoming.reminderData?.self_reminder) {
+  // Reminder and Natural Nudges turns are system-initiated: bypass personal spotlight and user
+  // blocks (preferences that govern which persona responds *to that user*, not system-triggered
+  // events). Only the persona-channel whitelist is still enforced so channel admins can restrict personas.
+  if (isSystemInitiatedIncoming(incoming)) {
     return selectedPersona &&
       whitelistRepository.isPersonaAllowedByWhitelistStatus(args.whitelistStatus, selectedPersona.persona_id)
       ? [selectedPersona]
@@ -738,6 +926,18 @@ function selectPersonasForTurn(args: {
     }
   }
 
+  // The catch only stands in for a missing trigger, because a member who named a persona must get that persona.
+  if (personasToRespond.length === 0 && incoming.nudgeSceneCatcherPersonaId !== undefined) {
+    const catcher = args.allPersonas.find((persona) => persona.persona_id === incoming.nudgeSceneCatcherPersonaId);
+    if (
+      catcher &&
+      isPersonaAllowedForTrigger(args.whitelistStatus, args.personalSpotlightStatus, catcher.persona_id) &&
+      isAllowedByAccessState(catcher)
+    ) {
+      return [catcher];
+    }
+  }
+
   return personasToRespond.slice(0, args.matchLimit);
 }
 
@@ -746,7 +946,7 @@ async function enforceTurnGuards(
   tomoriState: TomoriState,
   userRow: UserRow,
   personasToRespond: TomoriState[],
-  textCredentialSource: "server" | "personal",
+  textCredentialSource: TextCredentialSource,
   shouldSurfaceUserErrors: boolean,
 ): Promise<boolean> {
   const admission = lockedTurn.admission;
@@ -807,7 +1007,7 @@ async function enforceTurnGuards(
 async function prepareTextQuota(
   lockedTurn: LockedChatTurn,
   tomoriState: TomoriState,
-  textCredentialSource: "server" | "personal",
+  textCredentialSource: TextCredentialSource,
   userRow: UserRow,
   shouldSurfaceUserErrors: boolean,
 ): Promise<{ allowed: boolean; shouldApply: boolean; triggerKey: string; state: TextQuotaTriggerState | null }> {
@@ -827,8 +1027,9 @@ async function prepareTextQuota(
     userDiscId: incoming.textQuotaUserDiscId ?? lockedTurn.admission.cooldownUserDiscId ?? userRow.user_disc_id,
     channel: lockedTurn.admission.channel as SendableChannel,
     locale: lockedTurn.admission.locale,
-    notifyUser: shouldSurfaceUserErrors,
+    notifyUser: shouldSurfaceUserErrors && !hasTextQuotaBeenRefused(triggerKey),
   });
+  if (!quota.allowed) markTextQuotaRefused(triggerKey);
 
   return {
     allowed: quota.allowed,

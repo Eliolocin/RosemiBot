@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Generic tool interface for provider-agnostic function calling
  * This abstracts tools away from specific LLM provider formats
@@ -83,6 +84,9 @@ export interface DeliveredStreamMessage {
  * Streaming context for enhanced functionality during streaming
  */
 export interface StreamingContext {
+  /** When set, delivered text may ping only these users: no roles, no everyone, nobody else. */
+  mentionableUserIds?: readonly string[];
+  usageContext?: ProviderUsageContext;
   speechToolState?: { userId?: number; selection?: string };
   disableYouTubeProcessing: boolean; // Flag to temporarily disable YouTube function during enhanced context restart
   disableProfilePictureProcessing?: boolean; // Flag to temporarily disable profile picture processing during enhanced context restart
@@ -101,7 +105,7 @@ export interface StreamingContext {
    * from the provider or model name because both scopes can run the same provider. Optional
    * only for non-chat provider calls that have no user-scoped routing decision to report.
    */
-  textCredentialSource?: "server" | "personal";
+  textCredentialSource?: "server" | "personal" | "supporter";
   forceModelFallback?: boolean; // Force suppress errors regardless of key availability (model fallback retries)
   /**
    * Timeout notice an attempt held back because a model fallback might still answer. The
@@ -181,6 +185,7 @@ export interface StreamingContext {
  * Contains all necessary Discord and Tomori state information
  */
 export interface ToolContext {
+  usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   message?: Message;
@@ -203,6 +208,7 @@ export interface ToolContext {
   isUserImpersonation?: boolean; // True when the active turn is a user impersonation session
   impersonatedUserId?: string; // Discord user ID currently being impersonated, if any
   suppressProgressNotices?: boolean; // Skip public "working..." embeds for fire-and-forget flows
+  suppressFailureNotices?: boolean;
   /** Shared across search-engine attempts, so fallback notices are deduplicated without hiding error embeds. */
   progressNoticeState?: { attempted: boolean };
   showKillHint?: boolean; // When true, tool notice footers include the /kill hint (set after SOFT_WARN_ITERATION_THRESHOLD)

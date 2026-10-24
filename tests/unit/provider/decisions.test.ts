@@ -76,7 +76,6 @@ describe("Decision transports", () => {
     for (const secret of [request.evidence, request.questions[0].instructions, request.apiKey])
       expect(JSON.stringify(info.mock.calls)).not.toContain(String(secret));
   });
-
   it("translates ordered OpenAI predicates and normalizes valid refusals", async () => {
     let body: unknown;
     const result = await callCustomDecisions(
@@ -104,6 +103,102 @@ describe("Decision transports", () => {
     });
     expect(result).toMatchObject({ status: "refused", answers: [{ type: "refusal", id: "criterion" }] });
     expect(error).not.toHaveBeenCalled();
+  });
+
+  describe("choice questions", () => {
+    const choiceRequest: ProviderDecisionRequest = {
+      ...request,
+      questions: [
+        {
+          type: "choice",
+          id: "topic",
+          instructions: "PRIVATE_QUESTION",
+          options: [
+            { id: "i01", description: "mecha anime: Giant robots." },
+            { id: "none", description: "None of the listed topics." },
+          ],
+        },
+      ],
+    };
+    const named = (answer: unknown) => async () => Response.json({ model: "fixture", answers: { topic: answer } });
+
+    it("encodes options as named criteria and ordered choices, and reads both answer shapes", async () => {
+      const bodies: unknown[] = [];
+      const native = await callOpenRouterDecisions(choiceRequest, async (_url, init) => {
+        bodies.push(JSON.parse(String(init?.body)));
+        return Response.json({
+          model: "fixture",
+          answers: {
+            topic: { type: "choice", choice: "i01", probabilities: { i01: 0.8, none: 0.2 }, confidence: 0.6 },
+          },
+        });
+      });
+      const ordered = await callCustomDecisions(
+        {
+          ...choiceRequest,
+          reference: customReference,
+          apiStyle: "openai-decisions",
+          endpointUrl: "https://example.invalid",
+        },
+        async (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            model: "fixture",
+            answers: [
+              {
+                type: "choice",
+                name: "topic",
+                choice: "i01",
+                probabilities: [
+                  { value: "i01", probability: 0.8 },
+                  { value: "none", probability: 0.2 },
+                ],
+              },
+            ],
+          });
+        },
+      );
+      expect(bodies.map((body) => (body as { questions: unknown }).questions)).toEqual([
+        {
+          topic: {
+            type: "choice",
+            instructions: "PRIVATE_QUESTION",
+            criteria: { i01: "mecha anime: Giant robots.", none: "None of the listed topics." },
+          },
+        },
+        [
+          {
+            type: "choice",
+            name: "topic",
+            instructions: "PRIVATE_QUESTION",
+            choices: [
+              { value: "i01", description: "mecha anime: Giant robots." },
+              { value: "none", description: "None of the listed topics." },
+            ],
+          },
+        ],
+      ]);
+      const expected = { type: "choice", id: "topic", choice: "i01", probabilities: { i01: 0.8, none: 0.2 } };
+      expect(native).toMatchObject({ status: "completed", answers: [expected] });
+      expect(ordered).toMatchObject({ status: "completed", answers: [expected] });
+    });
+
+    it("rejects a choice outside the options, missing probabilities, or a predicate answer", async () => {
+      for (const answer of [
+        { type: "choice", choice: "i99", probabilities: { i01: 0.5, none: 0.5 } },
+        { type: "choice", choice: "i01", probabilities: { i01: 1 } },
+        { type: "choice", choice: "i01", probabilities: { i01: 0.1, none: 0.9 } },
+        { type: "choice", choice: "i01", probabilities: { i01: 0.5, none: 0.5, extra: 0 } },
+        { type: "noul", noul: 0.9 },
+      ]) {
+        error.mockClear();
+        expect(await callOpenRouterDecisions(choiceRequest, named(answer))).toMatchObject({
+          status: "failed",
+          category: "malformed",
+        });
+        expect(error).toHaveBeenCalledTimes(1);
+      }
+    });
   });
 
   it("reports malformed membership, duplicates, types, probabilities and truncation once", async () => {

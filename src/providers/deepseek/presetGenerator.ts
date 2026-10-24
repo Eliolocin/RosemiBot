@@ -191,9 +191,11 @@ export async function generatePresetFromPromptDeepseek(
           }
         }
 
-        const convertedResult = deepseekAdapter.convertResult(
-          toolResult ?? buildToolErrorResult("Tool execution failed"),
-        );
+        if (!toolResult?.success) {
+          return { error: "Persona web search failed.", errorType: "MODEL_ERROR", failureStage: "web_search" };
+        }
+
+        const convertedResult = deepseekAdapter.convertResult(toolResult);
         const resultContent =
           typeof convertedResult.content === "string"
             ? convertedResult.content

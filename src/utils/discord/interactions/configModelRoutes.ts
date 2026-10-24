@@ -85,6 +85,8 @@ import { safeDownload } from "@/utils/security/safeDownload";
 import { log } from "@/utils/misc/logger";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
 import { localizer } from "@/utils/text/localizer";
+import type { SupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureMessage } from "@/modules/supporter-billing/discord/requestFailure";
 
 /** Routes that answer with a modal, which is its own acknowledgement and must not be deferred. */
 export const CONFIG_MODEL_MODAL_OPEN_ACTIONS = new Set<ConfigPanelRoute["action"]>([
@@ -137,6 +139,11 @@ function receipt(
   vars: Record<string, string | number> = {},
 ): PanelReceipt {
   return { tone, heading: localizer(locale, headingKey), detail: localizer(locale, detailKey, vars) };
+}
+
+function subscriptionReceipt(locale: string, denied: SupporterRequestDeniedError): PanelReceipt {
+  const message = getSupporterRequestFailureMessage(denied, locale);
+  return receipt(locale, "error", message.titleKey, message.descriptionKey, message.descriptionVars);
 }
 
 function writeFailedReceipt(locale: string): PanelReceipt {
@@ -548,7 +555,7 @@ export async function handleConfigModelModalOpen(
     const entry = chain[index];
     if (entry) {
       return entry.kind === "llm"
-        ? `${entry.model.llm_codename} (${getProviderDisplayName(entry.model.llm_provider)})`
+        ? `${entry.model.llm_codename} (${entry.credentialProvider === "supporter" ? localizer(locale, "commands.providers.subscription_label") : getProviderDisplayName(entry.model.llm_provider)})`
         : `${entry.endpoint.label}:${entry.endpoint.model_name ?? entry.endpoint.label}`;
     }
     return refs[index] ? `${localizer(locale, "general.unknown")} (#${refs[index].id})` : noneLabel;
@@ -742,25 +749,27 @@ async function handleSwitchModels(context: ConfigModelRouteContext): Promise<boo
 
   await baseRepaint(context, "switch", {
     receipt:
-      result.status === "already-selected"
-        ? noChangesReceipt(locale, "commands.config.panel.model_already_selected_detail")
-        : result.status === "openrouter-moved"
-          ? receipt(
-              locale,
-              "warning",
-              "commands.config.panel.model_moved_heading",
-              "commands.config.panel.model_moved_detail",
-            )
-          : result.status === "no-models"
+      result.status === "subscription"
+        ? subscriptionReceipt(locale, result.denied)
+        : result.status === "already-selected"
+          ? noChangesReceipt(locale, "commands.config.panel.model_already_selected_detail")
+          : result.status === "openrouter-moved"
             ? receipt(
                 locale,
-                "error",
-                "commands.model.text.no_models_title",
-                "commands.model.text.no_models_description",
+                "warning",
+                "commands.config.panel.model_moved_heading",
+                "commands.config.panel.model_moved_detail",
               )
-            : result.status === "not-found"
-              ? staleReceipt(locale)
-              : writeFailedReceipt(locale),
+            : result.status === "no-models"
+              ? receipt(
+                  locale,
+                  "error",
+                  "commands.model.text.no_models_title",
+                  "commands.model.text.no_models_description",
+                )
+              : result.status === "not-found"
+                ? staleReceipt(locale)
+                : writeFailedReceipt(locale),
   });
   return true;
 }

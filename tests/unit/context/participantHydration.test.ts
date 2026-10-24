@@ -66,6 +66,7 @@ function createUserRow(overrides: Partial<UserRow> = {}): UserRow {
     personal_dtm: "follow",
     personal_deliberate_tool_mode: "follow",
     personal_server_fallback_enabled: true,
+    natural_nudge_opt_out: false,
     timezone_offset: 8,
     ...overrides,
   };
@@ -105,6 +106,7 @@ function createReminder(id: number, selfReminder: boolean): ReminderRow {
     repetition_interval_hours: null,
     self_reminder: selfReminder,
     delivery_retry_count: 0,
+    failed_occurrence_count: 0,
     created_by_user_id: 41,
     persona_id: 7,
   };

@@ -8,8 +8,12 @@ await initializeLocalizer();
 
 const WIZARD_PREFIX = "commands.setup.wizard.";
 
-/** The wizard sources that name a locale key, one for the panels and modals, one for the routes. */
-const WIZARD_SOURCE_FILES = ["src/utils/discord/ui/setupPanel.ts", "src/utils/discord/interactions/setupRoutes.ts"];
+/** The wizard sources that name a locale key: the panels and modals, the routes, and the registered provider option. */
+const WIZARD_SOURCE_FILES = [
+  "src/utils/discord/ui/setupPanel.ts",
+  "src/utils/discord/interactions/setupRoutes.ts",
+  "src/modules/supporter-billing/discord/providerOption.ts",
+];
 
 /**
  * Keys the wizard composes from a value it holds rather than naming as a literal string.

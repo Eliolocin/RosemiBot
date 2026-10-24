@@ -324,6 +324,11 @@ export async function initializeDatabase(options: InitializeDatabaseOptions = {}
       await runPreSchemaPersonaRenameBridge(client, personaRenameMigrationPath);
 
       await executeSqlFile(client, schemaPath);
+      // Baseline DDL replaces these functions on every boot, so restore speech ownership before catalog updates fire their triggers.
+      await executeSqlFile(
+        client,
+        path.join(path.dirname(schemaPath), "migrations/901_subscription_speech_selections.sql"),
+      );
       log.success("PostgreSQL database schema verified");
 
       if (ragAvailable) {
@@ -355,11 +360,9 @@ export async function initializeDatabase(options: InitializeDatabaseOptions = {}
       // migrations are represented by schema.sql and should be recorded, not replayed.
       if (freshDatabaseBeforeSchema || (await shouldRecoverFreshSnapshotBaseline(client))) {
         await markAllMigrationsApplied(client);
-      } else {
-        // Run pending numbered migrations (src/db/migrations/NNN_*.sql) after the
-        // static schema files so Phase 6+ schema changes apply in a controlled order.
-        await runMigrations(client);
       }
+      // Deployment-band migrations remain pending after the marker pass, so migration execution follows both bootstrap paths.
+      await runMigrations(client);
 
       await invalidatePresetPointerStateCaches(client);
 

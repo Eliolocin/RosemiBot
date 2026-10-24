@@ -40,6 +40,7 @@ import donate from "./commands/donate";
 import nsfw from "./commands/nsfw";
 import optionalKey from "./commands/optional-key";
 import scheduledTask from "./commands/scheduled-task";
+import nudgeStudio from "./commands/nudge-studio";
 import memory from "./commands/memory";
 import teach from "./commands/teach";
 import forget from "./commands/forget";
@@ -47,6 +48,8 @@ import model from "./commands/model";
 import mcps from "./commands/mcps";
 import capabilities from "./commands/capabilities";
 import provider from "./commands/provider";
+import subscribe from "./commands/subscribe";
+import subscription from "./commands/subscription";
 import update from "./commands/update";
 import ping from "./commands/ping";
 import comment from "./commands/comment";
@@ -98,6 +101,7 @@ export default {
     ...nsfw,
     ...optionalKey,
     ...scheduledTask,
+    ...nudgeStudio,
     ...memory,
     ...teach,
     ...forget,
@@ -105,6 +109,8 @@ export default {
     ...mcps,
     ...capabilities,
     ...provider,
+    ...subscribe,
+    ...subscription,
     ...update,
     ...ping,
     ...comment,

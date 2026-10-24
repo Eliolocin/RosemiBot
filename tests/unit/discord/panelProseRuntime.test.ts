@@ -436,7 +436,7 @@ describe("panel prose runtime formatting", () => {
             },
           ],
           learnMore: localizer("en-US", "commands.setup.wizard.receipt_learn_more", { help: "</help:123456>" }),
-          footerKey: context === "dm" ? "commands.setup.wizard.receipt_footer_avatar_skipped_dm" : undefined,
+          footerKeys: context === "dm" ? ["commands.setup.wizard.receipt_footer_avatar_skipped_dm"] : [],
         });
 
       const catalogAccess = {

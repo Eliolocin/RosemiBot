@@ -28,6 +28,7 @@ Pages are bucketed into task-based sub-categories, each with a landing card-grid
   - [`chatting-and-triggers.md`](./en/features/chatting-personality/chatting-and-triggers/)
   - [`multiple-personas.md`](./en/features/chatting-personality/multiple-personas/)
   - [`behavior-tweaking.md`](./en/features/chatting-personality/behavior-tweaking/)
+  - [`natural-nudges.md`](./en/features/chatting-personality/natural-nudges/)
 - **Knowledge**: [`knowledge/`](./en/features/knowledge/README.mdx)
   - [`memory.md`](./en/features/knowledge/memory/)
   - [`inside-the-prompt.md`](./en/features/knowledge/inside-the-prompt/)
@@ -135,7 +136,7 @@ Per-stage reference. Each folder has a `README.md` (overview + ASCII flow) and n
 Supporting services that pipelines depend on.
 
 - [`architecture/subsystems/`](./en/architecture/subsystems/README.md): database schema, events, commands, tools,
-  caching, cooldowns, security, localization, multi-persona, persona-presets, and more
+  caching, cooldowns, security, localization, multi-persona, persona-presets, natural-nudges, and more
 
 ### Integrations
 

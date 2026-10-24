@@ -19,6 +19,11 @@ import {
 } from "@/types/personaNaming";
 import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/utils/image/tagDefaults";
 import { logitBiasEntrySchema, normalizeLogitBiasEntries } from "@/types/provider/logitBias";
+import {
+  DEFAULT_NATURAL_NUDGE_TALKATIVENESS,
+  naturalNudgeInterestsSchema,
+  naturalNudgeTalkativenessSchema,
+} from "@/modules/natural-nudges/db/types";
 import { UTC_OFFSET_MAX, UTC_OFFSET_MIN, UTC_OFFSET_STEP_HOURS } from "@/constants/utcOffset";
 
 /** A UTC offset in hours on a quarter-hour mark, such as 5.5 for UTC+5:30. */
@@ -64,6 +69,7 @@ export const userSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"), // Added April 2026 - User-scoped DTM tri-state: 'off' (always disabled), 'follow' (server setting), 'on' (always enabled)
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"), // Added May 2026 - User-scoped deliberate tool mode tri-state
   personal_server_fallback_enabled: z.boolean().default(true), // Whether a failed personal text route may fall back to the server's model
+  natural_nudge_opt_out: z.boolean().default(false),
   timezone_offset: utcOffsetSchema.nullable().optional(), // Added June 2026 - Personal UTC offset; NULL = not set / opt-out
   message_proxy_service: z.string().nullable().default(null),
   message_proxy_instance_id: z.string().nullable().default(null),
@@ -393,7 +399,10 @@ export const decisionModelSchema = z.object({
   is_deprecated: z.boolean().default(false),
   input_token_limit: z.number().int().min(512).max(10_000_000),
   sees_images: z.boolean().default(false),
-  supported_primitives: z.array(z.literal("predicate")).length(1),
+  supported_primitives: z.union([
+    z.tuple([z.literal("predicate")]),
+    z.tuple([z.literal("predicate"), z.literal("choice")]),
+  ]),
   input_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
   output_price_per_million: z.coerce.number().finite().nonnegative().nullable().optional(),
 });
@@ -580,12 +589,13 @@ function normalizeFallbackLlmIds(value: unknown): number[] {
 const fallbackModelRefSchema = z.object({
   type: z.enum(["llm", "custom_endpoint"]),
   id: z.number().int(),
+  credentialProvider: z.enum(["openrouter", "supporter"]).optional(),
 });
 export type FallbackModelRef = z.infer<typeof fallbackModelRefSchema>;
 
 /** Resolved fallback entry : either a known LLM row or a custom endpoint row. */
 export type FallbackEntry =
-  | { kind: "llm"; model: z.infer<typeof llmSchema> }
+  | { kind: "llm"; model: z.infer<typeof llmSchema>; credentialProvider?: "openrouter" | "supporter" }
   | { kind: "custom_endpoint"; endpoint: z.infer<typeof customEndpointSchema> };
 
 function normalizeFallbackModelRefs(value: unknown): FallbackModelRef[] {
@@ -743,18 +753,47 @@ const userPersonalizationConfigsSchema = z.object({
   personal_dtm: z.enum(["off", "follow", "on"]).default("follow"),
   personal_deliberate_tool_mode: z.enum(["off", "follow", "on"]).default("follow"),
   personal_server_fallback_enabled: z.boolean().default(true),
+  natural_nudge_opt_out: z.boolean().default(false),
   timezone_offset: utcOffsetSchema.nullable().optional(),
   prefix_override: z.string().nullable().optional(),
   suffix_override: z.string().nullable().optional(),
   gender_identity: z.string().nullable().optional(),
   pronouns: z.string().nullable().optional(),
   addressing_style: addressingStyleSchema.nullable().optional(),
+  fallback_model_refs: z.preprocess(
+    (value) => normalizeFallbackModelRefs(value),
+    fallbackModelRefSchema.array().default([]),
+  ),
+  model_randomizer_enabled: z.boolean().default(false),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
 export type UserPersonalizationConfigsRow = z.infer<typeof userPersonalizationConfigsSchema>;
 
+/** The personal text fallback chain and its randomizer, shared by every saved personal provider. */
+export const personalFallbackSettingsSchema = userPersonalizationConfigsSchema.pick({
+  fallback_model_refs: true,
+  model_randomizer_enabled: true,
+});
+export type PersonalFallbackSettings = z.infer<typeof personalFallbackSettingsSchema>;
+
+export const subscriptionCapabilitySchema = z.enum([
+  "text",
+  "embedding",
+  "image",
+  "video",
+  "vision",
+  "speech_design",
+  "speech_clone",
+  "reviewer",
+  "decision",
+  "nudge_planner",
+  "nudge_checker",
+]);
+export type SubscriptionCapability = z.infer<typeof subscriptionCapabilitySchema>;
+
 const serverModelConfigSchema = z.object({
+  subscription_capabilities: z.array(subscriptionCapabilitySchema).default([]),
   server_id: z.number().int(),
   llm_id: z.number().int().nullable().optional(),
   embedding_model_id: z.number().int().nullable().optional(),
@@ -1198,6 +1237,8 @@ const tomoriPresetSchema = z.object({
     }
   }, personaNamingConfigSchema.default(EMPTY_PERSONA_NAMING_CONFIG)),
   is_nsfw: z.boolean().default(false),
+  natural_nudge_interests: naturalNudgeInterestsSchema.default([]),
+  natural_nudge_talkativeness: naturalNudgeTalkativenessSchema.default(DEFAULT_NATURAL_NUDGE_TALKATIVENESS),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),
 });
@@ -1455,6 +1496,7 @@ export const reminderSchema = z.object({
   reminder_time: z.date(), // When to trigger the reminder (TIMESTAMP WITH TIME ZONE)
   next_attempt_at: z.date().nullable().optional(), // Retry lease; canonical cadence stays in reminder_time
   delivery_retry_count: z.number().int().nonnegative().default(0),
+  failed_occurrence_count: z.number().int().nonnegative().default(0),
   repetition_interval_hours: z.number().int().nullable().optional(), // Optional: repeat interval in hours
   self_reminder: z.boolean().nullable().optional(), // Optional: reminder targets the bot itself
   created_by_user_id: z.number().nullable(), // Who requested the reminder (nullable - set to NULL if user deleted)
@@ -1717,7 +1759,11 @@ export const tomoriStateSchema = tomoriSchema.merge(personaScopedConfigStateSche
   fallback_chain: z
     .array(
       z.discriminatedUnion("kind", [
-        z.object({ kind: z.literal("llm"), model: llmSchema }),
+        z.object({
+          kind: z.literal("llm"),
+          model: llmSchema,
+          credentialProvider: z.enum(["openrouter", "supporter"]).optional(),
+        }),
         z.object({ kind: z.literal("custom_endpoint"), endpoint: customEndpointSchema }),
       ]),
     )
@@ -1784,10 +1830,17 @@ const setupProviderAccessUserByokSchema = z
     mode: z.literal("user-byok"),
   })
   .strict();
+const setupProviderAccessOptionSchema = z
+  .object({
+    mode: z.literal("option"),
+    value: z.string().min(1).max(40),
+  })
+  .strict();
 const setupProviderAccessSchema = z.discriminatedUnion("mode", [
   setupProviderAccessCatalogSchema,
   setupProviderAccessCustomEndpointSchema,
   setupProviderAccessUserByokSchema,
+  setupProviderAccessOptionSchema,
 ]);
 export type SetupProviderAccess = z.infer<typeof setupProviderAccessSchema>;
 
@@ -1947,7 +2000,6 @@ export const userSavedProviderConfigSchema = z.object({
     z.array(logitBiasEntrySchema).default([]),
   ),
   thinking_level: z.enum(THINKING_LEVEL_VALUES).default(DEFAULT_THINKING_LEVEL),
-  model_randomizer_enabled: z.boolean().default(false),
   // Which of this row's assigned capabilities are currently switched on.
   // Always a subset of assigned_capabilities; see migration 060 for why the two are separate.
   enabled_capabilities: z.preprocess(
@@ -1959,10 +2011,6 @@ export const userSavedProviderConfigSchema = z.object({
   assigned_capabilities: z.preprocess(
     (value) => normalizeEnabledCapabilities(value),
     z.array(personalProviderCapabilitySchema).default([]),
-  ),
-  fallback_model_refs: z.preprocess(
-    (value) => normalizeFallbackModelRefs(value),
-    fallbackModelRefSchema.array().default([]),
   ),
   saved_at: z.coerce.date().optional(),
   updated_at: z.coerce.date().optional(),

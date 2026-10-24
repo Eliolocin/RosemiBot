@@ -27,13 +27,13 @@ export default {
       models_description: "Chọn ai sẽ duyệt các bản nháp của mình.",
       reviewer_button: "Chọn model duyệt",
       reviewer_label: "Người duyệt",
-      inherit: "Dùng model phản hồi hiện tại",
+      inherit: "Mặc định hiện tại",
       reviewer_status: "Người duyệt: {model}",
-      inherited_status: "Người duyệt: model phản hồi hiện tại, {model}",
+      inherited_status: "Người duyệt: mặc định hiện tại, {model}",
       none: "Không có",
       unavailable: "Không khả dụng",
       inherited_unavailable:
-        "Model phản hồi hiện tại của mình không hỗ trợ đầu ra có cấu trúc, nên không thể duyệt bản nháp. Hãy chọn một người duyệt khác bên dưới.",
+        "Mặc định hiện tại không thể duyệt bản nháp vì không hỗ trợ đầu ra có cấu trúc. Hãy chọn một người duyệt khác bên dưới.",
       rules_title: "Kiểm tra quy tắc",
       rules_description:
         "Chọn một công cụ kiểm tra quy tắc văn bản tùy chọn. Chỉ người duyệt mới nhận được các phát hiện khuyến nghị của công cụ này. Phạm vi hồ sơ và ngôn ngữ chưa rõ trừ khi được xác minh riêng; phản hồi ngắn có thể không nhận được phân tích.",
@@ -50,8 +50,122 @@ export default {
       default_prompt:
         'Bạn là một biên tập viên góp ý cho một người viết trong một phiên nhập vai cộng tác. Người viết nhập vai nhân vật được mô tả trong hồ sơ nhân vật, và đối tác của họ viết phần còn lại. Hãy đánh giá bài viết nháp dựa trên tính cách của nhân vật, đối thoại mẫu, các mối quan hệ và phân cảnh hiện tại.\n\nKiểm tra bản nháp theo từng tiêu chí:\n- character: Bài viết phải xuất phát từ chính cảm xúc, sở thích, động cơ và góc nhìn của nhân vật này. Đánh dấu cách viết có vẻ xa rời nhân vật hoặc do máy tạo ra. Thông thường, máy móc sẽ từ chối nhập vai nội dung thô tục hoặc tự kiểm duyệt nhẹ ngay cả khi những người tham gia nhập vai và người viết đã đồng thuận với phiên này. Hãy đánh dấu những điều này là vấn đề về nhân vật.\n- voice: Nhân vật phải nói bằng chính giọng điệu của mình. Đánh dấu bình luận xa cách mà nhân vật này sẽ không nói, dựa trên các đoạn đối thoại tiêu biểu của họ. \n- initiative: Nhân vật phải bổ sung điều gì đó của riêng mình để thúc đẩy phân cảnh tiến triển. Đánh dấu bài viết chỉ diễn giải lại lời đối tác, đặt thêm một câu hỏi khác, hoặc chỉ mang tính phản ứng đơn thuần.\n- chemistry: Bài viết phải đáp lại năng lượng cảm xúc của đối tác và mối quan hệ giữa họ. Đánh dấu bài viết thể hiện một phản hồi có thể áp dụng cho bất kỳ nhân vật nào khác.\n- repetition: Bài viết không được lạm dụng cách diễn đạt hoặc mô thức từ đối thoại gần đây, chẳng hạn như kết thúc mọi bài viết bằng một câu hỏi. Đánh dấu bài viết không bộc lộ hết giới hạn của nhân vật nhập vai trong ngữ cảnh này.\n- continuity: Bài viết phải phù hợp với những gì đang diễn ra và nhất quán với các tình tiết đã xác lập. Để lại không gian cho đối tác hành động, và tuyệt đối không kể thay cảm xúc hoặc hành động của đối tác.\n- prose: Đánh dấu dấu gạch ngang (em dash), phép tương phản "không phải X, mà là Y", danh sách độn thành ba mục, các câu có độ dài đều nhau chằn chặn, và các đoạn tóm tắt hoặc bài học đạo đức gọn gàng ở cuối bài. Mỗi vi phạm trong <prose_linter_report> là một phát hiện về văn phong trừ khi đó là một phần có chủ ý trong giọng văn của nhân vật này.\n\nĐưa ra quyết định:\n- pass: Bài viết đạt yêu cầu. Hầu hết các bài viết từ một người viết thành thạo đều được thông qua; chỉ đánh dấu những gì người đọc trong phân cảnh sẽ nhận thấy.\n- revise: Có điểm yếu cụ thể làm tổn hại đến nhân vật hoặc phân cảnh. Mỗi ghi chú trích dẫn chính xác cụm từ và đưa ra một chỉnh sửa nhỏ mà người viết có thể áp dụng, chẳng hạn như \'Bỏ dấu gạch ngang sau "Được rồi" và tách thành hai câu ngắn\'. Tuyệt đối không viết lại toàn bộ bài viết.\n- unavailable: Bạn không thể đánh giá tài liệu theo các quy tắc của riêng mình. Đừng thể hiện điều đó như một lời phê bình mang tính sáng tạo.',
     },
+    natural_nudges: {
+      import_unavailable:
+        "Trình lập kế hoạch gợi ý nhàn rỗi, Trình kiểm tra gợi ý chủ động hoặc tài nguyên cần thiết cho gợi ý nhàn rỗi không khả dụng trong workspace này. Hãy xóa mục đó trong tệp xuất hoặc đăng ký một model phù hợp trước khi nhập.",
+      title: "[Natural Nudges](https://docs.tomoribot.app/vi/features/chatting-personality/natural-nudges/)",
+      description:
+        "Mình tự lên tiếng mà không cần ai gọi: bắt đầu trò chuyện khi kênh im ắng và tham gia vào các chủ đề phù hợp với sở thích của persona.",
+      notice_tracking_disabled:
+        "Máy chủ lưu trữ này đã tắt theo dõi thống kê, điều mình cần để biết mức độ hoạt động và nơi mọi người nói chuyện với mình, nên các gợi ý sẽ không bao giờ bắt đầu.",
+      notice_byok:
+        "Máy chủ này chi trả văn bản bằng khóa riêng của từng thành viên, vì vậy không có khóa nào chi trả cho tin nhắn không ai yêu cầu. Natural Nudges sẽ tắt cho đến khi máy chủ có khóa riêng.",
+      notice_stopped:
+        "Mình đã dừng lại sau nhiều lần thử liên tiếp thất bại. Mình sẽ bắt đầu lại sau câu trả lời thành công tiếp theo trong máy chủ này.",
+      idle_nudges_title: "Gợi ý nhàn rỗi",
+      idle_nudges_description: "Mình tự khởi xướng điều gì đó trong kênh nếu kênh trở nên quá yên ắng.",
+      idle_nudges_off: "Mình chỉ lên tiếng khi có ai đó nói chuyện với mình.",
+      idle_nudges_on: "Mình sẽ bắt đầu gợi ý nhàn rỗi trong một kênh yên ắng khi đến thời điểm phù hợp.",
+      idle_nudges_on_no_channels:
+        "Mình chưa có kênh nào để bắt đầu gợi ý nhàn rỗi. Các kênh tự động sẽ được bổ sung khi mọi người nói chuyện với mình.",
+      idle_nudges_on_no_model:
+        "Chưa có model khả dụng nào có thể lập kế hoạch gợi ý nhàn rỗi, vì vậy mình giữ im lặng.",
+      idle_nudges_studio_hint: "Chọn gợi ý nhàn rỗi mình sẽ dùng hoặc tự viết gợi ý của bạn bằng {command}.",
+      active_nudges_title: "Gợi ý chủ động",
+      active_nudges_description:
+        "Mình tham gia cuộc trò chuyện khi chủ đề nói về điều một persona yêu thích, dựa trên sở thích trong trang Gợi ý của persona đó.",
+      active_nudges_off: "Mình chỉ tham gia cuộc trò chuyện khi có ai đó nói chuyện với mình.",
+      active_nudges_on:
+        "Mình kiểm tra chủ đề cuộc trò chuyện sau mỗi {min}-{max} tin nhắn của thành viên, sử dụng {matcher}.",
+      active_nudges_on_no_channels:
+        "Mình chưa có kênh nào để tham gia trò chuyện. Các kênh tự động sẽ được bổ sung khi mọi người nói chuyện với mình.",
+      active_nudges_on_no_matcher:
+        "Chưa có công cụ nào có thể kiểm tra sở thích trong cuộc trò chuyện, vì vậy mình giữ im lặng. Hãy chọn Trình kiểm tra gợi ý chủ động bên dưới.",
+      active_nudges_on_cold:
+        "Máy chủ này quá hiếm khi nói chuyện với mình nên hiện tại mình sẽ không tham gia trò chuyện.",
+      active_nudges_matcher_checker: "Trình kiểm tra gợi ý chủ động",
+      active_nudge_frequency_option: "Tần suất: {level}",
+      channels_title: "Kênh",
+      channels_description:
+        "Nơi mình có thể lên tiếng, áp dụng cho cả hai loại gợi ý. Tự chọn các kênh hoặc xóa danh sách để quay về tự động.",
+      channels_placeholder: "Tự động: các kênh mọi người đã nói chuyện với mình trong 14 ngày qua",
+      model_title: "Lựa chọn model",
+      model_description: "Thay đổi các model dùng cho Natural Nudges",
+      planner_title: "Trình lập kế hoạch gợi ý nhàn rỗi",
+      planner_description: "Model này lập kế hoạch gợi ý nhàn rỗi: đưa ra chủ đề gì và kênh nào phù hợp.",
+      model_placeholder: "Trình lập kế hoạch gợi ý nhàn rỗi: mặc định hiện tại",
+      model_same_as_chat: "Trình lập kế hoạch gợi ý nhàn rỗi: mặc định hiện tại, {model}",
+      model_placeholder_selected: "Trình lập kế hoạch gợi ý nhàn rỗi: {model}",
+      model_modal_title: "Chọn Trình lập kế hoạch gợi ý nhàn rỗi",
+      model_unavailable: "Không khả dụng",
+      model_same_as_chat_option: "Mặc định hiện tại",
+      model_chat_no_structured:
+        "Model mặc định hiện tại, {model}, không thể lập kế hoạch gợi ý vì không hỗ trợ đầu ra có cấu trúc. Hãy chọn một trình lập kế hoạch bên dưới.",
+      model_chat_unavailable:
+        "Model mặc định hiện tại, {model}, không thể lập kế hoạch gợi ý bằng khóa của máy chủ này. Hãy chọn một trình lập kế hoạch bên dưới.",
+      model_chat_none:
+        "Máy chủ này chưa có model trò chuyện nên không có mặc định để dùng. Hãy chọn một trình lập kế hoạch bên dưới.",
+      checker_title: "Trình kiểm tra gợi ý chủ động",
+      checker_description:
+        "Thỉnh thoảng mình kiểm tra xem cuộc trò chuyện có liên quan đến Sở thích của persona không. Một model nhỏ, tiết kiệm là tốt nhất cho việc này, và model Quyết định (Decision) là lựa chọn tối ưu nhất.",
+      checker_placeholder_recommended: "Trình kiểm tra gợi ý chủ động: đề xuất, {model}",
+      checker_placeholder_recommended_none: "Trình kiểm tra gợi ý chủ động: đề xuất",
+      checker_placeholder_selected: "Trình kiểm tra gợi ý chủ động: {model}",
+      checker_recommended_option: "Đề xuất",
+      checker_decision_provider_option: "{provider} (model Quyết định)",
+      checker_modal_title: "Chọn Trình kiểm tra gợi ý chủ động",
+      checker_pinned_unavailable:
+        "Trình kiểm tra đã chọn không thể chạy với khóa của máy chủ này. Hãy chọn một model khác bên dưới hoặc quay lại Đề xuất.",
+      checker_none_available:
+        "Chưa có model nào có thể kiểm tra cuộc trò chuyện. Thêm khóa Google hoặc OpenRouter, hoặc chọn Trình lập kế hoạch gợi ý nhàn rỗi bên dưới.",
+      model_none_available:
+        "Chưa có model máy chủ nào hỗ trợ đầu ra có cấu trúc. Thêm một model trong /config > Model.",
+      frequency_0: "Hiếm khi",
+      frequency_1: "Nhẹ nhàng",
+      frequency_2: "Bình thường",
+      frequency_3: "Sôi nổi",
+      frequency_effect:
+        "Máy chủ này gửi cho mình khoảng {heat} tin nhắn mỗi ngày, vì vậy dự kiến có khoảng {per_week} gợi ý nhàn rỗi mỗi tuần.",
+      frequency_effect_none:
+        "Mình sẽ bắt đầu gợi ý nhàn rỗi trong kênh yên ắng khi đến lúc, nhưng hiện tại máy chủ này quá ít nói chuyện với mình.",
+      saved_heading: "Đã cập nhật Natural Nudges",
+      saved_detail: "Cài đặt Natural Nudges của bạn đã được lưu.",
+      invalid_detail: "Một trong các giá trị nằm ngoài phạm vi cho phép. Hãy kiểm tra mô tả trường và thử lại.",
+      limit_detail: "Danh sách này đã đầy. Hãy xóa bớt một mục trước khi thêm mục khác.",
+      persona_title: "Gợi ý",
+      persona_description:
+        "Tần suất persona này tự lên tiếng và những gì persona thích đề cập. Xem [Natural Nudges](https://docs.tomoribot.app/vi/features/chatting-personality/natural-nudges/).",
+      talkativeness_title: "Độ hoạt ngôn",
+      talkativeness_description: "Mức độ thường xuyên persona này là người lên tiếng so với các persona khác.",
+      talkativeness_0: "Im lặng",
+      talkativeness_1: "Ngại ngùng",
+      talkativeness_2: "Bình thường",
+      talkativeness_3: "Hoạt ngôn",
+      talkativeness_4: "Rất hoạt ngôn",
+      talkativeness_0_effect: "Persona này không bao giờ tự mình lên tiếng.",
+      talkativeness_1_effect: "Persona này thỉnh thoảng mới lên tiếng.",
+      talkativeness_2_effect: "Persona này lên tiếng với tần suất trung bình.",
+      talkativeness_3_effect: "Persona này lên tiếng thường xuyên hơn những người khác.",
+      talkativeness_4_effect: "Persona này lên tiếng nhiều nhất.",
+      interests_title: "Sở thích",
+      interests_description:
+        "Các chủ đề persona này tự đề cập, tối đa {max}. Một mô tả ngắn kèm ví dụ giúp mình nhận diện chủ đề.",
+      interests_none: "Chưa có sở thích nào.",
+      interests_preset_note: "Những mục này lấy từ preset. Chỉnh sửa chúng sẽ tạo bản sao riêng cho persona này.",
+      interest_select_placeholder: "Chọn hoặc thêm một sở thích...",
+      interest_add_option: "+ Thêm sở thích",
+      interests_remove_button: "Xóa sở thích",
+      interests_remove_modal_title: "Xóa sở thích",
+      interests_remove_description: "Bỏ chọn sở thích để xóa. Thao tác này không thể hoàn tác.",
+      interest_modal_title: "Sở thích",
+      interest_label_label: "Chủ đề",
+      interest_label_description: 'Tên ngắn gọn như "anime mecha", tối đa {max} ký tự.',
+      interest_description_label: "Mô tả",
+      interest_description_description: "Một dòng kèm ví dụ, tối đa {max} ký tự.",
+    },
     panel: {
       page_plugins_response_drafting: "Duyệt phản hồi",
+      page_plugins_natural_nudges: "Natural Nudges",
       category_persona: `Persona`,
       category_behavior: `Hành vi`,
       category_plugins: `Plugin`,
@@ -71,6 +185,7 @@ export default {
       page_persona_overrides: `Tùy chỉnh`,
       page_persona_voice: `Giọng nói`,
       page_persona_naming: `Thói quen xưng hô`,
+      page_persona_nudges: "Gợi ý",
       naming_page_description: `Cách persona này xưng hô với mọi người, theo từng phong cách.`,
       voice_page_description: `Chọn giọng nói cho persona này.`,
       voice_page_unassigned: `Chưa gán giọng nói nào.`,
@@ -89,8 +204,8 @@ export default {
       voice_page_clear_provider_button: `Bỏ giọng nhà cung cấp`,
       voice_page_reference_notice: `Thêm giọng tham chiếu trong /config > Models > {page}.`,
       voice_page_provider_notice: `Chỉ hiển thị các giọng do ElevenLabs cung cấp.`,
-      voice_page_no_usable_source: `Không có giọng đã lưu nào khớp với model TTS của máy chủ này. Hãy lưu mô tả cho Thiết kế giọng đọc hoặc chọn mẫu tham chiếu tương thích cho Sao chép giọng đọc. Bạn có thể đổi model trong {providers}.`,
-      voice_page_no_model_notice: `Máy chủ này chưa cấu hình model TTS nào. Hãy chọn một model trong {providers}. Model giọng nói cá nhân vẫn có thể phục vụ chủ sở hữu của chúng.`,
+      voice_page_no_usable_source: `Không có giọng đã lưu nào khớp với model TTS của máy chủ này. Hãy lưu mô tả cho Thiết kế giọng đọc hoặc chọn mẫu tham chiếu tương thích cho Sao chép giọng đọc. Bạn có thể đổi model trong {models}.`,
+      voice_page_no_model_notice: `Máy chủ này chưa cấu hình model TTS nào. Hãy chọn một model trong {models}. Model giọng nói cá nhân vẫn có thể phục vụ chủ sở hữu của chúng.`,
       voice_priority_question: `Mình nên dùng giọng đã mô tả hay giọng tham chiếu của mình?`,
       voice_priority_fallback_target: `Mình sẽ dùng {source} với {target} vì chưa cấu hình model {priority} phù hợp.`,
       voice_priority_fallback_input: `Mình sẽ dùng {source} với {target} vì chưa lưu đầu vào {priority} tương thích.`,
@@ -735,6 +850,7 @@ export default {
       resync_avatar_diff: `Ảnh đại diện tùy chỉnh của bạn sẽ bị xóa.`,
       resync_main_avatar_detail: `Ảnh đại diện máy chủ sẽ đặt lại theo preset.`,
       resync_sprites_diff: `Sprite bạn đã thêm: {count} sẽ bị xóa.`,
+      resync_nudges_diff: "Độ hoạt ngôn và sở thích của Natural Nudges sẽ quay về giá trị mặc định của preset.",
       resync_kept_detail: `Tên, từ kích hoạt, thói quen xưng hô, bộ nhớ, lịch sử và các cài đặt persona khác của bạn sẽ được giữ lại.`,
       resync_irreversible_detail: `Thao tác này không thể hoàn tác.`,
       resync_success_heading: `Persona đã đồng bộ với preset`,
@@ -921,7 +1037,6 @@ export default {
       capability_tts_clone: `TTS (Sao chép giọng đọc)`,
       capability_stt: `Chuyển giọng nói thành văn bản`,
       capability_notice_title: `Lưu ý`,
-      decision_inactive_note: "Model quyết định đang thử nghiệm và chưa có tác dụng.",
       image_generation_disabled_direction:
         "Tính năng tạo hình ảnh đã bị tắt. Bật tính năng này trong Plugin > Công cụ khả dụng.",
       image_generation_missing_model: `Chưa có model khả dụng nào được cấu hình cho việc tạo ảnh.`,

@@ -1,7 +1,45 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import { eventLoopMonitor } from "@/utils/misc/eventLoopMonitor";
+
+export interface HealthServerRouteContext {
+  requestUrl: URL;
+}
+
+export type HealthServerRouteHandler = (
+  req: IncomingMessage,
+  res: ServerResponse,
+  context: HealthServerRouteContext,
+) => void | Promise<void>;
+
+export interface HealthServerRoute {
+  method: string;
+  path: string;
+  handler: HealthServerRouteHandler;
+}
+
+const registeredRoutes = new Map<string, HealthServerRoute>();
+
+function routeKey(method: string, path: string): string {
+  return `${method.toUpperCase()} ${path}`;
+}
+
+/** Optional modules register routes here even when the base installation has no extra HTTP routes. */
+export function registerHealthServerRoute(route: HealthServerRoute): void {
+  registeredRoutes.set(routeKey(route.method, route.path), {
+    ...route,
+    method: route.method.toUpperCase(),
+  });
+}
+
+export function isHealthServerRouteRegistered(method: string, path: string): boolean {
+  return registeredRoutes.has(routeKey(method, path));
+}
+
+export function clearHealthServerRoutesForTests(): void {
+  registeredRoutes.clear();
+}
 
 /**
  * Binds the health check HTTP server on the given port.
@@ -41,10 +79,35 @@ export function startHealthServer(port: number): void {
           timestamp: new Date().toISOString(),
         }),
       );
-    } else {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not Found");
+      return;
     }
+
+    let requestUrl: URL;
+    try {
+      requestUrl = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Bad Request");
+      return;
+    }
+    const registeredRoute = registeredRoutes.get(routeKey(req.method ?? "GET", requestUrl.pathname));
+    if (registeredRoute) {
+      void Promise.resolve()
+        .then(() => registeredRoute.handler(req, res, { requestUrl }))
+        .catch((error) => {
+          void log.error("Health server route handler failed", error);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "text/plain" });
+            res.end("Internal Server Error");
+          } else {
+            res.destroy();
+          }
+        });
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not Found");
   });
 
   server.listen(port, "0.0.0.0", () => {

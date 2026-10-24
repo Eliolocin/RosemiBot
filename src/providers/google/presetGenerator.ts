@@ -15,6 +15,7 @@ import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutp
 import { omitGeminiSampling } from "@/utils/provider/samplingControl";
 import {
   buildPresetPrompt,
+  buildPresetInterestsSchemaProperty,
   extractPresetGenerationFields,
   presetGenerationFailureErrorType,
   presetGenerationFailureMessage,
@@ -369,6 +370,7 @@ export async function generatePresetFromPrompt(
         return {
           error: searchResult.error,
           errorType: searchResult.errorType,
+          failureStage: "web_search",
         };
       }
 
@@ -415,8 +417,9 @@ export async function generatePresetFromPrompt(
           minItems: 5,
           maxItems: 5,
         },
+        interests: buildPresetInterestsSchemaProperty(),
       },
-      required: ["attribute_list", "sample_dialogues_in", "sample_dialogues_out"],
+      required: ["attribute_list", "sample_dialogues_in", "sample_dialogues_out", "interests"],
     };
 
     const generationConfig: GenerateContentConfig = {

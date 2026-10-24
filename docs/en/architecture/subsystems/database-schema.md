@@ -23,8 +23,9 @@ Startup schema execution is coordinated by `src/utils/db/initializeDatabase.ts`:
 
 1. **Legacy rename bridges**: detects legacy table names and runs targeted renames before static schema execution. This prevents baseline DDL from creating empty target tables ahead of the rename.
 2. **Baseline DDL application**: executes `schema.sql`, `schema_rag.sql`, and `schema_stpreset.sql` using idempotent statements (`CREATE TABLE IF NOT EXISTS`, guarded helper blocks).
+   The release initializer restores the three Subscription speech functions from migration 901 after baseline DDL, before catalog updates can fire their validation triggers; it never replays migration 902's ownership backfill during this restoration.
 3. **Privileged catalog seeding**: synchronizes typed catalog data (`seedModelsFromCatalog`, `seedPersonasFromCatalog`, `seedSystemPromptsFromCatalog`, `seedNaiPresetsFromCatalog`) using idempotent upserts.
-4. **Migration execution**: compares applied records in `schema_migrations` against available numbered migrations in `src/db/migrations/NNN_*.sql`. Migrations are applied in total order sorted by version integer and file stem. On clean installations, all historical migrations are recorded in `schema_migrations` without replaying obsolete backfill scripts.
+4. **Migration execution**: compares applied records in `schema_migrations` against available numbered migrations in `src/db/migrations/NNN_*.sql`. Migrations are applied in total order sorted by version integer and file stem. On clean installations, migrations below version 900 are recorded in `schema_migrations` without replaying obsolete backfill scripts. Migrations at version 900 and above run after the base schema because `schema.sql` does not contain them.
 5. **Storage-backed seeders**: runs post-readiness asset seeders (`seedPersonaSpritesFromCatalog`, `seedPersonaAvatarsFromCatalog`) after the Discord gateway connects, uploading shared preset art to object storage and recording reference URLs in PostgreSQL.
 
 ### Migration discipline
@@ -32,6 +33,8 @@ Startup schema execution is coordinated by `src/utils/db/initializeDatabase.ts`:
 - Numbered migrations must follow `NNN_description.sql` (three-digit zero-padded integer) paired with a matching `NNN_description.down.sql` rollback file.
 - `bun run check-migrations` verifies migration naming and rollback pairing during continuous integration.
 - Deterministic apply ordering uses integer versions first, with file stem code-point comparison breaking ties. Sibling migrations sharing a number must be mutually order-independent.
+- Versions 900 and above are reserved for deployment-specific migrations. A clean installation executes that band after the base schema instead of recording it as applied, so `schema.sql` stays free of deployment-specific DDL.
+- A deployment-band migration can replace a stored function created by a baseline migration. Because an applied band migration is never replayed, a later baseline migration that redefines that function needs a new band migration that restores the deployment body.
 
 ## Data access boundary
 
@@ -43,6 +46,40 @@ persistence and schema initialization, use the shared SQL client directly.
 - **SQL encapsulation**: all raw SQL queries remain within their owning repository class methods or module functions. Separate query sibling files are prohibited.
 - **Transient retry handling**: hot-path reads retry transient connection drops and cached-plan errors through shared helpers in `src/utils/db/client.ts`. A cached-plan error resets the connection before retrying the query.
 - **Cache invalidation**: write owners invalidate derived cache entries after successful writes. Some workflows own this in the caller; live working-memory updates use a separate persistence path.
+
+## Hosted subscription accounting
+
+The supporter-billing module owns its schema in `src/modules/supporter-billing/db/schema.ts`.
+Privileged initialization applies its additive upgrades; runtime startup checks the required columns
+without changing the schema.
+
+Managed-key accounting belongs to the stable Patreon user and campaign. It keeps the highest funded
+allowance and paid-period dates across unlinking, Discord-account transfers, and key replacement.
+A paid upgrade adds only the difference above that period's highest funded tier. Only a confirmed
+paid charge in a new period refills the allowance; a renewal date passing does not grant funds.
+
+Before unlinking removes an identity and its usage rows, lifecycle work disables its provider key
+and persists the remaining balance from the highest observed usage and reserved spend.
+Outstanding spend holds prevent identity deletion until they settle. Deletion retries preserve the
+captured balance, and replacement keys receive that balance without mixing it with lifetime key
+costs. Relinks that change a known member ID for the same Patreon user and campaign fail closed.
+
+Detached accounting stays for 90 days after the latest of unlinking, the recorded paid-period end,
+and successful key deletion. This retention clock does not expire spend or refill an allowance.
+Periodic billing maintenance deletes eligible rows under the same advisory lock used for key
+lifecycle work. Relinking clears the retention clock; pending provider cleanup prevents deletion.
+
+Webhook receipts use the signed body hash for duplicate detection. Every linked member signal,
+including retries, fetches current member state with creator authorization through Patreon's
+[single-member endpoint](https://docs.patreon.com/#get-api-oauth2-v2-members-member_id).
+Unsigned event headers do not select benefit changes. Invalid responses and API outages leave
+benefits unchanged for retry; confirmed missing members lose access unless a previously verified
+cancellation still has paid time remaining. Equal or older verification timestamps cannot overwrite
+an applied snapshot. Full campaign reconciliation applies no snapshots from an incomplete scan.
+
+An operator can set `supporter_member_keys.retention_hold` for a specific unresolved dispute or legal
+obligation. Record the reason and review date privately, and clear the hold when that need ends so
+scheduled cleanup can resume.
 
 ## Managed Discord webhooks
 
@@ -96,7 +133,7 @@ deleting those messages restore that exact webhook independently of the primary 
 - **`persona_sprites`**: stores named sprite avatars per `(persona_id, sprite_key)`. Pointer personas resolve shared artwork from `preset_sprites` (`(preset_lineage_id, preset_language, sprite_key)`). Webhook messages record displayed sprite labels in `persona_sprite_messages` (`message_disc_id` PK) so prompt context rebuilding can restore decorated labels.
 - **Server configuration split**: server settings are partitioned into command-aligned tables:
   - `server_chat_configs`: message context fetch limits, model parameters, cascade limits, stop strings, logit biases, and context notes.
-  - `server_model_configs`: active model foreign keys (`llm_id`, `embedding_model_id`, `diffusion_model_id`, `video_model_id`, `vision_llm_id`).
+  - `server_model_configs`: active model foreign keys and `subscription_capabilities`, which identifies selections funded by the server's subscription entry independently of shared OpenRouter model IDs.
   - `server_member_permissions_configs`: member feature toggles, self-teaching, and memory permissions.
   - `server_channel_scope_configs`: channel roleplay rules, blocklists, and thought-log routing.
   - `server_trigger_behavior_configs`: cooldown modes, durations, and trigger styles.
@@ -119,6 +156,14 @@ independently of the target. Configuration exports include both mode selections;
 the receiving workspace's ownership and credential checks. Downgrades refuse selections or bindings
 that the older schema cannot preserve.
 
+Speech selections and their ownership marker update in one transaction. Other model-panel writes
+claim ownership after the model write and invalidate caches even if the ownership update fails.
+Migration 902 backfills subscription ownership
+only with matching OpenRouter model evidence; ambiguous historical selections keep BYOK ownership.
+Configuration imports resolve the payer of each imported reviewer or speech selection from the
+receiving server's saved credentials, and keep the current marker when the imported selection
+matches the one already stored.
+
 Personal speech uses separate `speech_design_model_id` and `speech_clone_model_id` pointers on
 `user_saved_provider_configs`. Its `assigned_capabilities` and `enabled_capabilities` arrays track
 ownership and activation independently for `speech_design` and `speech_clone`; each mode has at most
@@ -138,7 +183,7 @@ matching credential revision, including after the persona is removed.
 ### User identity, privacy, and personalization
 
 - **`users`**: stores account snowflakes (`user_disc_id`), language preferences, registration locales, and `privacy_level` (0 = minimal, 1 = partial, 2 = full).
-- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, and personal fallback routing toggles.
+- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, the Pings from Personas opt-out (`natural_nudge_opt_out`), and the personal text fallback chain (`fallback_model_refs`) with its `model_randomizer_enabled` flag. The chain is one per user and may mix providers; sampler parameters stay per provider on `user_saved_provider_configs`.
 - **`user_persona_naming_preferences`**: stores nullable nickname, prefix, and suffix overrides per `(user_id, persona_lineage_id)`. Survives persona deletion and re-import because it has no foreign key to local persona IDs.
 - **`personalization_blacklist`**: server-scoped table keyed by `(server_id, user_disc_id)`. Excludes the user from personalization enrichments in that guild without deleting their account.
 - **`persona_user_blocks`**: stores persona-scoped moderation records keyed by `(server_id, persona_id, user_disc_id)`. Supports `mute` (stops triggering persona) and `block` (also hides user messages from dialogue history).
@@ -162,6 +207,7 @@ including link expressions. Existing rows remain editable when the limit is reac
 
 - **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`, `speech_models`**: global model catalogs seeded from typed code definitions.
 - **Pricing storage**: first-party models record token prices directly in `llms.input_price_per_million` and `output_price_per_million`. OpenRouter pricing uses the live API cache first, falling back to database column values.
+- **Decision primitives**: `decision_models.supported_primitives` lists the question types a model answers. Every Decision API style the bot calls accepts `predicate` and `choice`, so new rows default to both; the Active Nudge matcher needs `choice`.
 - **Token limits**: `context_window` and `max_output_tokens` record model ceilings. Runtime code queries them through `resolveModelLimits()`, where live provider responses take precedence.
 - **`custom_endpoint_connections`**: logical connection metadata scoped to either `server_id` or `user_id`, grouped by `(owner, label, capability)`.
 - **`custom_endpoints`**: model registrations under a connection, linking to synthetic catalog rows through `model_ref_id`.
@@ -185,11 +231,44 @@ the schema.
 ### Operational state, counters, and admission limits
 
 - **`cooldowns`**: unlogged PostgreSQL table storing command category and message trigger cooldowns.
-- **`reminders`**: scheduled reminders and recurring jobs. Uses `next_attempt_at` leases and `delivery_retry_count` budgets to handle transient delivery failures without shifting recurring cadences.
+- **`reminders`**: scheduled reminders and recurring jobs. Uses `next_attempt_at` leases and `delivery_retry_count` budgets to handle transient delivery failures without shifting recurring cadences; `failed_occurrence_count` tracks consecutive failed occurrences so a persistently failing recurring reminder skips retries and is removed once it reaches nobody.
 - **`stat_counters`**: pre-aggregated counter table storing usage telemetry across `(server_id, user_id, persona_lineage_id, metric, metric_key, bucket)`. `StatRepository` accumulates counts in memory and flushes them as multi-row additive upserts on interval or shutdown. Excluded from export.
 - **`command_catalog`**: dimension table recording all registered slash commands. Synced at boot by `StatRepository.syncCommandCatalog()`, enabling telemetry joins to identify unused commands.
 - **`api_key_rotation` and `api_key_rotation_runtime_state`**: provider key rotation pool and error cooldown tracking per server. Excluded from export.
 - **`persona_autoch_runtime_state`**: high-frequency autochat counter per persona. Excluded from export.
+
+## Natural Nudges
+<!-- anchor: natural-nudges -->
+
+Natural Nudges stores events and derives its meters on read
+(see [Natural Nudges](/architecture/subsystems/natural-nudges/)):
+
+- **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
+  through `tomoriState`. A missing row means the column defaults, and `idle_nudges_enabled` defaults
+  to true, so the timer enumerates servers from recent `stat_counters` activity instead of from
+  these rows. `active_nudges_enabled` defaults to true as well, and each mode's `idle_nudge_frequency` or
+  `active_nudge_frequency` (0-3) selects that mode's daily cap from constants in `runtime/tuning.ts`;
+  the idle nudge category weights are constants there too, not columns. An empty `channel_disc_ids`
+  means automatic channels, and a null `llm_id` means the server's chat model. Reset restores it;
+  the workspace export carries it without `channel_disc_ids`, and import checks `llm_id` against
+  the target workspace's structured-output models.
+- **`server_natural_nudge_custom_idle_nudges`**: custom idle nudges, at most 25 per server. Prerequisite IDs are
+  checked against the code registry on write and import, not by a CHECK. Reset deletes them.
+- **`server_natural_nudge_persona_scopes`**: the personas one idle nudge is limited to, keyed by
+  `(server_id, idle_nudge_key)`. `persona_ids` is a JSONB array without a foreign key, so deleted
+  personas leave stale IDs that readers filter. Excluded from export; reset deletes them.
+- **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
+  without a row read `persona_presets.natural_nudge_interests` and `natural_nudge_talkativeness`.
+- **`server_natural_nudge_runtime_state`**: idle nudge jitter and the failure stop. Excluded from export.
+- **`natural_nudge_fires`**: the fire log every meter reads, with `target_user_id` for a Ping User. Active Nudge
+  rows (`mode = 'active'`) have no category or verdict and set `detour` when another persona took the
+  turn. Pruned after 30 days.
+- **`natural_nudge_agendas`**: hidden agendas keyed by `(message_disc_id, persona_id)`. Pruned after
+  90 days; `target_user_id` cascades so erasing a user removes agendas built from their data.
+
+Deleting the owning model clears `server_natural_nudge_configs.llm_id` through the same paths
+that clear `response_reviewer_llm_id`: deprecated catalog models, provider removal, and
+registration removal.
 
 ## Response Drafting workspace settings
 
@@ -228,11 +307,11 @@ Sensitive provider credentials are encrypted using PostgreSQL `pgcrypto` (`pgp_s
 
 The reset subsystem in `src/utils/db/repositories/ResetRepository.ts` categorizes tables into distinct reset scopes:
 
-- **Server singletons restored to DDL defaults (18 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`.
+- **Server singletons restored to DDL defaults (19 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`, `server_natural_nudge_configs`.
 - **Preserved server configuration**: active model foreign keys, credentials, custom endpoint parameters, and the cached Other-model identity/capabilities in `server_model_configs`, plus active NovelAI diffusion model identity (`nai_diffusion_model_id`). `SERVER_SINGLETON_RESET_TABLES` owns the exact preserved columns.
-- **Cleared server collections (11 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`.
+- **Cleared server collections (13 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`, `server_natural_nudge_custom_idle_nudges`, `server_natural_nudge_persona_scopes`.
 - **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix, MCP, and message-proxy instances).
-- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
+- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores every configuration column in `user_personalization_configs` to its schema default except `natural_nudge_opt_out`, which a reset must never silently turn back on, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
 
 Message-proxy tables link service instances, external identities, namespaces, authorized host accounts, and immutable message attribution. PluralBuddy OAuth credentials are encrypted with separate version tags for each field. See [message-proxy persistence](/architecture/integrations/message-proxy/#persistence) for table ownership.
 

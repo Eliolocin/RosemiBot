@@ -1,3 +1,5 @@
+import { ProviderRequestDeniedError, type ProviderUsageContext } from "@/utils/provider/providerUsage";
+import { localizer } from "@/utils/text/localizer";
 import { afterEach, beforeAll, describe, expect, it, mock } from "bun:test";
 import type { Client, TextChannel } from "discord.js";
 import { HumanizerDegree } from "@/types/db/schema";
@@ -67,6 +69,28 @@ describe("StreamOrchestrator failed-stream delivery", () => {
   });
 
   afterEach(() => StreamOrchestrator.clearStopRequest(CHANNEL_ID));
+
+  it("leaves deferred request denials to the fallback owner and renders ordinary denials once", async () => {
+    for (const deferNotice of [true, false]) {
+      const usageContext: ProviderUsageContext = {};
+      const denied = new ProviderRequestDeniedError(
+        usageContext,
+        (locale) => ({
+          titleKey: "general.errors.api_key_error_title",
+          description: localizer(locale, "general.errors.api_key_error_description"),
+        }),
+        { deferNotice },
+      );
+      const { context, provider } = fixture(
+        [{ type: "error", error: { ...providerError, originalError: denied } }],
+        false,
+      );
+      context.usageContext = usageContext;
+      const result = await new StreamOrchestrator().streamToDiscord(provider, config, context);
+      expect(result.status).toBe("error");
+      expect(context.channel.send).toHaveBeenCalledTimes(deferNotice ? 0 : 1);
+    }
+  });
 
   it("holds an unfinished clause back only while a retry may continue the posted text", async () => {
     for (const suppressUserErrors of [true, false]) {

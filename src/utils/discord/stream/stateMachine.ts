@@ -1,3 +1,4 @@
+import { findProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import type { Client, Message } from "discord.js";
 import type { StreamResult } from "@/types/provider/interfaces";
 import type {
@@ -227,7 +228,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         },
       });
 
-      if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+      const deferredDenialNotice =
+        findProviderRequestDeniedError(lastError, context.usageContext)?.deferNotice ?? false;
+      if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
         await this.errorUi.handleStreamError(lastError, context);
       } else {
         log.warn("Stream: Suppressing stream error embed due to retryable failure", lastError);
@@ -328,6 +331,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
         : undefined,
       stopReason,
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
       spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -362,6 +366,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
             data: chunk.functionCall,
             pendingResponse: this.collectPendingResponse(state, textConfig, context, typingConfig),
             accumulatedText: state.accumulatedText,
+            firstMessageId: state.firstMessageId,
             detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
             thoughtLog: buildThoughtLogPayload(state, Date.now() - metrics.startTime),
             spritesShown: state.spritesShown.length > 0 ? [...state.spritesShown] : undefined,
@@ -425,7 +430,9 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       }
     }
 
-    if (!context.suppressUserErrors && !isUserImpersonationStreamContext(context)) {
+    const deferredDenialNotice =
+      findProviderRequestDeniedError(chunk.error, context.usageContext)?.deferNotice ?? false;
+    if (!context.suppressUserErrors && !deferredDenialNotice && !isUserImpersonationStreamContext(context)) {
       await this.errorUi.handleProviderError(chunk.error, provider, context);
     } else {
       log.warn("Stream: Suppressing provider error embed due to retryable failure", chunk.error);
@@ -473,6 +480,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
       messageSentCount: state.messageSentCount,
 
       accumulatedText: state.accumulatedText,
+      firstMessageId: state.firstMessageId,
       detailsContent: state.detailsSegments.length > 0 ? state.detailsSegments.join("\n\n") : undefined,
       thoughtLog: buildThoughtLogPayload(state, metrics.endTime - metrics.startTime),
       data: terminalDoneMetadata,
@@ -537,6 +545,7 @@ export class StreamOrchestrator implements IStreamOrchestrator {
           status,
           stopReason,
           accumulatedText: state.accumulatedText,
+          firstMessageId: state.firstMessageId,
           spritesShown: state.spritesShown.length ? state.spritesShown : undefined,
         };
       },

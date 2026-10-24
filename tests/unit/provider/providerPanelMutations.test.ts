@@ -1,6 +1,14 @@
+import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import * as dbClient from "@/utils/db/client";
 import { describe, expect, it, spyOn } from "bun:test";
-import type { LlmRow, SavedProviderConfigUpsert, TomoriState } from "@/types/db/schema";
+import type {
+  LlmRow,
+  SavedProviderConfigUpsert,
+  TomoriState,
+  UserSavedProviderConfigRow,
+  UserSavedProviderConfigUpsert,
+} from "@/types/db/schema";
+import * as savedProviderConfig from "@/utils/provider/savedProviderConfig";
 import {
   addCustomEndpointConnection,
   addServerProvider,
@@ -14,10 +22,12 @@ import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
 import { llmModelRepo } from "@/utils/db/repositories/LlmModelRepository";
 import { readCachedLlm, replaceCachedLlms } from "@/utils/cache/llmCacheStore";
 import * as crypto from "@/utils/security/crypto";
+import * as openrouterModelRegistry from "@/utils/provider/openrouterModelRegistry";
+import { configRepository } from "@/utils/db/repositories/ConfigRepository";
 import { normalizeOpenAICompatibleProviderError } from "@/providers/openaiCompatible/openaiCompatibleErrorFormatter";
 
 function state(): TomoriState {
-  return { server_id: 7, config: {}, llm: { llm_provider: "google" } } as TomoriState;
+  return createPersona({ server_id: 7, llm: createLlmRow({ llm_provider: "google" }) });
 }
 
 function dependencies(calls: string[]): AddServerProviderDependencies {
@@ -511,6 +521,44 @@ describe("provider panel mutations", () => {
     load.mockRestore();
   });
 
+  it("moves the server's Decision slot to an edited registration's replacement before removing the old one", async () => {
+    const calls: string[] = [];
+    const spies = [
+      spyOn(llmProviderRepo, "loadSavedProviderConfig").mockResolvedValue({ provider: "openrouter" } as never),
+      spyOn(llmModelRepo, "loadAvailableDecisionModels").mockResolvedValue([
+        { decision_model_id: 91, is_scoped_registration: true },
+      ] as never),
+      spyOn(openrouterModelRegistry, "registerOpenRouterModelForScope").mockResolvedValue({
+        status: "registered",
+        model: { modelId: 92, codename: "fixture/decider-v2", description: null },
+      } as never),
+      spyOn(configRepository, "updateModelConfig").mockImplementation(async (_serverId, patch) => {
+        calls.push(`select:${patch.decision_model_id}`);
+        return true;
+      }),
+      spyOn(llmProviderRepo, "deleteDecisionModelRegistration").mockImplementation(async ({ decisionModelId }) => {
+        calls.push(`remove:${decisionModelId}`);
+        return true;
+      }),
+      spyOn(llmModelRepo, "deleteOrphanedDecisionModel").mockResolvedValue(undefined),
+    ];
+    try {
+      const selected = { ...state(), config: { decision_model_id: 91 } } as TomoriState;
+      const result = await saveProviderModel({
+        serverDiscId: "guild",
+        state: selected,
+        entryId: "provider:openrouter",
+        capability: "decision",
+        codeName: "fixture/decider-v2",
+        editingModelId: 91,
+      });
+      expect(result.status).toBe("success");
+      expect(calls).toEqual(["select:92", "remove:91"]);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
   it("refuses to remove the entry supplying the active text model", async () => {
     const result = await providerPanelOperations.removeServerProviderEntry({
       serverDiscId: "guild",
@@ -699,6 +747,76 @@ describe("provider panel mutations", () => {
       } finally {
         for (const spy of spyList) spy.mockRestore();
         replaceCachedLlms([]);
+      }
+    });
+
+    it.each([
+      { owner: "google", ownerLlmId: 300, expectedChain: null },
+      { owner: "custom:73", ownerLlmId: 900, expectedChain: [{ type: "llm", id: 300 }] },
+    ])("prunes the personal fallback chain on edit only when $owner owns personal Text", async ({
+      owner,
+      ownerLlmId,
+      expectedChain,
+    }) => {
+      const row = { ...editingEndpointRow(), server_id: null, user_id: 4 };
+      const customRow = {
+        user_id: 4,
+        provider: "custom:73",
+        api_key: Buffer.from("stored"),
+        key_version: 1,
+        llm_id: 900,
+        enabled_capabilities: [],
+        assigned_capabilities: [],
+      } as unknown as UserSavedProviderConfigRow;
+      const textOwner = {
+        user_id: 4,
+        provider: owner,
+        llm_id: ownerLlmId,
+        enabled_capabilities: ["text"],
+        assigned_capabilities: ["text"],
+      } as unknown as UserSavedProviderConfigRow;
+      const chainWrite = spyOn(llmProviderRepo, "updatePersonalFallbackModelRefs").mockResolvedValue(true);
+      const spyList = [
+        chainWrite,
+        spyOn(llmProviderRepo, "loadCustomEndpointsByIds").mockResolvedValue([row] as never),
+        spyOn(llmProviderRepo, "loadCustomEndpointsByConnectionId").mockResolvedValue([row] as never),
+        spyOn(llmProviderRepo, "loadUserSavedProviderConfig").mockResolvedValue(customRow),
+        spyOn(llmProviderRepo, "upsertCustomEndpoint").mockResolvedValue(row as never),
+        spyOn(llmProviderRepo, "upsertUserSavedProviderConfig").mockResolvedValue(true),
+        spyOn(llmProviderRepo, "loadUserSavedProviderConfigs").mockResolvedValue(
+          owner === "custom:73" ? [{ ...customRow, ...textOwner }] : [customRow, textOwner],
+        ),
+        spyOn(llmProviderRepo, "loadPersonalFallbackSettings").mockResolvedValue({
+          fallback_model_refs: [
+            { type: "custom_endpoint", id: 501 },
+            { type: "llm", id: 300 },
+          ],
+          model_randomizer_enabled: false,
+        }),
+        spyOn(savedProviderConfig, "buildUserSavedProviderConfigFromExistingOrDefaults").mockResolvedValue(
+          customRow as UserSavedProviderConfigUpsert,
+        ),
+        spyOn(llmModelRepo, "updateSyntheticCustomCapabilityModelById").mockResolvedValue(undefined as never),
+      ];
+      try {
+        const result = await registerCustomEndpoint({
+          scope: { kind: "personal", ownerId: 4, baseConfig: { fallback_model_refs: [] } as never },
+          label: "juno",
+          capability: "text",
+          apiStyle: "openai-compatible",
+          endpointUrl: "https://models.example.com/v1",
+          modelName: "mirri-local",
+          editingEndpointId: 501,
+        });
+
+        expect(result?.modelId).toBe(900);
+        if (expectedChain) {
+          expect(chainWrite).toHaveBeenCalledWith(4, expectedChain);
+        } else {
+          expect(chainWrite).not.toHaveBeenCalled();
+        }
+      } finally {
+        for (const spy of spyList) spy.mockRestore();
       }
     });
   });

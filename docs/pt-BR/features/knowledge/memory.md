@@ -236,8 +236,8 @@ Qualquer pessoa pode executar `/config` > Persona > Memories, `/personal config`
 
 ### Configuração da STM
 
-Gerentes do workspace podem ajustar a memória de curto prazo em `/config` → `Comportamento` → Memory & STM.
-Essas configurações se aplicam aos registros de STM ativos do workspace:
+Administradores do servidor podem ajustar a memória de curto prazo em `/config` → `Comportamento` → Memory & STM.
+Essas configurações se aplicam aos registros de STM ativos do servidor:
 
 - Frequência de atualização controla quantos turnos do bot passam entre os empurrões de atualização. O intervalo permitido é 1-100.
 - Modo de renderização escolhe se os valores das categorias substituem os turnos recentes ou aparecem como um resumo bruto.

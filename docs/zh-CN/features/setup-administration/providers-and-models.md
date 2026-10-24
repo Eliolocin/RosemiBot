@@ -18,9 +18,11 @@ TomoriBot连接到外部AI提供商，而不是托管内置模型。你可以连
 |---|---|
 | 人工智能提供商（推荐） | 目录中的提供者及其API密钥，已作为草稿进行验证和加密。|
 | 自定义端点 | 端点连接和一个文本模型，在向导内注册。请参阅[自定义端点](#custom-endpoints)。|
-| 用户BYOK（仅限公会） | 什么都没有：工作区不保留自己的提供者，因此成员必须提供个人提供者。|
+| 用户BYOK（仅限服务器） | 什么都没有：服务器不保留自己的提供者，因此成员必须提供个人提供者。|
 
-在你按`完成设置`之前，不会将任何内容写入数据库。废弃或过期的向导不会影响工作区的现有提供程序行。要替换现有密钥，请使用`/providers`，因为`/setup`不会在已配置的工作区上运行。
+在你按`完成设置`之前，不会将任何内容写入数据库。废弃或过期的向导不会影响服务器的现有提供程序行。要替换现有密钥，请使用`/providers`，因为`/setup`不会在已配置的服务器上运行。
+
+替换提供方的密钥会保留其保存的采样设置，包括输出词元上限。
 
 每个提供商都有自己的密钥生成步骤。在`/help`中，选择`设置`，然后选择`获取API密钥`，然后选择你的提供商进行分步演练，或使用以下起点：
 
@@ -62,20 +64,21 @@ Brave Search与你的AI提供商分开，并通过图像、视频和新闻结果
 - **文本**：主要聊天模型。
 - **视觉**：当聊天模型无法读取图像时。
 - **嵌入**：为[文档知识库](/zh-CN/features/knowledge/memory/#document-knowledge-base-rag)提供支持。
+- **判定**：已注册的[判定模型](#decision-models)。[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges)使用它来决定何时加入对话。
 - **标准图像**：标准图像生成（参见[图像生成](/zh-CN/features/capabilities/media-generation/image-generation/)）。
 - **NovelAI图像**：NovelAI图像生成。
 - **视频**：视频生成。
 - **TTS端点**：文本转语音语音端点。
 - **STT端点**：语音到文本的音频转录端点。
 
-前六个槽选择模型目录记录。TTS和STT插槽改为选择工作区范围的端点，激活选定的端点而不是编写模型列。在`/providers`中注册并编辑这些端点。`/personal config`保留6个个人模型路由插槽，不包括个人TTS/STT端点选择器。
+前六个槽选择模型目录记录。TTS和STT插槽改为选择服务器范围的端点，激活选定的端点而不是编写模型列。在`/providers`中注册并编辑这些端点。`/personal config`保留6个个人模型路由插槽，不包括个人TTS/STT端点选择器。
 
 你还可以管理`/providers`中的自动故障转移和负载平衡的备份密钥。
 
 ## 判定模型
 <!-- anchor: decision-models -->
 
-判定模型是 `/providers` 和 `/personal providers` 中的一个独立类别。它们以概率形式回答类型化谓词。注册不会改变活动的聊天模型、建立校准或启用回复审查跳过。这些面板尚不选择判定模型。
+判定模型是 `/providers` 和 `/personal providers` 中的一个独立类别。它们以概率形式回答具类型的问题（是或否，或从多个选项中选择一个）。注册不会改变活动的聊天模型。在 `/config` > `模型` > `切换模型` 中选择服务器的判定模型。除非在 `/config` > `插件` > `Natural Nudges` 中选择了其他检查模型，否则 [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) 会将其用作主动搭话检查模型，以判断对话是否契合某个人格的兴趣。
 
 OpenRouter 是受支持的原生提供商。保存其密钥，打开其模型下拉菜单，然后选择 `+ 添加判定模型`。从其已验证的判定目录中输入 ID。全局目录包含 `typesafe/jev-1.13`；其他注册归属于其服务器或个人所有者。原生发现提供记录在案的输入限制和价格。聊天目录无法建立判定支持。
 
@@ -92,7 +95,7 @@ OpenRouter 是受支持的原生提供商。保存其密钥，打开其模型下
 
 自定义端点允许你将自部署或代理支持的服务（Ollama、LM Studio、LiteLLM、vLLM、ComfyUI、本地TTS/STT）注册为标记的提供商捆绑包。
 
-- **服务器范围**：打开`/providers`进行工作区端点注册和编辑。
+- **服务器范围**：打开`/providers`注册和编辑服务器端点。
 - **个人范围**：打开`/personal providers`获取个人模型目录（参见[个性化](/zh-CN/features/knowledge/personalization/#your-own-providers)）。个人语音端点不是从`/personal config`中选择的。
 
 标签是面向用户的菜单名称，当它们共享一个端点URL时，会将功能分组到一个捆绑包中。它永远不会发送到远程服务。从不同URL提供的功能需要不同的标签。

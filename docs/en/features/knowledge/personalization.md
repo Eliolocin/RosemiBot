@@ -105,6 +105,10 @@ To register private custom endpoints, see
 If a request fails while using your personal provider, error tips direct you to your personal
 commands (`/personal providers`, `/personal config`) rather than server settings.
 
+In `/personal config` > Models > Fallbacks you can list up to five backup models. They can come from
+any of your saved providers, and they are tried in order when your personal text model fails.
+Switching your personal text model keeps the list, but removes the new model from it if it was there.
+
 When every model on your personal text route fails, TomoriBot can fall back to the server's
 default text model rather than failing silently. Server fallbacks run on server credentials, count
 against the server's text quota, and display a `Fallback Used` button with details.
@@ -127,7 +131,9 @@ Use `/personal config` to customize additional features:
   [image generation](/features/capabilities/media-generation/image-generation/#tag-customization)
   references you. Submit an empty box to clear them.
 - **Privacy Controls** (`Privacy` > `Privacy Controls`): choose your visibility level
-  (`None`, `Partial`, or `Full`), or toggle cross-server short-term memory sharing.
+  (`None`, `Partial`, or `Full`), toggle cross-server short-term memory sharing, or turn off
+  [Pings from Personas](/features/chatting-personality/natural-nudges/#ping-user) so personas never
+  ping you to start a conversation.
 - **Response Modes** (`Advanced` > `Response Modes`): toggle your personal override for
   [Deliberate Trigger Mode](/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Impersonation** (`Advanced` > `Impersonation`): set a reusable prompt used when someone

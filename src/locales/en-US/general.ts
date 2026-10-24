@@ -1,5 +1,9 @@
 export default {
   general: {
+    oauth: {
+      invalid_callback: `This sign-in link is invalid or expired. Start sign-in again from TomoriBot.`,
+      server_error: `TomoriBot could not complete sign-in because of a service error. Please try again later.`,
+    },
     language_name: `English`,
     yes: `Yes`,
     confirm: `Confirm`,
@@ -183,5 +187,7 @@ Repeat: {repeat_text}`,
     triggered_footer_one_time: `Generation kept failing, so the scheduled content is shown unchanged. This one-time schedule is complete and has been removed.`,
     triggered_footer_recurring_retained: `Generation kept failing, so the scheduled content is shown unchanged. The next occurrence remains on its original cadence. Use \`/scheduled-task edit\` or \`/scheduled-task remove\` to manage it.`,
     triggered_footer_recurring_removed: `Generation kept failing and the next occurrence could not be preserved. This recurring schedule has been removed; create it again once the problem is fixed.`,
+    removed_after_failures_title: `Scheduled Item Removed`,
+    removed_after_failures_description: `Scheduled item \`{reminder_id}\` failed {failed_occurrences} times in a row and could not be posted in its channel, so it has been removed. Create it again once the channel permissions or AI provider are fixed.\n**Original content:**`,
   },
 };

@@ -23,6 +23,16 @@ BEGIN
       RAISE EXCEPTION 'Clear saved server Decision selections before downgrading';
     END IF;
   END IF;
+  -- Natural Nudges may already be rolled back, so the table is looked up without a cast that would fail.
+  IF EXISTS (SELECT 1 FROM pg_attribute
+             WHERE attrelid = to_regclass('server_natural_nudge_configs')
+               AND attname = 'checker_decision_model_id' AND NOT attisdropped) THEN
+    IF EXISTS (SELECT 1 FROM server_natural_nudge_configs WHERE checker_decision_model_id IS NOT NULL) THEN
+      RAISE EXCEPTION 'Clear saved Active Nudge Checker Decision selections before downgrading';
+    END IF;
+    ALTER TABLE server_natural_nudge_configs DROP CONSTRAINT IF EXISTS server_natural_nudge_configs_one_checker;
+    ALTER TABLE server_natural_nudge_configs DROP COLUMN checker_decision_model_id;
+  END IF;
   ALTER TABLE server_chat_configs DROP COLUMN IF EXISTS response_decision_model_id;
   ALTER TABLE server_model_configs DROP COLUMN IF EXISTS decision_model_id;
   ALTER TABLE scoped_model_registrations DROP CONSTRAINT IF EXISTS scoped_model_registrations_one_model;

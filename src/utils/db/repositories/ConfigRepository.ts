@@ -12,6 +12,7 @@ import type { SQL } from "bun";
 import { presetFallbackLanguages, selectPresetsForLocale } from "@/utils/persona/presetLocale";
 import type {
   ErrorContext,
+  SubscriptionCapability,
   AssembledServerConfig,
   NaiPresetRow,
   ServerModelConfigRow,
@@ -40,6 +41,7 @@ import { log } from "@/utils/misc/logger";
 import type { IRepository } from "./IRepository";
 
 const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
+  "subscription_capabilities",
   "response_review_items",
   "autoch_disc_ids",
   "crosschannel_blocklist_ids",
@@ -200,76 +202,6 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
   }
 
   /**
-   * @param locale - Locale code (e.g. "en-US")
-   * @param maxDescriptionLength - Truncate descriptions to this length (default 100)
-   */
-  async loadPresetOptionsByLocale(
-    locale: string,
-    maxDescriptionLength?: number,
-  ): Promise<Array<{ name: string; description: string }> | null> {
-    try {
-      const descriptionLength = maxDescriptionLength ?? 100;
-      let presetRows = await sql`
-        SELECT persona_preset_name, persona_preset_desc
-        FROM persona_presets
-        WHERE preset_language = ${locale}
-        ORDER BY persona_preset_name ASC
-      `;
-
-      if (presetRows.length === 0) {
-        const baseLanguage = locale.split("-")[0];
-        presetRows = await sql`
-          SELECT persona_preset_name, persona_preset_desc
-          FROM persona_presets
-          WHERE preset_language = ${baseLanguage}
-          ORDER BY persona_preset_name ASC
-        `;
-
-        if (presetRows.length > 0) {
-          log.info(`No presets found for locale '${locale}', using base language '${baseLanguage}' instead.`);
-        }
-      }
-
-      if (presetRows.length === 0 && locale !== "en-US") {
-        presetRows = await sql`
-          SELECT persona_preset_name, persona_preset_desc
-          FROM persona_presets
-          WHERE preset_language = 'en-US'
-          ORDER BY persona_preset_name ASC
-        `;
-
-        if (presetRows.length > 0) {
-          log.info(`No presets found for locale '${locale}', falling back to English presets.`);
-        }
-      }
-
-      if (!presetRows || presetRows.length === 0) {
-        log.warn(`No personality presets found for locale '${locale}' or any fallback language.`);
-        return null;
-      }
-
-      const presetOptions = presetRows.map((row: Record<string, unknown>) => {
-        const description = row.persona_preset_desc as string;
-        const truncatedDescription =
-          description.length > descriptionLength
-            ? `${description.substring(0, descriptionLength - 3)}...`
-            : description;
-
-        return {
-          name: row.persona_preset_name as string,
-          description: truncatedDescription,
-        };
-      });
-
-      log.info(`Found ${presetOptions.length} personality presets for locale '${locale}' (selection menu).`);
-      return presetOptions;
-    } catch (error) {
-      log.error(`Error loading preset options for locale '${locale}' from database:`, error);
-      return null;
-    }
-  }
-
-  /**
    * Loads one preset per lineage in the locale's best available language (see `selectPresetsForLocale`).
    * `nsfw` is required so every caller picks a side; only the age-restricted `/nsfw` routes pass true.
    */
@@ -386,6 +318,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
     | "video_model_id"
     | "vision_llm_id"
     | "user_byok_mode"
+    | "subscription_capabilities"
   > | null> {
     try {
       // Join the three split tables that own capability-selection columns.
@@ -397,6 +330,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
           smc.embedding_model_id,
           smc.diffusion_model_id,
           smc.video_model_id,
+          smc.subscription_capabilities,
           smc.vision_llm_id,
           snai.nai_diffusion_model_id,
           sbc.user_byok_mode
@@ -417,6 +351,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
           video_model_id: true,
           vision_llm_id: true,
           user_byok_mode: true,
+          subscription_capabilities: true,
         })
         .safeParse(row);
 
@@ -700,12 +635,50 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
     return ok;
   }
 
-  async updateModelConfig(serverId: number, patch: Partial<ServerModelConfigRow>): Promise<boolean> {
-    return this.executeUpdate("server_model_configs", serverId, patch);
+  async updateModelConfig(
+    serverId: number,
+    patch: Partial<ServerModelConfigRow>,
+    credentialProvider?: string,
+  ): Promise<boolean> {
+    const columns = {
+      llm_id: "text",
+      embedding_model_id: "embedding",
+      diffusion_model_id: "image",
+      video_model_id: "video",
+      vision_llm_id: "vision",
+    } as const;
+    const selections = Object.entries(columns).flatMap(([column, capability]) =>
+      patch[column as keyof typeof columns] !== undefined ? [capability] : [],
+    );
+    return this.executeUpdate("server_model_configs", serverId, patch, sql, {
+      selections,
+      subscription: credentialProvider === "supporter",
+    });
   }
 
-  async updateChatConfig(serverId: number, patch: Partial<ServerChatConfigRow>): Promise<boolean> {
-    return this.executeUpdate("server_chat_configs", serverId, patch);
+  async updateChatConfig(
+    serverId: number,
+    patch: Partial<ServerChatConfigRow>,
+    credentialProvider?: string,
+  ): Promise<boolean> {
+    if (patch.response_reviewer_llm_id === undefined) return this.executeUpdate("server_chat_configs", serverId, patch);
+    try {
+      return await sql.begin(async (tx) => {
+        const updated = await this.executeUpdate("server_chat_configs", serverId, patch, tx);
+        if (!updated) throw new Error("Reviewer selection write failed");
+        const result = await tx`
+          UPDATE server_model_configs SET subscription_capabilities =
+            array_remove(subscription_capabilities, 'reviewer') ||
+            ${sql.array(credentialProvider === "supporter" && patch.response_reviewer_llm_id !== null ? ["reviewer"] : [], "text")}
+          WHERE server_id = ${serverId} RETURNING server_id
+        `;
+        if (result.length === 0) throw new Error("Reviewer credential selection write failed");
+        return true;
+      });
+    } catch (error) {
+      log.error("Failed to update reviewer selection", error, { serverId });
+      return false;
+    }
   }
 
   async updateCapabilitiesConfig(serverId: number, patch: Partial<ServerCapabilitiesConfigRow>): Promise<boolean> {
@@ -966,6 +939,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
     serverId: number,
     patch: Record<string, unknown>,
     sqlClient: SQL = sql,
+    credentialSelection?: { selections: SubscriptionCapability[]; subscription: boolean },
   ): Promise<boolean> {
     const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
     if (entries.length === 0) return false;
@@ -978,6 +952,15 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         this.pushUpdateValue(key, value, setParts, values);
       });
 
+      if (credentialSelection?.selections.length && patch.subscription_capabilities === undefined) {
+        const removed = `$${values.length + 1}::TEXT[]`;
+        values.push(toPostgresTextArrayLiteral(credentialSelection.selections));
+        const added = `$${values.length + 1}::TEXT[]`;
+        values.push(toPostgresTextArrayLiteral(credentialSelection.subscription ? credentialSelection.selections : []));
+        setParts.push(
+          `subscription_capabilities = ARRAY(SELECT unnest(subscription_capabilities) EXCEPT SELECT unnest(${removed})) || ${added}`,
+        );
+      }
       const setClause = setParts.join(", ");
       values.push(serverId);
       const serverIdIndex = values.length;

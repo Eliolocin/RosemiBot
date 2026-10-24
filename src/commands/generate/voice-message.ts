@@ -93,6 +93,7 @@ import { CooldownType, type TomoriState, type UserRow } from "@/types/db/schema"
 import type { WhitelistCheckResult } from "@/types/misc/channelWhitelist";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import { buildRestrictedErrorDetail } from "@/utils/discord/stream/errorUi";
 
 const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
@@ -455,6 +456,22 @@ export async function execute(
     uploadFilename: uploadAttachment?.name ?? null,
     typedDesignPrompt,
   };
+  const candidates = resolveVoiceSourceCandidates(candidateInput);
+  const targetDenial = uploadAttachment
+    ? targets.denials?.clone
+    : typedDesignPrompt?.trim()
+      ? targets.denials?.design
+      : candidates.length === 0
+        ? (targets.denials?.clone ?? targets.denials?.design)
+        : undefined;
+  if (targetDenial) {
+    await replyInfoEmbed(interaction, locale, {
+      ...getProviderRequestFailureCopy(targetDenial, locale),
+      color: ColorCode.ERROR,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
   if (
     (uploadAttachment && !resolveVoiceSourceCapabilities(speechTargetSource(targets.clone)).acceptsCloneShape) ||
     (typedDesignPrompt?.trim() &&
@@ -468,7 +485,6 @@ export async function execute(
     });
     return;
   }
-  const candidates = resolveVoiceSourceCandidates(candidateInput);
   if (candidates.length === 0) {
     log.warn(
       `[/generate voice-message] No voice source candidates available for persona ${persona.persona_id}`,
@@ -617,6 +633,14 @@ export async function execute(
   effectiveEndpoint = speechEndpoint?.endpoint ?? null;
   const originalTarget = selectedSource?.shape === "design" ? targets.design : targets.clone;
   const originalSource = candidates.find((candidate) => candidate.id === selectedSourceId);
+  const freshDenial = freshTargets.denials?.[originalSource?.shape === "design" ? "design" : "clone"];
+  if (!selectedSource && freshDenial) {
+    await replyInfoEmbed(modalInteraction, locale, {
+      ...getProviderRequestFailureCopy(freshDenial, locale),
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   if (
     originalSource?.sampleId !== selectedSource?.sampleId ||
     originalSource?.designPrompt !== selectedSource?.designPrompt ||
@@ -763,6 +787,13 @@ export async function execute(
     ...(preset?.stability !== undefined ? { elevenLabsVoiceSettings: { stability: preset.stability } } : {}),
   });
 
+  if ((!synthesisResult.success || !synthesisResult.audioBuffer) && synthesisResult.requestDenied) {
+    await replyInfoEmbed(modalInteraction, locale, {
+      ...getProviderRequestFailureCopy(synthesisResult.requestDenied, locale),
+      color: ColorCode.ERROR,
+    });
+    return;
+  }
   if (!synthesisResult.success || !synthesisResult.audioBuffer) {
     await replyInfoEmbed(
       modalInteraction,

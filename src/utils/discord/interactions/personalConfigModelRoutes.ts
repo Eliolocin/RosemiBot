@@ -339,13 +339,20 @@ export async function handlePersonalConfigModelRoutes(context: PersonalConfigPos
   if (route.action === "fallbacks-page") {
     let availableOptions: Array<{ refKey: string; label: string }> = [];
     try {
-      availableOptions = await loadFallbackSelectionOptions(context.scope.userId, route.provider);
+      availableOptions = await loadFallbackSelectionOptions(context.scope.userId, route.provider, route.locale);
     } catch (error) {
       log.warn("Failed to load available models for fallbacks modal", { provider: route.provider, error });
     }
 
     const rows = await dependencies.loadUserSavedProviders(context.scope.userId);
-    const displayInfo = await dependencies.loadPersonalModelDisplayInfo(context.scope.userId, rows, "text");
+    const displayInfo = await dependencies.loadPersonalModelDisplayInfo(
+      context.scope.userId,
+      rows,
+      "text",
+      undefined,
+      undefined,
+      route.locale,
+    );
     const { entries } = buildProviderPageEntries({
       providers: displayInfo.fallbacksProviders,
       expandedProvider: route.provider,

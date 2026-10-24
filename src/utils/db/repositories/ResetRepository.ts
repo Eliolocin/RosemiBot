@@ -33,7 +33,7 @@ export interface SingletonResetClassification {
 }
 
 /**
- * The 18 singleton configuration rows a server reset restores.
+ * The 19 singleton configuration rows a server reset restores.
  *
  * Enumerated rather than derived. The natural derivation ("the in-scope `server_*` tables, less the
  * junction, plus the quota configuration tables") is arithmetic, and arithmetic that drops a table
@@ -95,6 +95,8 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
       "other_model_codename",
       "other_model_capabilities",
       "other_model_capabilities_fetched_at",
+      // Payer for the preserved model selections, so resetting it alone would change who pays.
+      "subscription_capabilities",
     ],
   },
   {
@@ -242,10 +244,25 @@ export const SERVER_SINGLETON_RESET_TABLES: readonly SingletonResetClassificatio
     reset: ["daily_user_quota", "serverwide_quota", "serverwide_quota_resets_in", "enabled"],
     preserved: [],
   },
+  {
+    table: "server_natural_nudge_configs",
+    reset: [
+      "idle_nudges_enabled",
+      "active_nudges_enabled",
+      "channel_disc_ids",
+      "llm_id",
+      "checker_llm_id",
+      "checker_decision_model_id",
+      "idle_nudge_frequency",
+      "active_nudge_frequency",
+      "disabled_builtin_idle_nudges",
+    ],
+    preserved: [],
+  },
 ];
 
 /**
- * The 11 collection tables a server reset empties for the server.
+ * The 13 collection tables a server reset empties for the server.
  *
  * `server_auto_trigger_persona_overrides` belongs here rather than among the singletons: it is the
  * junction the auto-trigger row's channel ids point through, so it is cleared by delete.
@@ -262,13 +279,16 @@ export const SERVER_COLLECTION_RESET_TABLES = [
   "channel_whitelist",
   "role_whitelist",
   "channel_persona_whitelist",
+  "server_natural_nudge_custom_idle_nudges",
+  "server_natural_nudge_persona_scopes",
 ] as const;
 
 /**
  * The two singleton rows a personal reset restores.
  *
  * `registration_locale` is preserved because it records the locale the account was created under
- * and is account history rather than a setting the owner edits.
+ * and is account history rather than a setting the owner edits. `natural_nudge_opt_out` is preserved
+ * because a reset must never silently make someone pingable again.
  */
 export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassification[] = [
   {
@@ -294,7 +314,8 @@ export const PERSONAL_SINGLETON_RESET_TABLES: readonly SingletonResetClassificat
       "pronouns",
       "addressing_style",
     ],
-    preserved: [],
+    // The fallback chain and randomizer survive with the saved personal providers they reference.
+    preserved: ["natural_nudge_opt_out", "fallback_model_refs", "model_randomizer_enabled"],
   },
 ];
 
@@ -542,6 +563,21 @@ class ResetRepository {
           updated_at = NOW()
       `;
 
+      await tx`
+        INSERT INTO server_natural_nudge_configs (server_id) VALUES (${serverId})
+        ON CONFLICT (server_id) DO UPDATE SET
+          idle_nudges_enabled = DEFAULT,
+          active_nudges_enabled = DEFAULT,
+          channel_disc_ids = DEFAULT,
+          llm_id = DEFAULT,
+          checker_llm_id = DEFAULT,
+          checker_decision_model_id = DEFAULT,
+          idle_nudge_frequency = DEFAULT,
+          active_nudge_frequency = DEFAULT,
+          disabled_builtin_idle_nudges = DEFAULT,
+          updated_at = NOW()
+      `;
+
       await tx`DELETE FROM server_auto_trigger_persona_overrides WHERE server_id = ${serverId}`;
       // Deletes the category definitions only. Persisted short_term_memories carry their own
       // categories payload and render from it, so STM data survives a configuration reset.
@@ -555,6 +591,8 @@ class ResetRepository {
       await tx`DELETE FROM channel_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM role_whitelist WHERE server_id = ${serverId}`;
       await tx`DELETE FROM channel_persona_whitelist WHERE server_id = ${serverId}`;
+      await tx`DELETE FROM server_natural_nudge_custom_idle_nudges WHERE server_id = ${serverId}`;
+      await tx`DELETE FROM server_natural_nudge_persona_scopes WHERE server_id = ${serverId}`;
     });
   }
 

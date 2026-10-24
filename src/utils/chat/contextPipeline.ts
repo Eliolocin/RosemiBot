@@ -88,6 +88,13 @@ import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdent
 import { normalizeRenderModifierName, resolveRenderModifierSourcePersona } from "@/utils/discord/renderModifierParser";
 import { primePersonaSpriteMessageRecords } from "@/utils/cache/personaSpriteMessageCache";
 import { resolveMinimalNoticeBodies } from "@/utils/discord/minimalNoticeBodies";
+import { isSeededTurnAnchor } from "@/utils/discord/turnAnchor";
+import {
+  AGENDA_NOTICE_AUTHOR_ID,
+  agendaNoticeId,
+  formatAgendaNotice,
+  loadPersonaAgendas,
+} from "@/modules/natural-nudges/runtime/agendas";
 import { getCachedPersonaSprites } from "@/utils/cache/personaSpriteCache";
 import { resolveSpriteMessageDisplayName } from "@/utils/discord/spriteMessageLabel";
 import type { StreamingContext } from "@/types/tool/interfaces";
@@ -240,6 +247,14 @@ function resolveProxiedIdentity(message: Message): { name: string | null; userDi
   return { name: identity?.displayName ?? null, userDiscId: identity?.userDiscId ?? null };
 }
 
+/** A borrowed trigger's author is a bystander, so their personal override does not steer the turn. */
+export function resolveTurnDeliberateToolMode(turn: ChatTurn): boolean {
+  const personalMode = turn.lockedTurn.admission.incoming.borrowsTriggerMessage
+    ? "follow"
+    : (turn.userRow.personal_deliberate_tool_mode ?? "follow");
+  return resolveDeliberateToolMode(turn.persona.config.deliberate_tool_mode, personalMode);
+}
+
 export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnContext> {
   const incoming = turn.lockedTurn.admission.incoming;
   const { client, message } = incoming;
@@ -264,6 +279,9 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     triggererUserId: turn.userRow.user_id,
     triggererDiscId: turn.userRow.user_disc_id,
     forcedMentions: await resolveForcedMentions(turn),
+    ...(incoming.naturalNudge?.targetUserDiscId && {
+      mentionableUserIds: [incoming.naturalNudge.targetUserDiscId],
+    }),
   };
 
   if (incoming.manualStreamingContextOverrides) {
@@ -309,10 +327,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   // Resolve deliberate tool mode + intent allowlist for this turn. MUST run before
   // buildContext() so any has_tools override flows into context synthesis
   // (has_tools gates the STM tool affordance text there).
-  const deliberateToolModeActive = resolveDeliberateToolMode(
-    turn.persona.config.deliberate_tool_mode,
-    turn.userRow.personal_deliberate_tool_mode ?? "follow",
-  );
+  const deliberateToolModeActive = resolveTurnDeliberateToolMode(turn);
   const reminderData = incoming.reminderData;
   const reminderRecipientID = incoming.reminderRecipientID;
   const deliberateToolIntentText =
@@ -402,6 +417,13 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     const createTaskIndex = deliberateToolAllowedNames.indexOf("create_task");
     if (createTaskIndex !== -1) {
       deliberateToolAllowedNames.splice(createTaskIndex, 1);
+    }
+  }
+
+  if (deliberateToolModeActive && incoming.naturalNudge) {
+    for (const toolName of incoming.naturalNudge.toolNames) {
+      deliberateToolAllowedNames.push(toolName);
+      deliberateToolTriggerMatches.push({ toolName, trigger: "natural idle nudge", source: "built-in" });
     }
   }
 
@@ -500,13 +522,16 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
   const proxiedSpeakerName = proxiedIdentity.userDiscId
     ? (await getCachedUserRow(proxiedIdentity.userDiscId))?.user_nickname?.trim() || proxiedIdentity.name
     : null;
-  const { note: reunionNote, presence: reunionPresence } = await resolveReunionNote({
-    turn,
-    effectivePersona,
-    isUserImpersonation: incoming.isUserImpersonation,
-    proxiedIdentityName: proxiedIdentity.name,
-    proxiedIdentityUserDiscId: proxiedIdentity.userDiscId,
-  });
+  // A nudge borrows an absent author's message as its trigger, so it must neither greet nor clock them.
+  const { note: reunionNote, presence: reunionPresence } = incoming.naturalNudge
+    ? { note: null, presence: null }
+    : await resolveReunionNote({
+        turn,
+        effectivePersona,
+        isUserImpersonation: incoming.isUserImpersonation,
+        proxiedIdentityName: proxiedIdentity.name,
+        proxiedIdentityUserDiscId: proxiedIdentity.userDiscId,
+      });
 
   const contextBuild = await buildContext({
     guildId: turn.serverDiscId,
@@ -542,6 +567,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     preloadedCustomExpressions: assets.loadedCustomExpressions,
     isUserImpersonation: incoming.isUserImpersonation,
     impersonatedUserId: incoming.impersonatedUserId,
+    shortTermMemoryUserId: incoming.naturalNudge?.targetUserDiscId,
     impersonatedUserNickname,
     impersonatedUserPrompt,
     explicitLongTermMemoryIntent: streamingContext.explicitLongTermMemoryIntent,
@@ -623,6 +649,7 @@ export async function buildChatTurnContext(turn: ChatTurn): Promise<ChatTurnCont
     textCredentialSource: turn.textCredentialSource,
     personalRoutingUserId: turn.personalRoutingUserId,
     personalTextProvider: turn.personalTextProvider,
+    supporterFunding: turn.supporterFunding,
     shouldApplyTextQuota: turn.shouldApplyTextQuota,
     textQuotaTriggerKey: turn.textQuotaTriggerKey,
     textQuotaState: turn.textQuotaState,
@@ -639,8 +666,12 @@ async function resolveForcedMentions(turn: ChatTurn): Promise<ForcedMention[] | 
   if (incoming.reminderRecipientID && !incoming.reminderData?.self_reminder) {
     reminderMentions = await buildForcedMentionsForUser(incoming.reminderRecipientID, incoming.client, turn.guild);
   }
+  const nudgeTargetId = incoming.naturalNudge?.targetUserDiscId;
+  const nudgeTargetMentions = nudgeTargetId
+    ? await buildForcedMentionsForUser(nudgeTargetId, incoming.client, turn.guild)
+    : undefined;
 
-  const mentions = mergeForcedMentions(turn.forcedMentions, reminderMentions);
+  const mentions = mergeForcedMentions(mergeForcedMentions(turn.forcedMentions, reminderMentions), nudgeTargetMentions);
   if (mentions.length === 0) return undefined;
   return mentions;
 }
@@ -701,8 +732,12 @@ async function buildSimplifiedHistory(
     "messages" in channel
       ? Array.from((await channel.messages.fetch({ limit: fetchLimit })).values()).reverse()
       : [turn.lockedTurn.admission.message];
+  // A borrowed trigger is only an anchor and a seeded placeholder is never history, so only a queued
+  // turn's own real message is added back when the fetch missed it.
   if (
     turn.lockedTurn.admission.incoming.isFromQueue &&
+    !turn.lockedTurn.admission.incoming.borrowsTriggerMessage &&
+    !isSeededTurnAnchor(turn.lockedTurn.admission.message) &&
     !messages.some((message) => message.id === turn.lockedTurn.admission.message.id)
   ) {
     messages.push(turn.lockedTurn.admission.message);
@@ -797,6 +832,10 @@ async function buildSimplifiedHistory(
   // "Name (sprite):" label lookups inside simplifyMessage() are cache hits.
   await primePersonaSpriteMessageRecords(visibleRawMessages.filter((msg) => msg.webhookId).map((msg) => msg.id));
   const minimalNoticeBodies = await resolveMinimalNoticeBodies(visibleRawMessages);
+  const agendasByMessageId = await loadPersonaAgendas(
+    turn.persona.persona_id,
+    visibleRawMessages.map((msg) => msg.id),
+  );
 
   const simplifiedMessages: SimplifiedMessageForContext[] = [];
   const userIds = new Set<string>();
@@ -875,6 +914,22 @@ async function buildSimplifiedHistory(
     const { message: simplified, isDebug } = result;
     previousBlockNoticeAuthorId = null;
     userIds.add(simplified.authorId);
+
+    const agenda = agendasByMessageId.get(msg.id);
+    if (agenda) {
+      simplifiedMessages.push({
+        id: agendaNoticeId(msg.id),
+        authorId: AGENDA_NOTICE_AUTHOR_ID,
+        authorName: "System",
+        authorType: "user",
+        personaName: null,
+        content: formatAgendaNotice(turn.persona.persona_nickname, agenda),
+        createdAt: msg.createdTimestamp,
+        imageAttachments: [],
+        videoAttachments: [],
+      });
+      previousEntryWasDebug = false;
+    }
 
     // Decide whether this message collapses into the previous turn.
     //    Consecutive messages from the same effective author merge into one turn,
@@ -1452,6 +1507,7 @@ function appendTailDirectives(args: {
     !incoming.reasoningQuery &&
     !incoming.reminderRecipientID &&
     !incoming.reminderData?.self_reminder &&
+    !incoming.naturalNudge &&
     args.simplifiedMessages.length > 0
   ) {
     const lastMsg = args.simplifiedMessages[args.simplifiedMessages.length - 1];

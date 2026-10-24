@@ -1,3 +1,10 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import {
+  findProviderRequestDeniedError,
+  createProviderUsageRecorder,
+  notifyProviderToolFailure,
+  type ProviderUsageContext,
+} from "@/utils/provider/providerUsage";
 /**
  * Peek Profile Picture Tool
  * Allows the AI to selectively process Discord user profile pictures on-demand
@@ -23,6 +30,9 @@ import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAt
 import { MEDIA_LIMITS } from "@/utils/security/rateLimiter";
 import { safeDownload } from "@/utils/security/safeDownload";
 import { fetchUserRemoteUrl } from "@/utils/security/userRemoteFetch";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
+import { normalizeProviderUsage, type TokenUsage } from "@/utils/text/tokenEstimate";
 
 /**
  * Provider-to-chat-completions-URL mapping for OpenAI-compatible providers.
@@ -164,6 +174,7 @@ export class PeekProfilePictureTool extends BaseTool {
       };
     }
 
+    const requestScope: [context?: ProviderUsageContext] = [];
     log.info(`Processing profile picture for identity: ${targetIdentity} - Reason: ${reason}`);
 
     try {
@@ -199,7 +210,14 @@ export class PeekProfilePictureTool extends BaseTool {
       // vision model is configured, call the vision model directly with the avatar image
       // and return a text description. The primary model then responds to that description.
       if (!context.tomoriState.llm.sees_images && context.tomoriState.vision_llm) {
-        return await this.redirectToVisionModel(preparedImages, targetTypeLabel, userDisplayText, reason, context);
+        return await this.redirectToVisionModel(
+          preparedImages,
+          targetTypeLabel,
+          userDisplayText,
+          reason,
+          context,
+          requestScope,
+        );
       }
 
       // Enhanced context restart path: inject the raw image into the context so the
@@ -273,6 +291,8 @@ export class PeekProfilePictureTool extends BaseTool {
         },
       };
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, ...requestScope);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       log.error(`Profile picture processing failed for identity: ${targetIdentity}`, error as Error);
 
       let errorMessage = "Failed to process the user's profile picture.";
@@ -327,10 +347,12 @@ export class PeekProfilePictureTool extends BaseTool {
     userDisplayText: string,
     reason: string,
     context: ToolContext,
+    requestScope: [context?: ProviderUsageContext],
   ): Promise<ToolResult> {
     const creds = await resolveCapabilityCredentials(context.tomoriState.server_id, "vision", {
       userId: context.internalUserId ?? null,
     });
+    requestScope[0] = creds.usageContext;
     const visionLlmId = getResolvedCapabilityModelId(creds, "vision") ?? context.tomoriState.config.vision_llm_id;
     const visionLlm =
       visionLlmId === context.tomoriState.vision_llm?.llm_id
@@ -380,13 +402,20 @@ export class PeekProfilePictureTool extends BaseTool {
       analysisResult = await this.callGoogleVisionWithBase64(apiKey, apiModelName, images, prompt);
     } else {
       const endpointUrl = this.getVisionEndpointUrl(provider, context, creds.customEndpoint?.endpoint_url ?? null);
-      analysisResult = await this.callOpenAICompatibleVisionWithBase64(
-        apiKey,
-        apiModelName,
-        endpointUrl,
-        images,
-        prompt,
-      );
+      try {
+        analysisResult = await withProviderUsageContext(creds.usageContext, async () =>
+          this.callOpenAICompatibleVisionWithBase64(
+            apiKey,
+            apiModelName,
+            endpointUrl,
+            images,
+            prompt,
+            createProviderUsageRecorder(creds.usageContext, apiModelName),
+          ),
+        );
+      } catch (error) {
+        throw findProviderRequestDeniedError(error, creds.usageContext) ?? error;
+      }
     }
 
     log.success(`PeekProfilePictureTool: Vision model analysis completed for ${targetTypeLabel}: ${userDisplayText}`);
@@ -470,6 +499,7 @@ export class PeekProfilePictureTool extends BaseTool {
     endpointUrl: string,
     images: PreparedProfileImage[],
     prompt: string,
+    onUsage?: (usage: TokenUsage) => void,
   ): Promise<string> {
     const requestContent: Array<
       | { type: "text"; text: string }
@@ -502,26 +532,35 @@ export class PeekProfilePictureTool extends BaseTool {
       max_tokens: 1024,
     };
 
-    const response = await fetchUserRemoteUrl(endpointUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+    const response = await fetchWithProviderRequest(
+      endpointUrl,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+          ...(endpointUrl === PROVIDER_CHAT_COMPLETIONS_URLS.openrouter && buildOpenRouterAttributionHeaders()),
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    });
+      fetchUserRemoteUrl,
+    );
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
-      throw new Error(`Vision API returned ${response.status}: ${errorText}`);
+      throw new Error(`Vision API returned ${response.status}: ${errorText}`, {
+        cause: readOpenRouterLimitError(response.status, response.headers, errorText) ?? undefined,
+      });
     }
 
     const data = (await response.json()) as {
       choices?: Array<{
         message?: { content?: string };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(data.usage);
+    if (usage) onUsage?.(usage);
 
     const responseContent = data.choices?.[0]?.message?.content;
     if (!responseContent) {

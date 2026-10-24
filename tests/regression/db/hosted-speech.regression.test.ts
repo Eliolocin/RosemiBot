@@ -34,7 +34,9 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
   let googleCredentialId: number;
   let personalCredentialId: number;
   let foreignServerId: number;
-  const migration = path.join(process.cwd(), "src/db/migrations/102_hosted_speech_models.sql");
+  const migrations = ["102_hosted_speech_models.sql", "901_subscription_speech_selections.sql"].map((name) =>
+    path.join(process.cwd(), "src/db/migrations", name),
+  );
   const scope = () => ({ kind: "server" as const, ownerId: refs.serverId });
   const personal = () => ({ kind: "personal" as const, ownerId: refs.userId });
 
@@ -89,7 +91,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     );
     expect(fish.some((model) => model.codename === "fish-audio/s2.1-pro-free:free" && !model.is_default)).toBe(true);
     expect(google.some((model) => model.codename === "gemini-3.8-flash-lite-tts" && !model.is_default)).toBe(true);
-    await executeTestSqlFile(migration);
+    for (const migration of migrations) await executeTestSqlFile(migration);
     for (const userId of [undefined, refs.userId])
       expect(await resolveSpeechTargets(refs.serverId, userId)).toEqual({ design: null, clone: null });
     const personalCredentials = await llmProviderRepo.loadUserSavedProviderConfigs(refs.userId);
@@ -170,6 +172,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
       await testSql`INSERT INTO servers (server_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING server_id`;
     const [user] =
       await testSql`INSERT INTO users (user_disc_id) VALUES ('_rt_speech_seed_defaults') RETURNING user_id`;
+    await testSql`INSERT INTO server_model_configs (server_id) VALUES (${server.server_id})`;
     try {
       const owners = [
         { kind: "server" as const, ownerId: server.server_id as number },
@@ -232,7 +235,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     const state = await personaRepository.loadState(FIXTURE_IDS.serverDiscId);
     expect(state?.config.speech_design_model_id).toBe(googleId);
     expect(state?.config.speech_clone_model_id).toBe(fishId);
-    await executeTestSqlFile(migration);
+    for (const migration of migrations) await executeTestSqlFile(migration);
     expect((await resolveSpeechTargets(refs.serverId)).clone?.apiKey).toBe("test-server-openrouter-speech");
     const models = {
       design: targets.design?.kind === "hosted-model" ? targets.design.model : null,
@@ -254,7 +257,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Hosted speech persistence", () => {
     targets = await resolveSpeechTargets(refs.serverId);
     expect(targets.design?.endpoint?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
     expect(targets.clone?.endpoint?.custom_endpoint_id).toBe(auto.custom_endpoint_id);
-    await executeTestSqlFile(migration);
+    for (const migration of migrations) await executeTestSqlFile(migration);
     expect((await resolveSpeechTargets(refs.serverId)).clone?.endpoint?.custom_endpoint_id).toBe(
       auto.custom_endpoint_id,
     );

@@ -1,4 +1,6 @@
 import type { CustomEndpointRow, SpeechModelRow } from "@/types/db/schema";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 import { resolveVoiceSourceCandidates } from "@/utils/speech/voiceSourceResolution";
 import type { CustomEndpointApiStyle, TomoriState, VoiceSampleRow } from "@/types/db/schema";
 import {
@@ -39,7 +41,8 @@ export interface ConfigPersonaVoiceLoaderDependencies extends ConfigPersonaVoice
 
 const defaultResolverDependencies: ConfigPersonaVoiceResolverDependencies = {
   loadActiveEndpoint: async (serverId, capability) =>
-    (await loadHostedSpeechSelection(serverId, capability))?.model ?? (await loadActiveEndpoint(serverId, capability)),
+    (await loadHostedSpeechSelection(serverId, capability, undefined, isSupporterBillingEnabled(resolveEnvironment())))
+      ?.model ?? (await loadActiveEndpoint(serverId, capability)),
 };
 
 const defaultLoaderDependencies: ConfigPersonaVoiceLoaderDependencies = {

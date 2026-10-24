@@ -1,3 +1,11 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import type { ResolvedCredentials } from "@/utils/provider/credentialResolver";
+import {
+  createProviderUsageRecorder,
+  findProviderRequestDeniedError,
+  type ProviderUsageContext,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 import type { ButtonInteraction, ChatInputCommandInteraction, Client, Message, TextBasedChannel } from "discord.js";
 import {
   ActionRowBuilder,
@@ -25,10 +33,14 @@ import { promptWithRawModal, safeSelectOptionText } from "@/utils/discord/ui/mod
 import { generateEmbeddingsBatched, providerSupportsEmbeddingTaskType } from "@/utils/embeddings/embeddingProvider";
 import { ColorCode, log } from "@/utils/misc/logger";
 import { getMemoryLimits } from "@/utils/misc/memoryLimits";
-import { getResolvedCapabilityModelId, resolveCapabilityCredentials } from "@/utils/provider/credentialResolver";
+import {
+  getCapabilityCredentialFailureCopy,
+  getResolvedCapabilityModelId,
+  resolveCapabilityCredentials,
+} from "@/utils/provider/credentialResolver";
 import { getEffectiveLlmModelName } from "@/utils/provider/modelDisplay";
 import { providerSupportsFeature } from "@/utils/provider/providerInfoRegistry";
-import { decryptApiKey } from "@/utils/security/crypto";
+import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizer } from "@/utils/text/localizer";
 import { buildConversationContext } from "./historyExtraction";
 import { promptForCompactOptions, promptForManualOptions } from "./modal";
@@ -79,8 +91,8 @@ export async function executeCompactCommand(
   if (!modalSelection) return;
 
   const serverDiscId = interaction.guild?.id ?? interaction.user.id;
-  const tomoriState = await personaRepository.loadState(serverDiscId);
-  if (!tomoriState) {
+  const baseState = await personaRepository.loadState(serverDiscId);
+  if (!baseState) {
     await editError(
       modalSelection.submitInteraction,
       locale,
@@ -90,9 +102,9 @@ export async function executeCompactCommand(
     return;
   }
 
+  const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(baseState, userData.user_id);
   const providerName = tomoriState.llm.llm_provider.toLowerCase();
   const effectiveModelName = getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name);
-  const encryptedApiKey = tomoriState.config.api_key;
   if (
     !(await validateProviderReadiness({
       interaction: modalSelection.submitInteraction,
@@ -104,7 +116,6 @@ export async function executeCompactCommand(
       seesImages: tomoriState.llm.sees_images,
       wantsRoleplay: modalSelection.summaryType === "roleplay",
       wantsImages: modalSelection.analyzeImages,
-      encryptedApiKey,
       userId: userData.user_id,
       serverId: tomoriState.server_id,
       personaId: tomoriState.persona_id,
@@ -113,27 +124,25 @@ export async function executeCompactCommand(
     return;
   }
 
-  if (!encryptedApiKey) {
-    return;
-  }
-
-  const apiKey = await decryptApiKey(encryptedApiKey, tomoriState.config.key_version || 1);
-  if (!apiKey) {
-    log.warn(`[Compact] Failed to decrypt API key for provider "${providerName}"`, undefined, {
+  let apiKey: string;
+  let usageContext: ProviderUsageContext | undefined;
+  try {
+    ({ apiKey, usageContext } = await resolveCapabilityCredentials(tomoriState.server_id, "text", {
       userId: userData.user_id,
-      serverId: tomoriState.server_id,
-      personaId: tomoriState.persona_id,
-      metadata: {
-        command: "compact",
-        provider: providerName,
-      },
-    });
-    await editError(
-      modalSelection.submitInteraction,
-      locale,
-      "general.errors.api_key_error_title",
-      "general.errors.api_key_error_description",
-    );
+    }));
+  } catch (error) {
+    const failure = getCapabilityCredentialFailureCopy(error, locale);
+    if (failure) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, { ...failure, color: ColorCode.ERROR });
+    } else {
+      await log.error("Failed to resolve compact credentials", error as Error);
+      await editError(
+        modalSelection.submitInteraction,
+        locale,
+        "general.errors.unknown_error_title",
+        "general.errors.unknown_error_description",
+      );
+    }
     return;
   }
 
@@ -180,17 +189,29 @@ export async function executeCompactCommand(
       userIds: context.userIds,
       includePersonas: true,
     });
-    const result = await generateCompactSummary({
-      summaryType: modalSelection.summaryType,
-      providerName,
-      apiKey,
-      model: effectiveModelName,
-      endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
-      context,
-      supplementaryContext,
-      systemPrompt: modalSelection.systemPrompt,
-      analyzeImages: modalSelection.analyzeImages,
-    });
+    const result = await withProviderUsageContext(usageContext, async () =>
+      generateCompactSummary({
+        summaryType: modalSelection.summaryType,
+        providerName,
+        apiKey,
+        model: effectiveModelName,
+        endpointUrl: tomoriState.config.custom_endpoint_url ?? undefined,
+        context,
+        supplementaryContext,
+        systemPrompt: modalSelection.systemPrompt,
+        analyzeImages: modalSelection.analyzeImages,
+        onUsage: createProviderUsageRecorder(usageContext, effectiveModelName),
+      }),
+    );
+
+    const denied = findProviderRequestDeniedError(result.cause, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
 
     if (result.error || !result.summary) {
       await editFailure(modalSelection.submitInteraction, locale, result.error || "Unknown error");
@@ -260,6 +281,14 @@ export async function executeCompactCommand(
       setupAddToDocsCollector({ summaryMessage, buildEmbed: (text) => buildEmbed(text), locale, serverDiscId });
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error, usageContext);
+    if (denied) {
+      await replyInfoEmbed(modalSelection.submitInteraction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+      });
+      return;
+    }
     log.error("Compact summary command failed", error);
     await editFailure(
       modalSelection.submitInteraction,
@@ -308,7 +337,6 @@ async function validateProviderReadiness(params: {
   seesImages: boolean;
   wantsRoleplay: boolean;
   wantsImages: boolean;
-  encryptedApiKey: Buffer | null | undefined;
   userId?: number | null;
   serverId?: number;
   personaId?: number;
@@ -378,24 +406,6 @@ async function validateProviderReadiness(params: {
       {
         model_name: params.modelName,
       },
-    );
-    return false;
-  }
-  if (!params.encryptedApiKey) {
-    log.warn(`[Compact] API key missing for provider "${params.providerLabel}"`, undefined, {
-      userId: params.userId,
-      serverId: params.serverId,
-      personaId: params.personaId,
-      metadata: {
-        command: "compact",
-        provider: params.providerName,
-      },
-    });
-    await editError(
-      params.interaction,
-      params.locale,
-      "general.errors.api_key_missing_title",
-      "general.errors.api_key_missing_description",
     );
     return false;
   }
@@ -706,9 +716,19 @@ function setupAddToDocsCollector(params: {
       return;
     }
 
-    const embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", {
-      userId: null,
-    }).catch(() => null);
+    let embeddingCreds: ResolvedCredentials | null = null;
+    try {
+      embeddingCreds = await resolveCapabilityCredentials(tomoriState.server_id, "embedding", { userId: null });
+    } catch (error) {
+      const denied = findProviderRequestDeniedError(error);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
+    }
     if (!embeddingCreds) {
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_no_embedding_title",
@@ -755,15 +775,20 @@ function setupAddToDocsCollector(params: {
         return;
       }
 
-      const embeddings = await generateEmbeddingsBatched({
-        provider: embeddingModel.provider,
-        apiKey: embeddingCreds.apiKey,
-        model: embeddingModel.codename,
-        modelId: embeddingModel.embedding_model_id,
-        inputs: chunks,
-        taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider)) ? "RETRIEVAL_DOCUMENT" : undefined,
-        batchSize: 16,
-      });
+      const embeddings = await withProviderUsageContext(embeddingCreds.usageContext, async () =>
+        generateEmbeddingsBatched({
+          provider: embeddingModel.provider,
+          apiKey: embeddingCreds.apiKey,
+          model: embeddingModel.codename,
+          modelId: embeddingModel.embedding_model_id,
+          inputs: chunks,
+          taskType: (await providerSupportsEmbeddingTaskType(embeddingModel.provider))
+            ? "RETRIEVAL_DOCUMENT"
+            : undefined,
+          batchSize: 16,
+          onUsage: createProviderUsageRecorder(embeddingCreds.usageContext, embeddingModel.codename),
+        }),
+      );
 
       await ragRepository.insertWithChunks({
         serverId: tomoriState.server_id,
@@ -795,6 +820,14 @@ function setupAddToDocsCollector(params: {
         color: ColorCode.SUCCESS,
       });
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, embeddingCreds.usageContext);
+      if (denied) {
+        await replyInfoEmbed(submitInteraction, locale, {
+          ...getProviderRequestFailureCopy(denied, locale),
+          color: ColorCode.ERROR,
+        });
+        return;
+      }
       log.error("Failed to save compact summary to document store", error);
       await replyInfoEmbed(submitInteraction, locale, {
         titleKey: "commands.compact.add_to_docs_error_title",

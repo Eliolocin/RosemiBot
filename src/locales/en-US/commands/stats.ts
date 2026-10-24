@@ -15,7 +15,6 @@ export default {
       no_personas_description: `This server has no personas to show statistics for yet.`,
       not_found_title: `Persona Not Found`,
       not_found_description: `The selected persona could not be found on this server.`,
-      chosen_title: `{name} has been selected`,
     },
     server: {
       description: `View server-wide usage statistics.`,
@@ -146,18 +145,24 @@ export default {
 
     generate: {
       description: `Generate a shareable stats image card.`,
-      type_description: `The type of card to generate.`,
-      timeframe_description: `The time window to summarize.`,
-      scope_description: `Count this server only, or across all servers. Only applies to Personal.`,
-      personal_option: `Personal Wrapped`,
-      persona_option: `Persona Affinity`,
-      server_option: `Server Leaderboard`,
-      privacy_title: `Stats Unavailable`,
-      privacy_description: `Personal stats cards are not available for fully-private users.`,
-      picker_title: `Pick a Persona`,
-      picker_description: `Select a persona to generate a stats card for.`,
-      no_personas_title: `No Personas`,
-      no_personas_description: `This server has no personas to generate a stats card for yet.`,
+      personal: {
+        description: `Generate your Personal Wrapped card.`,
+        timeframe_description: `The time window to summarize.`,
+        scope_description: `Count activity on this server only, or across all servers.`,
+        privacy_title: `Stats Unavailable`,
+        privacy_description: `Personal stats cards are not available for fully-private users.`,
+      },
+      persona: {
+        description: `Generate your Persona Affinity card with one persona.`,
+        persona_description: `The persona to generate a card for.`,
+        timeframe_description: `The time window to summarize.`,
+        no_personas_title: `No Personas`,
+        no_personas_description: `This server has no personas to generate a stats card for yet.`,
+      },
+      server: {
+        description: `Generate this server's Server Leaderboard card.`,
+        timeframe_description: `The time window to summarize.`,
+      },
     },
   },
 };

@@ -1,3 +1,9 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import {
+  findProviderRequestDeniedError,
+  reportProviderUsage,
+  getProviderRequestFailureCopy,
+} from "@/utils/provider/providerUsage";
 /**
  * Video Generation Command (/generate video)
  * Allows users to generate AI videos using Google Veo, OpenRouter, or Z.ai.
@@ -183,6 +189,15 @@ export async function execute(
       userId: userData.user_id ?? null,
     });
   } catch (error) {
+    const denied = findProviderRequestDeniedError(error);
+    if (denied) {
+      await replyInfoEmbed(interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     if (error instanceof PersonalProviderRequiredError) {
       log.warn(`[Generate Video] Personal provider required for video generation`, error, {
         userId: userData.user_id,
@@ -502,14 +517,21 @@ export async function execute(
       videoFilename = result.filename ?? videoFilename;
     } else if (videoImplementation === "openrouter") {
       const { generateOpenRouterNativeVideo } = await import("@/providers/openrouter/openrouterVideoGeneration");
-      const result = await generateOpenRouterNativeVideo({
-        apiKey,
-        model: modelCodename,
-        prompt,
-        aspectRatio,
-        durationSeconds,
-        fps,
-        referenceImages,
+      const result = await withProviderUsageContext(videoCreds.usageContext, async () =>
+        generateOpenRouterNativeVideo({
+          apiKey,
+          model: modelCodename,
+          prompt,
+          aspectRatio,
+          durationSeconds,
+          fps,
+          referenceImages,
+        }),
+      );
+      reportProviderUsage(videoCreds.usageContext, {
+        modelCodename,
+        costUsd: result.costUsd,
+        providerRequestId: result.providerRequestId,
       });
       videoData = result.videoData;
       videoFilename = result.filename ?? videoFilename;
@@ -616,8 +638,17 @@ export async function execute(
     }
     log.success(`Video generated in ${elapsedSec}s via ${displayModelName}`);
   } catch (error) {
-    if (!(error instanceof ProviderVideoFilteredError)) log.error("Video generation command failed:", error as Error);
-
+    const denied = findProviderRequestDeniedError(error, videoCreds?.usageContext);
+    if (!denied && !(error instanceof ProviderVideoFilteredError))
+      log.error("Video generation command failed:", error as Error);
+    if (denied) {
+      await replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
+        ...getProviderRequestFailureCopy(denied, locale),
+        color: ColorCode.ERROR,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorEmbed = new EmbedBuilder()
       .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))

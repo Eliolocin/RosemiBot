@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseInteractionRoute } from "@/utils/discord/interactions/routeRegistry";
 import {
+  buildSetupOptionActionRouteId,
   parseSetupRoute,
   SETUP_ROUTE_NAMESPACE,
   SETUP_ROUTE_VERSION,
@@ -24,6 +25,7 @@ import {
 } from "@/utils/discord/ui/setupPanel";
 import { SETUP_DRAFT_SCHEMA_VERSION, type SetupDraftRecord } from "@/types/discord/setupWizard";
 import { initializeLocalizer } from "@/utils/text/localizer";
+import { buildSubscriptionOnboarding } from "@/modules/supporter-billing/subscribe/panel";
 
 // `parseSetupRoute` resolves its locale segment against the loaded locale set, so a codec round trip
 // reads as forged until the localizer is initialized.
@@ -52,6 +54,7 @@ const EMITTED_ACTIONS: SetupWizardAction[] = [
   "provider-mode",
   "settings",
   "settings-submit",
+  "option-action",
 ];
 
 /** Members of the `SetupWizardAction` union, read from the declaration that defines the codec. */
@@ -63,7 +66,7 @@ function declaredActions(): SetupWizardAction[] {
 
 /** Actions the dispatcher's switch handles, read from its own case labels. */
 function dispatchedActions(): string[] {
-  return [...SETUP_ROUTES_SOURCE.matchAll(/case "([a-z-]+)": \{/g)].map((match) => match[1]);
+  return [...SETUP_ROUTES_SOURCE.matchAll(/case "([a-z-]+)":(?= \{|\s+case )/g)].map((match) => match[1]);
 }
 
 function collectRouteIds(node: unknown, found = new Set<string>()): Set<string> {
@@ -111,8 +114,19 @@ const CATALOGS: SetupSettingsCatalogs = {
 
 /** Every control-bearing payload the wizard can render, in the states that expose each control. */
 function renderedPayloads(): Array<[string, unknown]> {
-  const wizard = (draft: SetupDraftRecord, isHosted: boolean) =>
-    buildSetupWizardPayload({ draft, locale: LOCALE, isHosted, nonce: NONCE, settingsCatalogs: CATALOGS });
+  const wizard = (
+    draft: SetupDraftRecord,
+    isHosted: boolean,
+    optionComponents?: Parameters<typeof buildSetupWizardPayload>[0]["optionComponents"],
+  ) =>
+    buildSetupWizardPayload({
+      draft,
+      locale: LOCALE,
+      isHosted,
+      nonce: NONCE,
+      settingsCatalogs: CATALOGS,
+      optionComponents,
+    });
 
   return [
     ["pending hosted", wizard(createDraft({ requiresPolicies: true }), true)],
@@ -125,6 +139,22 @@ function renderedPayloads(): Array<[string, unknown]> {
           providerAccess: { mode: "custom-endpoint", connection: null, textModel: null },
         }),
         false,
+      ),
+    ],
+    [
+      "subscription onboarding",
+      wizard(
+        createDraft({ providerAccess: { mode: "option", value: "supporter" } }),
+        true,
+        buildSubscriptionOnboarding({
+          locale: LOCALE,
+          ready: false,
+          tier: "",
+          manageUrl: "https://www.patreon.com/example",
+          oauthUrl: "https://www.patreon.com/oauth2/authorize?state=example",
+          continueId: buildSetupOptionActionRouteId({ locale: LOCALE, nonce: NONCE }),
+          fundingServer: "Juno Lounge",
+        }),
       ),
     ],
     [

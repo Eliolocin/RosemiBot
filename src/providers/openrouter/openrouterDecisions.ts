@@ -5,6 +5,7 @@ import {
   parseNamedDecisionAnswers,
 } from "@/providers/utils/decisions";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 
 export async function callOpenRouterDecisions(
   request: ProviderDecisionRequest,
@@ -14,7 +15,8 @@ export async function callOpenRouterDecisions(
     url: "https://openrouter.ai/api/alpha/decisions",
     body: { model: request.model, state: request.evidence, questions: encodeNamedDecisionQuestions(request) },
     headers: buildOpenRouterAttributionHeaders(),
-    fetch: fetchImpl,
+    fetch: (url, init) =>
+      fetchWithProviderRequest(url, init, (input, options) => fetchImpl(String(input), options ?? {})),
     parseAnswers: (payload) => parseNamedDecisionAnswers(payload, request),
   });
 }

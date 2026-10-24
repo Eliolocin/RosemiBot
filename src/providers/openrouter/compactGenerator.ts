@@ -1,3 +1,4 @@
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import { log } from "@/utils/misc/logger";
 import type {
   CompactConversationResult,
@@ -7,6 +8,9 @@ import type {
 import type { CompactRoleplaySummary } from "@/types/misc/compact";
 import { buildRoleplaySchema } from "@/providers/utils/compactCommon";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 export type {
   CompactConversationResult,
   CompactRoleplayResult,
@@ -62,7 +66,7 @@ export async function generateConversationSummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -84,6 +88,7 @@ export async function generateConversationSummaryOpenrouter(
       });
       return {
         error: `OpenRouter request failed (${response.status}): ${response.statusText}`,
+        cause: readOpenRouterLimitError(response.status, response.headers, errorBody) ?? undefined,
       };
     }
 
@@ -91,7 +96,10 @@ export async function generateConversationSummaryOpenrouter(
       choices?: Array<{
         message?: { content?: unknown };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(result.usage);
+    if (usage) request.onUsage?.(usage);
 
     const message = result.choices?.[0]?.message;
     const content = message?.content;
@@ -118,6 +126,7 @@ export async function generateConversationSummaryOpenrouter(
 
     return { summary: responseText.trim() };
   } catch (error) {
+    if (error instanceof ProviderRequestDeniedError) return { error: error.message, cause: error };
     log.error("OpenRouter compact summary failed", error as Error);
     return {
       error: error instanceof Error ? error.message : "Unknown OpenRouter error",
@@ -161,7 +170,7 @@ export async function generateRoleplaySummaryOpenrouter(
       plugins: [{ id: "response-healing" }],
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -183,6 +192,7 @@ export async function generateRoleplaySummaryOpenrouter(
       });
       return {
         error: `OpenRouter request failed (${response.status}): ${response.statusText}`,
+        cause: readOpenRouterLimitError(response.status, response.headers, errorBody) ?? undefined,
       };
     }
 
@@ -190,7 +200,10 @@ export async function generateRoleplaySummaryOpenrouter(
       choices?: Array<{
         message?: { content?: unknown };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(result.usage);
+    if (usage) request.onUsage?.(usage);
 
     const message = result.choices?.[0]?.message;
     const content = message?.content;
@@ -230,6 +243,7 @@ export async function generateRoleplaySummaryOpenrouter(
 
     return { summary: parsed };
   } catch (error) {
+    if (error instanceof ProviderRequestDeniedError) return { error: error.message, cause: error };
     log.error("OpenRouter roleplay summary failed", error as Error);
     return {
       error: error instanceof Error ? error.message : "Unknown OpenRouter error",

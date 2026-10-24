@@ -15,10 +15,10 @@ import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
 import {
   responseDraftingOperations,
   loadResponseDraftingView,
-  loadDraftingModelGroups,
   loadDraftCheckerChoices,
 } from "@/utils/discord/interactions/responseDraftingOperations";
 import { getGuildMcpManager } from "@/utils/mcp/guildMcpManager";
+import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
 import { registerCustomEndpoint } from "@/utils/provider/customEndpointService";
 import { initializeLocalizer } from "@/utils/text/localizer";
 import { createPersona, createServerConfig } from "../../helpers/fixtures";
@@ -274,7 +274,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Response Drafting persistence", () => {
     const [removed] =
       await testSql`SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${refs.serverId}`;
     expect(removed.response_reviewer_llm_id).toBeNull();
-    expect(await loadDraftingModelGroups(refs.serverId, "en-US")).toEqual([]);
+    expect(await loadStructuredOutputModelGroups(refs.serverId, "en-US")).toEqual([]);
   });
 
   it("clears auxiliary references when an owned custom connection group is removed", async () => {

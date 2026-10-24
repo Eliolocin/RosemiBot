@@ -1,7 +1,12 @@
+import { SUPPORTER_SECRET_ENV_KEYS } from "@/modules/supporter-billing/config/secretEnvKeys";
 import { log } from "@/utils/misc/logger";
-import { getAppSecrets } from "@/utils/security/secretsManager";
+import { getAppSecrets, registerSecretEnvKeys } from "@/utils/security/secretsManager";
 import { keyManager } from "@/utils/security/keyManager";
 import type { AppEnvironment } from "@/types/config";
+
+// Registration is an import-time side effect because getAppSecrets() only loads names known before
+// it runs, and a name registered late would silently stay out of the loaded secret object.
+registerSecretEnvKeys([...SUPPORTER_SECRET_ENV_KEYS, "TOMORI_PUBLIC_BASE_URL"]);
 
 /**
  * Loads the selected secret source before consumers initialize database connections or keys.
@@ -64,12 +69,22 @@ export async function loadSecrets(environment: AppEnvironment): Promise<void> {
   if (secrets.MATRIX_APPSERVICE_PUBLIC_URL)
     process.env.MATRIX_APPSERVICE_PUBLIC_URL = secrets.MATRIX_APPSERVICE_PUBLIC_URL;
 
+  if (secrets.TOMORI_PUBLIC_BASE_URL) process.env.TOMORI_PUBLIC_BASE_URL = secrets.TOMORI_PUBLIC_BASE_URL;
+
   if (secrets.TOPGG_TOKEN) process.env.TOPGG_TOKEN = secrets.TOPGG_TOKEN;
 
   // Must be set before any module reads MEMORY_PROTECTION(). Deployment env wins: a stale bundle
   // value could otherwise restore a limit above physical memory, leaving the guard unreachable.
   if (secrets.CONTAINER_MEMORY_LIMIT_MB && !process.env.CONTAINER_MEMORY_LIMIT_MB)
     process.env.CONTAINER_MEMORY_LIMIT_MB = secrets.CONTAINER_MEMORY_LIMIT_MB;
+
+  // Propagate Supporter Billing secrets/config. The key list is owned by the billing module so this
+  // shared startup file carries no billing-specific vocabulary; a dumb copy loop with no parsing.
+  // No-op in dev/self-host where these keys are unset.
+  for (const key of SUPPORTER_SECRET_ENV_KEYS) {
+    const value = secrets[key];
+    if (value) process.env[key] = value;
+  }
 
   const secretsSource =
     environment !== "production" || process.env.TEST_PRODUCTION === "true"

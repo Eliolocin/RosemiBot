@@ -89,7 +89,7 @@ export function decisionSource(payload: unknown): SourceCatalog[string] {
     id: entry.id,
     modalities: { input: entry.architecture.input_modalities, output: entry.architecture.output_modalities },
     limit: { input: entry.context_length },
-    cost: { input: entry.pricing.prompt * 1_000_000, output: entry.pricing.completion * 1_000_000 },
+    cost: { input: Number(entry.pricing.prompt) * 1_000_000, output: Number(entry.pricing.completion) * 1_000_000 },
   }));
   const valid = new Set(entries.map((entry) => entry.id));
   // The shared parser rejects undocumented limits and prices, so drift cannot admit rows runtime discovery rejects.

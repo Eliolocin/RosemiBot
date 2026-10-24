@@ -15,7 +15,7 @@ before you can select it.
 Run `/personal message-proxy service:pluralbuddy` on the Discord account that sends your PluralBuddy
 messages. If your TomoriBot host has approved another instance, select it with the optional
 `instance` field; leaving that field empty selects the official instance. Use `service:none` to turn
-the wait off. TomoriBot also skips the wait automatically in guilds where the selected PluralBuddy
+the wait off. TomoriBot also skips the wait automatically in servers where the selected PluralBuddy
 bot is not installed. Your account's privacy settings, blacklist state, cooldowns, and quotas still
 apply to every alter it hosts. After TomoriBot verifies an alter's first
 repost, use `/personal config identity:` and `/personal memories identity:` to edit that alter's

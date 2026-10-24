@@ -189,9 +189,11 @@ export async function generatePresetFromPromptCustom(
           }
         }
 
-        const convertedResult = customAdapter.convertResult(
-          toolResult ?? buildToolErrorResult("Tool execution failed"),
-        );
+        if (!toolResult?.success) {
+          return { error: "Persona web search failed.", errorType: "MODEL_ERROR", failureStage: "web_search" };
+        }
+
+        const convertedResult = customAdapter.convertResult(toolResult);
         const resultContent =
           typeof convertedResult.content === "string"
             ? convertedResult.content

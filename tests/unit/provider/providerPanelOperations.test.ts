@@ -1,3 +1,4 @@
+import { createLlmRow, createPersona } from "../../helpers/fixtures";
 import { describe, expect, it } from "bun:test";
 import type { TomoriState } from "@/types/db/schema";
 import {
@@ -6,11 +7,11 @@ import {
 } from "@/utils/provider/providerPanelOperations";
 
 function state(provider = "custom:7"): TomoriState {
-  return {
+  return createPersona({
     server_id: 12,
-    llm: { llm_provider: provider },
+    llm: createLlmRow({ llm_provider: provider }),
     config: { fallback_model_refs: [] },
-  } as unknown as TomoriState;
+  });
 }
 
 function dependencies(

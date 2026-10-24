@@ -11,19 +11,33 @@ import { log } from "@/utils/misc/logger";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { RemoteUrlPolicyError } from "@/utils/security/userRemoteFetch";
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import { findSupporterRequestDeniedError } from "@/modules/supporter-billing/runtime/funding";
 
 const DECISION_TIMEOUT_MS = parseIntegerEnvFlag(process.env.STREAM_SDK_CALL_TIMEOUT_MS, 120_000, 10_000);
 const MAX_DECISION_RESPONSE_BYTES = 1024 * 1024;
 const probabilitySchema = z.number().finite().min(0).max(1);
+/** OpenRouter rounds probabilities, so a tie can come back a hair below the maximum. */
+const CHOICE_ARGMAX_TOLERANCE = 0.005;
+const decisionIdSchema = z.string().regex(/^[a-z][a-z0-9_]{0,63}$/);
+const instructionsSchema = z.string().min(1).max(8_000);
 const requestInputSchema = z.object({
   evidence: z.string().min(1).max(2_000_000),
   questions: z
     .array(
-      z.object({
-        type: z.literal("predicate"),
-        id: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
-        instructions: z.string().min(1).max(8_000),
-      }),
+      z.discriminatedUnion("type", [
+        z.object({ type: z.literal("predicate"), id: decisionIdSchema, instructions: instructionsSchema }),
+        z.object({
+          type: z.literal("choice"),
+          id: decisionIdSchema,
+          instructions: instructionsSchema,
+          options: z
+            .array(z.object({ id: decisionIdSchema, description: instructionsSchema }))
+            .min(2)
+            .max(64)
+            .refine((options) => new Set(options.map((option) => option.id)).size === options.length),
+        }),
+      ]),
     )
     .min(1)
     .max(64),
@@ -36,16 +50,49 @@ export function validDecisionInput(input: DecisionInput): boolean {
   );
 }
 
+/** Named styles (OpenRouter, System One) key questions by ID; a choice lists its options as `criteria`. */
 export function encodeNamedDecisionQuestions(request: DecisionInput) {
   return Object.fromEntries(
     request.questions.map((question) => [
       question.id,
-      {
-        type: "noul",
-        instructions: question.instructions,
-      },
+      question.type === "choice"
+        ? {
+            type: "choice",
+            instructions: question.instructions,
+            criteria: Object.fromEntries(question.options.map((option) => [option.id, option.description])),
+          }
+        : { type: "noul", instructions: question.instructions },
     ]),
   );
+}
+
+export function encodeOrderedDecisionQuestions(request: DecisionInput) {
+  return request.questions.map((question) =>
+    question.type === "choice"
+      ? {
+          type: "choice",
+          name: question.id,
+          instructions: question.instructions,
+          choices: question.options.map((option) => ({ value: option.id, description: option.description })),
+        }
+      : { type: "predicate", name: question.id, instructions: question.instructions },
+  );
+}
+
+/**
+ * A choice answer must name one of the offered options, give a probability for each of them, and
+ * name the most likely one, because callers act on the choice alone.
+ */
+function validChoiceAnswer(
+  question: DecisionInput["questions"][number],
+  choice: string,
+  probabilities: Record<string, number>,
+): boolean {
+  if (question.type !== "choice") return false;
+  const ids = question.options.map((option) => option.id);
+  const keys = Object.keys(probabilities);
+  if (!ids.includes(choice) || keys.length !== ids.length || !keys.every((key) => ids.includes(key))) return false;
+  return probabilities[choice] >= Math.max(...Object.values(probabilities)) - CHOICE_ARGMAX_TOLERANCE;
 }
 
 const usageSchema = z.object({
@@ -77,7 +124,19 @@ function parseDecisionUsage(payload: unknown): DecisionUsage | undefined {
 }
 
 export function parseNamedDecisionAnswers(payload: unknown, request: DecisionInput): DecisionAnswer[] {
-  const answers = z.record(z.string(), z.object({ type: z.literal("noul"), noul: probabilitySchema })).parse(payload);
+  const answers = z
+    .record(
+      z.string(),
+      z.discriminatedUnion("type", [
+        z.object({ type: z.literal("noul"), noul: probabilitySchema }),
+        z.object({
+          type: z.literal("choice"),
+          choice: z.string(),
+          probabilities: z.record(z.string(), probabilitySchema),
+        }),
+      ]),
+    )
+    .parse(payload);
   const keys = Object.keys(answers);
   if (
     keys.length !== request.questions.length ||
@@ -85,11 +144,16 @@ export function parseNamedDecisionAnswers(payload: unknown, request: DecisionInp
   ) {
     throw new Error("Decision answer membership is invalid");
   }
-  return request.questions.map((question) => ({
-    type: "predicate",
-    id: question.id,
-    probability: answers[question.id].noul,
-  }));
+  return request.questions.map((question): DecisionAnswer => {
+    const answer = answers[question.id];
+    if (answer.type === "noul" && question.type === "predicate") {
+      return { type: "predicate", id: question.id, probability: answer.noul };
+    }
+    if (answer.type === "choice" && validChoiceAnswer(question, answer.choice, answer.probabilities)) {
+      return { type: "choice", id: question.id, choice: answer.choice, probabilities: answer.probabilities };
+    }
+    throw new Error("Decision answer type or options are invalid");
+  });
 }
 
 export function parseOrderedDecisionAnswers(payload: unknown, request: DecisionInput): DecisionAnswer[] {
@@ -97,6 +161,12 @@ export function parseOrderedDecisionAnswers(payload: unknown, request: DecisionI
     .array(
       z.discriminatedUnion("type", [
         z.object({ type: z.literal("predicate"), name: z.string(), probability: probabilitySchema }),
+        z.object({
+          type: z.literal("choice"),
+          name: z.string(),
+          choice: z.string(),
+          probabilities: z.array(z.object({ value: z.string(), probability: probabilitySchema })),
+        }),
         z.object({ type: z.literal("refusal"), name: z.string() }),
       ]),
     )
@@ -107,11 +177,23 @@ export function parseOrderedDecisionAnswers(payload: unknown, request: DecisionI
   ) {
     throw new Error("Decision answer order or membership is invalid");
   }
-  return answers.map((answer) =>
-    answer.type === "refusal"
-      ? { type: "refusal", id: answer.name }
-      : { type: "predicate", id: answer.name, probability: answer.probability },
-  );
+  return answers.map((answer, index): DecisionAnswer => {
+    const question = request.questions[index];
+    if (answer.type === "refusal") return { type: "refusal", id: answer.name };
+    if (answer.type === "predicate" && question.type === "predicate") {
+      return { type: "predicate", id: answer.name, probability: answer.probability };
+    }
+    if (answer.type === "choice") {
+      const probabilities = Object.fromEntries(answer.probabilities.map((row) => [row.value, row.probability]));
+      if (
+        Object.keys(probabilities).length === answer.probabilities.length &&
+        validChoiceAnswer(question, answer.choice, probabilities)
+      ) {
+        return { type: "choice", id: answer.name, choice: answer.choice, probabilities };
+      }
+    }
+    throw new Error("Decision answer type or options are invalid");
+  });
 }
 
 function parseDecisionJson(raw: string): unknown {
@@ -160,6 +242,7 @@ export async function reportDecisionFailure(
   stage: "resolution" | "transport" | "response" | "validation" | "execution",
   startedAt: number,
   httpStatus?: number,
+  cause?: Error,
 ): Promise<DecisionResult> {
   await log.error("Decision operation failed", new Error(`Decision ${stage} failed (${category})`), {
     errorType: "DecisionOperationFailed",
@@ -177,7 +260,7 @@ export async function reportDecisionFailure(
       elapsedMs: Date.now() - startedAt,
     },
   });
-  return { status: "failed", category, correlationId: request.correlationId, errorLogged: true };
+  return { status: "failed", category, correlationId: request.correlationId, errorLogged: true, cause };
 }
 
 export async function executeDecisionTransport(
@@ -222,13 +305,14 @@ export async function executeDecisionTransport(
       return cancelled();
     }
     if (!response.ok) {
-      await response.body?.cancel();
+      const limit = await readOpenRouterLimitResponse(response);
       return await reportDecisionFailure(
         request,
-        [401, 403].includes(response.status) ? "authentication" : "http",
+        [401, 403].includes(response.status) && !limit ? "authentication" : "http",
         stage,
         startedAt,
         httpStatus,
+        limit ?? undefined,
       );
     }
     stage = "response";
@@ -257,6 +341,8 @@ export async function executeDecisionTransport(
     decisionTrace(request, outcome, { questionCount: answers.length, elapsedMs: Date.now() - startedAt, usage });
     return { status: outcome, answers, usage, correlationId, providerRequestId, actualModel: envelope.model };
   } catch (error) {
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) return { status: "denied", error: denied, correlationId, errorLogged: false };
     if (request.abortSignal?.aborted) return cancelled();
     if (error instanceof RemoteUrlPolicyError) return { status: "invalid-input", correlationId, errorLogged: false };
     return await reportDecisionFailure(

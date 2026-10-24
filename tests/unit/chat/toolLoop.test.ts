@@ -1743,12 +1743,6 @@ describe("runToolLoop — contract tests", () => {
       expect(calls[0]?.model).toBe("review-model");
       expect(calls[0]?.thinkingLevel).toBe("low");
       expect(availableSpy.mock.calls[0]?.[2]).toEqual({ kind: "server", ownerId: context.currentPersona.server_id });
-      availableSpy.mockResolvedValue([]);
-      const inaccessible = makeReviewContext();
-      inaccessible.responseReview.reviewerId = 88;
-      inaccessible.responseReview.pending = [held("quiet", []).pendingResponse];
-      expect((await reviewResponseCandidate(inaccessible, provider, makeProviderConfig())).status).toBe("unavailable");
-      expect(calls).toHaveLength(1);
     } finally {
       modelSpy.mockRestore();
       availableSpy.mockRestore();

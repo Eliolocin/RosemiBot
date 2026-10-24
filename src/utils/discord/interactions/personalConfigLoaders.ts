@@ -21,13 +21,16 @@ import type {
   PersonalConfigRoutingRow,
 } from "@/utils/discord/ui/personalConfigPanel";
 import { log } from "@/utils/misc/logger";
+import { isSupporterBillingEnabled, SUPPORTER_PROVIDER_VALUE } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
 import { parseCustomProvider } from "@/utils/provider/customProviderUtils";
 import {
   getActivePersonalProviderForCapability,
   getStoredPersonalProviderForCapability,
 } from "@/utils/provider/personalProviderHelpers";
 import { loadUserSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
-import { resolveDescription } from "@/utils/text/localizer";
+import { findProviderOption, providerOptionOffersPersonalCapability } from "@/utils/provider/providerOptionRegistry";
+import { localizer, resolveDescription } from "@/utils/text/localizer";
 import { messageProxyRepository } from "@/utils/db/repositories/MessageProxyRepository";
 import { formatManagedIdentityLabel } from "@/utils/discord/interactions/managedIdentityPanelRoutes";
 
@@ -143,6 +146,12 @@ export async function loadAvailableModelsForCapability(
   capability: PersonalConfigManagedCapability,
   locale = "en-US",
 ): Promise<Array<{ id: number; name: string; description?: string }>> {
+  const option = findProviderOption(provider);
+  if (option) {
+    if (!providerOptionOffersPersonalCapability(option, capability)) return [];
+    if (!(await option.availability({ kind: "personal", ownerId: userId })).eligible) return [];
+    provider = option.catalogProvider;
+  }
   try {
     if (capability === "speech_design" || capability === "speech_clone") {
       const models = await llmModelRepo.loadAvailableSpeechModels(provider, { kind: "personal", ownerId: userId });
@@ -241,7 +250,12 @@ export async function loadAvailableModelsForCapability(
 export async function loadFallbackSelectionOptions(
   userId: number,
   provider: string,
+  locale = "en-US",
 ): Promise<Array<{ refKey: string; label: string }>> {
+  if (provider === SUPPORTER_PROVIDER_VALUE) {
+    if (!isSupporterBillingEnabled(resolveEnvironment())) return [];
+    provider = "openrouter";
+  }
   const customProvider = parseCustomProvider(provider);
   if (customProvider) {
     const endpoints = await llmProviderRepo.loadCustomEndpointsForUser(userId);
@@ -259,13 +273,27 @@ export async function loadFallbackSelectionOptions(
   }
 
   const models =
-    (await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-      kind: "personal",
-      ownerId: userId,
-    })) ?? [];
-  return models
+    (await llmModelRepo.loadAvailableModelsForProvider(
+      findProviderOption(provider)?.catalogProvider ?? provider,
+      false,
+      {
+        kind: "personal",
+        ownerId: userId,
+      },
+    )) ?? [];
+  const choices = models
     .filter((model) => typeof model.llm_id === "number" && model.llm_codename !== "other-model")
     .map((model) => ({ refKey: `llm:${model.llm_id}`, label: model.llm_codename }));
+  if (provider !== "openrouter") return choices;
+  const rows = await loadUserSavedProvidersForCapability(userId, "text");
+  return rows
+    .filter((row) => row.provider === "openrouter" || row.provider === SUPPORTER_PROVIDER_VALUE)
+    .flatMap((row) =>
+      choices.map((choice) => ({
+        refKey: row.provider === SUPPORTER_PROVIDER_VALUE ? `${choice.refKey}:supporter` : choice.refKey,
+        label: `${choice.label} (${row.provider === SUPPORTER_PROVIDER_VALUE ? localizer(locale, "commands.providers.subscription_label") : "OpenRouter"})`,
+      })),
+    );
 }
 
 export async function loadPersonalModelDisplayInfo(
@@ -274,6 +302,7 @@ export async function loadPersonalModelDisplayInfo(
   _selectedCap: PersonalConfigManagedCapability = "text",
   selectedParamsProvider?: string,
   selectedFallbacksProvider?: string,
+  locale = "en-US",
 ): Promise<PersonalConfigModelDisplayInfo> {
   const resolveCapName = async (
     row: UserSavedProviderConfigRow | null | undefined,
@@ -284,10 +313,13 @@ export async function loadPersonalModelDisplayInfo(
     try {
       if (cap === "speech_design" || cap === "speech_clone") {
         const id = cap === "speech_design" ? row.speech_design_model_id : row.speech_clone_model_id;
-        const models = await llmModelRepo.loadAvailableSpeechModels(row.provider, {
-          kind: "personal",
-          ownerId: userId,
-        });
+        const models = await llmModelRepo.loadAvailableSpeechModels(
+          findProviderOption(row.provider)?.catalogProvider ?? row.provider,
+          {
+            kind: "personal",
+            ownerId: userId,
+          },
+        );
         modelName = models.find((model) => model.speech_model_id === id)?.codename ?? null;
       } else if (cap === "text" && row.llm_id) {
         const m = await llmModelRepo.loadById(row.llm_id);
@@ -449,23 +481,11 @@ export async function loadPersonalModelDisplayInfo(
     (p) => p.provider.toLowerCase() === activeParamsProvider?.toLowerCase(),
   );
 
-  const activeFallbacksProvider =
-    selectedFallbacksProvider ?? textActive?.provider ?? textStored?.provider ?? textProviderNames[0];
-  const selectedFallbacksConfig = savedProviders.find(
-    (p) => p.provider.toLowerCase() === activeFallbacksProvider?.toLowerCase(),
-  );
+  const fallbacksProvider =
+    selectedFallbacksProvider ?? textActive?.provider ?? textStored?.provider ?? textProviderNames[0] ?? null;
 
-  let primaryModelName: string | null = null;
-  if (selectedFallbacksConfig?.llm_id) {
-    try {
-      const primary = await llmModelRepo.loadById(selectedFallbacksConfig.llm_id);
-      primaryModelName = primary?.llm_codename ?? null;
-    } catch {
-      primaryModelName = null;
-    }
-  }
-
-  const fallbackRefs = selectedFallbacksConfig?.fallback_model_refs ?? [];
+  const { fallback_model_refs: fallbackRefs, model_randomizer_enabled: randomizerEnabled } =
+    await llmProviderRepo.loadPersonalFallbackSettings(userId);
   const fallbackSlots: PersonalConfigFallbackDisplaySlot[] = [];
 
   for (let slot = 1; slot <= 5; slot++) {
@@ -475,7 +495,9 @@ export async function loadPersonalModelDisplayInfo(
       try {
         if (ref.type === "llm") {
           const m = await llmModelRepo.loadById(ref.id);
-          modelName = m?.llm_codename ?? null;
+          modelName = m
+            ? `${m.llm_codename}${m.llm_provider === "openrouter" ? ` (${ref.credentialProvider === "supporter" ? localizer(locale, "commands.providers.subscription_label") : "OpenRouter"})` : ""}`
+            : null;
         } else if (ref.type === "custom_endpoint") {
           const endpoints = await llmProviderRepo.loadCustomEndpointsByIds([ref.id]);
           modelName = endpoints[0]?.model_name ?? endpoints[0]?.label ?? `Endpoint #${ref.id}`;
@@ -487,7 +509,6 @@ export async function loadPersonalModelDisplayInfo(
     fallbackSlots.push({ slot, modelName });
   }
 
-  const randomizerEnabled = Boolean(selectedFallbacksConfig?.model_randomizer_enabled);
   const canEnableRandomizer = fallbackRefs.length > 0;
 
   return {
@@ -506,8 +527,7 @@ export async function loadPersonalModelDisplayInfo(
     parametersProviders: textProviderNames,
     selectedParametersConfig,
     fallbacksProviders: textProviderNames,
-    selectedFallbacksConfig,
-    primaryModelName,
+    fallbacksProvider,
     fallbackSlots,
     randomizerEnabled,
     canEnableRandomizer,

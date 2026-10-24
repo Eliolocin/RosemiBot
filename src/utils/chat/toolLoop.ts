@@ -45,6 +45,7 @@ import { buildExpressionToolResult, deliverExpression } from "@/utils/chat/expre
 import { recordChatDiagnostic, runWithChatDiagnosticStage } from "@/utils/chat/diagnosticTimeline";
 import { parseIntegerEnvFlag } from "@/utils/misc/envFlags";
 import type { ChatTurnContext, GenerationTurnResult, ToolHistoryEntry } from "@/utils/chat/types";
+import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { DISCORD_STREAMING_CONSTANTS } from "@/types/stream/types";
 import { neutralizeFenceRuns } from "@/utils/text/discordTextLimits";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
@@ -82,6 +83,7 @@ export interface ToolLoopParams {
   context: ChatTurnContext;
   provider: LLMProvider;
   providerConfig: ProviderConfig;
+  supporterFunding?: SupporterFundingContext;
   tomoriState: ChatTurnContext["tomoriState"];
 }
 
@@ -505,7 +507,7 @@ export async function sendStreamTimeoutNotice(params: {
   channel: Parameters<typeof sendStandardEmbed>[0];
   locale: string;
   providerName: string;
-  textCredentialSource: "server" | "personal" | undefined;
+  textCredentialSource: "server" | "personal" | "supporter" | undefined;
   sawStreamProgress: boolean;
 }): Promise<void> {
   await sendStandardEmbed(params.channel, params.locale, {
@@ -776,12 +778,15 @@ async function executeToolCall(
     channel: params.context.channel as ToolContext["channel"],
     client: params.context.client,
     message: params.context.message,
-    userId: params.context.userDiscId,
+    // A Ping User's tools act for the member it addresses, so a reminder or memory defaults to them.
+    userId:
+      params.context.turn.lockedTurn.admission.incoming.naturalNudge?.targetUserDiscId ?? params.context.userDiscId,
     internalUserId: params.context.personalRoutingUserId ?? undefined,
     guildId: params.context.guild?.id,
     tomoriState: params.tomoriState,
     locale: params.context.locale,
     provider: params.provider.getInfo().name,
+    usageContext: params.context.usageContext,
     streamContext: params.context.streamingContext,
     webhook: params.context.responseTarget?.webhook,
     personaUsername: params.context.responseTarget?.personaUsername,
@@ -1423,6 +1428,7 @@ function buildResult(
     usageEntries: context.responseReview?.usage,
     personaResponses: buildPersonaResponses(context, composeResponseText(context, responseText, detailsText)),
     toolResponseDelivered: toolResponseDelivered || undefined,
+    firstDeliveredMessageId: streamResults.find((result) => result.firstMessageId)?.firstMessageId,
     thoughtLog,
     thoughtLogOwner: thoughtLog ? resolveThoughtLogOwner(context) : undefined,
   };

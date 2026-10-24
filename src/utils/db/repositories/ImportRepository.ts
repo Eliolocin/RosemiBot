@@ -1,5 +1,11 @@
 import { validateDraftingImportReferences } from "@/utils/discord/interactions/responseDraftingOperations";
+import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
+import { supportsCheckerChoice } from "@/modules/natural-nudges/db/types";
+import { invalidateNaturalNudgeConfigCache } from "@/modules/natural-nudges/runtime/configCache";
+import { isKnownPrerequisite, isNudgeToolName } from "@/modules/natural-nudges/runtime/idleNudges";
 import { sql } from "@/utils/db/client";
+import { loadDecisionModelsForScope } from "@/providers/utils/providerFeatureExecutors";
 import type { SQL } from "bun";
 import { log } from "@/utils/misc/logger";
 import {
@@ -38,7 +44,7 @@ import { invalidateUserCache } from "@/utils/cache/userCache";
 import { configRepository } from "@/utils/db/repositories/ConfigRepository";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import type { SqlParameterArray } from "@/types/db/sqlOperations";
-import type { ServerChatConfigRow, ServerNoticeEmbedsConfigRow } from "@/types/db/schema";
+import type { ServerChatConfigRow, ServerNoticeEmbedsConfigRow, SubscriptionCapability } from "@/types/db/schema";
 
 type ImportFileType =
   | "personal_memories"
@@ -98,6 +104,7 @@ interface SectionTableDefinition {
 interface PreparedConfigImport {
   tablePatches: ConfigTablePatch[];
   stmCategories?: Array<{ position: number; label: string; description: string }>;
+  nudges?: NonNullable<WorkspaceConfigExportData["nudges"]>;
   configFieldsCount: number;
 }
 
@@ -236,6 +243,8 @@ const WORKSPACE_SECTION_TABLES: Record<WorkspaceConfigSection, readonly SectionT
     },
   ],
   access: [{ tableName: "server_byok_configs", fields: ["user_byok_mode"] }],
+  // Written by its own upsert, because a server that never opened the page has no row to update.
+  nudges: [],
 };
 
 const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTableDefinition[]> = {
@@ -256,7 +265,10 @@ const PERSONAL_SECTION_TABLES: Record<PersonalConfigSection, readonly SectionTab
   ],
   privacy: [
     { tableName: "users", fields: ["privacy_level", "message_proxy_service"] },
-    { tableName: "user_personalization_configs", fields: ["shortterm_cache_crossserver_opt_in"] },
+    {
+      tableName: "user_personalization_configs",
+      fields: ["shortterm_cache_crossserver_opt_in", "natural_nudge_opt_out"],
+    },
   ],
   appearance: [{ tableName: "user_personalization_configs", fields: ["physical_appearance_tags"] }],
   response_modes: [
@@ -278,6 +290,26 @@ const TEXT_ARRAY_CONFIG_COLUMNS = new Set([
 ]);
 
 const JSONB_CONFIG_COLUMNS = new Set(["response_rule_checker_ref", "llm_logit_biases", "deliberate_tool_triggers"]);
+
+type ImportedSelectionCapability = Extract<
+  SubscriptionCapability,
+  "reviewer" | "speech_design" | "speech_clone" | "nudge_planner" | "nudge_checker"
+>;
+interface ImportedSelection {
+  id: number | null;
+  kind: "llm" | "speech" | "decision";
+}
+
+const IMPORTED_SELECTION_COLUMNS: ReadonlyArray<{
+  capability: ImportedSelectionCapability;
+  tableName: string;
+  column: string;
+  kind: ImportedSelection["kind"];
+}> = [
+  { capability: "reviewer", tableName: "server_chat_configs", column: "response_reviewer_llm_id", kind: "llm" },
+  { capability: "speech_design", tableName: "server_speech_configs", column: "speech_design_model_id", kind: "speech" },
+  { capability: "speech_clone", tableName: "server_speech_configs", column: "speech_clone_model_id", kind: "speech" },
+];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -332,6 +364,55 @@ function getStmCategories(value: unknown): Array<{ position: number; label: stri
 }
 
 /**
+ * The planner and checker models must be offered to this workspace, at most one checker may be set, and
+ * every custom idle nudge must name known checks.
+ */
+async function validateNudgesImport(
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<boolean> {
+  const idleNudges = nudges.custom_idle_nudges ?? [];
+  if (
+    !idleNudges.every(
+      (idleNudge) =>
+        idleNudge.prerequisites.every(isKnownPrerequisite) && idleNudge.recommended_tools.every(isNudgeToolName),
+    )
+  )
+    return false;
+  if (nudges.checker_llm_id != null && nudges.checker_decision_model_id != null) return false;
+  const textModelIds = [nudges.llm_id, nudges.checker_llm_id].filter((id): id is number => id != null);
+  if (textModelIds.length > 0) {
+    const groups = await loadStructuredOutputModelGroups(serverId, "en-US");
+    const offered = new Set(groups.flatMap((group) => group.models.map((model) => model.id)));
+    if (!textModelIds.every((id) => offered.has(id))) return false;
+  }
+  if (nudges.checker_decision_model_id == null) return true;
+  return (await loadDecisionModelsForScope({ kind: "server", ownerId: serverId })).some(
+    ({ model }) => model.decision_model_id === nudges.checker_decision_model_id && supportsCheckerChoice(model),
+  );
+}
+
+async function importNudgesSection(
+  tx: SQL,
+  serverId: number,
+  nudges: NonNullable<WorkspaceConfigExportData["nudges"]>,
+): Promise<void> {
+  const { custom_idle_nudges: customIdleNudges, ...imported } = nudges;
+  // Clears the other checker column, because the one-checker CHECK rejects a row that keeps both set.
+  const settings =
+    imported.checker_llm_id != null
+      ? { ...imported, checker_decision_model_id: null }
+      : imported.checker_decision_model_id != null
+        ? { ...imported, checker_llm_id: null }
+        : imported;
+  if (!(await naturalNudgeRepository.saveServerConfig(serverId, settings, tx))) {
+    throw new Error("Natural Nudges settings import failed");
+  }
+  if (customIdleNudges !== undefined)
+    await naturalNudgeRepository.replaceCustomIdleNudges(serverId, customIdleNudges, tx);
+}
+
+/**
  * ImportRepository: owns all data import operations.
  *
  * Handles personal and server data import, per-domain slice imports
@@ -365,6 +446,7 @@ class ImportRepository {
 
     const tablePatches: ConfigTablePatch[] = [];
     let stmCategories: PreparedConfigImport["stmCategories"];
+    let nudges: PreparedConfigImport["nudges"];
     let configFieldsCount = 0;
 
     for (const section of presentSections) {
@@ -384,6 +466,11 @@ class ImportRepository {
         0,
       );
 
+      if (section === "nudges" && isRecord(sectionValidation.data)) {
+        nudges = sectionValidation.data as PreparedConfigImport["nudges"];
+        configFieldsCount += Object.keys(sectionValidation.data).length;
+      }
+
       if (section === "memory" && isRecord(sectionValidation.data)) {
         const categories = getStmCategories(sectionValidation.data);
         if (categories !== undefined) {
@@ -393,7 +480,7 @@ class ImportRepository {
       }
     }
 
-    return { success: true, prepared: { tablePatches, stmCategories, configFieldsCount } };
+    return { success: true, prepared: { tablePatches, stmCategories, nudges, configFieldsCount } };
   }
 
   private preparePersonalConfig(
@@ -528,6 +615,168 @@ class ImportRepository {
     }
   }
 
+  private getImportedSelectionIds(
+    tablePatches: readonly ConfigTablePatch[],
+    nudges?: WorkspaceConfigExportData["nudges"],
+  ): Map<ImportedSelectionCapability, ImportedSelection> {
+    const imported = new Map<ImportedSelectionCapability, ImportedSelection>();
+    for (const definition of IMPORTED_SELECTION_COLUMNS) {
+      for (const tablePatch of tablePatches) {
+        if (tablePatch.tableName !== definition.tableName || !Object.hasOwn(tablePatch.patch, definition.column)) {
+          continue;
+        }
+        const value = tablePatch.patch[definition.column];
+        if (value !== undefined)
+          imported.set(definition.capability, { id: value as number | null, kind: definition.kind });
+      }
+    }
+    if (nudges?.llm_id !== undefined) imported.set("nudge_planner", { id: nudges.llm_id, kind: "llm" });
+    if (nudges?.checker_llm_id != null) imported.set("nudge_checker", { id: nudges.checker_llm_id, kind: "llm" });
+    else if (nudges?.checker_decision_model_id !== undefined)
+      imported.set("nudge_checker", { id: nudges.checker_decision_model_id, kind: "decision" });
+    else if (nudges?.checker_llm_id !== undefined) imported.set("nudge_checker", { id: null, kind: "llm" });
+    return imported;
+  }
+
+  private async subscriptionFundedImportedSelections(
+    tx: SQL,
+    serverId: number,
+    capabilities: readonly ImportedSelectionCapability[],
+    imported: ReadonlyMap<ImportedSelectionCapability, ImportedSelection>,
+  ): Promise<Set<ImportedSelectionCapability>> {
+    const [saved] = await tx<Array<{ has_subscription: boolean | null; has_byok_openrouter: boolean | null }>>`
+      SELECT
+        bool_or(provider = 'supporter') AS has_subscription,
+        bool_or(provider = 'openrouter' AND api_key IS NOT NULL) AS has_byok_openrouter
+      FROM saved_provider_configs
+      WHERE server_id = ${serverId} AND provider IN ('supporter', 'openrouter')
+    `;
+    if (!saved?.has_subscription || saved.has_byok_openrouter) return new Set();
+
+    const llmIds = capabilities
+      .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "llm")
+      .map((selection) => selection?.id)
+      .filter((id): id is number => typeof id === "number");
+    const speechIds = capabilities
+      .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "speech")
+      .map((selection) => selection?.id)
+      .filter((id): id is number => typeof id === "number");
+    const decisionIds = capabilities
+      .map((capability) => imported.get(capability))
+      .filter((selection) => selection?.kind === "decision")
+      .map((selection) => selection?.id)
+      .filter((id): id is number => typeof id === "number");
+
+    const openRouterReviewers =
+      llmIds.length === 0
+        ? []
+        : await tx<Array<{ llm_id: number }>>`
+            SELECT llm_id FROM llms
+            WHERE llm_provider = 'openrouter' AND llm_id = ANY(${sql.array(llmIds, "int4")})
+          `;
+    const openRouterDecisions =
+      decisionIds.length === 0
+        ? []
+        : await tx<Array<{ decision_model_id: number }>>`
+      SELECT decision_model_id FROM decision_models
+      WHERE provider = 'openrouter' AND decision_model_id = ANY(${sql.array(decisionIds, "int4")})
+    `;
+    const openRouterSpeech =
+      speechIds.length === 0
+        ? []
+        : await tx<Array<{ speech_model_id: number }>>`
+            SELECT speech_model_id FROM speech_models
+            WHERE provider = 'openrouter' AND speech_model_id = ANY(${sql.array(speechIds, "int4")})
+          `;
+    const openRouterReviewerIds = new Set(openRouterReviewers.map((row) => row.llm_id));
+    const openRouterSpeechIds = new Set(openRouterSpeech.map((row) => row.speech_model_id));
+    const openRouterDecisionIds = new Set(openRouterDecisions.map((row) => row.decision_model_id));
+
+    return new Set(
+      capabilities.filter((capability) => {
+        const selection = imported.get(capability);
+        if (!selection || selection.id === null) return false;
+        const ids =
+          selection.kind === "llm"
+            ? openRouterReviewerIds
+            : selection.kind === "speech"
+              ? openRouterSpeechIds
+              : openRouterDecisionIds;
+        return ids.has(selection.id);
+      }),
+    );
+  }
+
+  private async writeImportedSelectionPayers(
+    tx: SQL,
+    serverId: number,
+    tablePatches: readonly ConfigTablePatch[],
+    nudges?: WorkspaceConfigExportData["nudges"],
+  ): Promise<void> {
+    const imported = this.getImportedSelectionIds(tablePatches, nudges);
+    if (imported.size === 0) return;
+
+    const [current] = await tx<Array<{ subscription_capabilities: string[] }>>`
+      SELECT subscription_capabilities FROM server_model_configs WHERE server_id = ${serverId} FOR UPDATE
+    `;
+    if (!current) {
+      if ([...imported.values()].every((selection) => selection.id === null)) return;
+      throw new Error("Missing model config for imported capability ownership");
+    }
+
+    const [chat] = imported.has("reviewer")
+      ? await tx<Array<{ response_reviewer_llm_id: number | null }>>`
+          SELECT response_reviewer_llm_id FROM server_chat_configs WHERE server_id = ${serverId} FOR UPDATE
+        `
+      : [];
+    const [speech] =
+      imported.has("speech_design") || imported.has("speech_clone")
+        ? await tx<Array<{ speech_design_model_id: number | null; speech_clone_model_id: number | null }>>`
+            SELECT speech_design_model_id, speech_clone_model_id FROM server_speech_configs
+            WHERE server_id = ${serverId} FOR UPDATE
+          `
+        : [];
+    const [currentNudges] =
+      imported.has("nudge_planner") || imported.has("nudge_checker")
+        ? await tx<
+            Array<{ llm_id: number | null; checker_llm_id: number | null; checker_decision_model_id: number | null }>
+          >`
+          SELECT llm_id, checker_llm_id, checker_decision_model_id FROM server_natural_nudge_configs WHERE server_id = ${serverId} FOR UPDATE
+        `
+        : [];
+    const currentIds = new Map<ImportedSelectionCapability, ImportedSelection>([
+      ["reviewer", { id: chat?.response_reviewer_llm_id ?? null, kind: "llm" }],
+      ["speech_design", { id: speech?.speech_design_model_id ?? null, kind: "speech" }],
+      ["speech_clone", { id: speech?.speech_clone_model_id ?? null, kind: "speech" }],
+      ["nudge_planner", { id: currentNudges?.llm_id ?? null, kind: "llm" }],
+      [
+        "nudge_checker",
+        currentNudges?.checker_llm_id != null
+          ? { id: currentNudges.checker_llm_id, kind: "llm" }
+          : { id: currentNudges?.checker_decision_model_id ?? null, kind: "decision" },
+      ],
+    ]);
+    const changed = [...imported.keys()].filter(
+      (capability) =>
+        imported.get(capability)?.id !== currentIds.get(capability)?.id ||
+        imported.get(capability)?.kind !== currentIds.get(capability)?.kind,
+    );
+    if (changed.length === 0) return;
+
+    const funded = await this.subscriptionFundedImportedSelections(tx, serverId, changed, imported);
+    const marker = new Set(current.subscription_capabilities);
+    for (const capability of changed) {
+      marker.delete(capability);
+      if (funded.has(capability)) marker.add(capability);
+    }
+    await tx`
+      UPDATE server_model_configs SET subscription_capabilities = ${sql.array([...marker], "text")}
+      WHERE server_id = ${serverId}
+    `;
+  }
+
   /**
    * Imports selected workspace config sections as one database operation.
    * Validation and target-row checks happen before the transaction so a failed patch cannot follow a committed patch.
@@ -541,7 +790,7 @@ class ImportRepository {
       const preparedResult = this.prepareWorkspaceConfig(input, selectedSections);
       if (!preparedResult.success) return preparedResult;
       const { prepared } = preparedResult;
-      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined) {
+      if (prepared.tablePatches.length === 0 && prepared.stmCategories === undefined && prepared.nudges === undefined) {
         return { success: true, itemsImported: { configFieldsCount: 0 } };
       }
 
@@ -560,13 +809,19 @@ class ImportRepository {
           return { success: false, error: "commands.config.drafting.import_unavailable" };
         }
       }
+      if (prepared.nudges && !(await validateNudgesImport(serverId, prepared.nudges))) {
+        return { success: false, error: "commands.config.natural_nudges.import_unavailable" };
+      }
       const tablePatches = prepared.tablePatches.map((tablePatch) => ({ ...tablePatch, id: serverId }));
       await sql.begin(async (tx: SQL) => {
+        await this.writeImportedSelectionPayers(tx, serverId, tablePatches, prepared.nudges);
         for (const tablePatch of tablePatches) await this.updateConfigRow(tx, tablePatch);
         if (prepared.stmCategories !== undefined) await this.updateStmCategories(tx, serverId, prepared.stmCategories);
+        if (prepared.nudges) await importNudgesSection(tx, serverId, prepared.nudges);
       });
 
       invalidateTomoriStateCache(serverDiscId);
+      if (prepared.nudges) invalidateNaturalNudgeConfigCache(serverId);
       return { success: true, itemsImported: { configFieldsCount: prepared.configFieldsCount } };
     } catch (error) {
       log.error(`Error importing workspace config for server ${serverDiscId}:`, error);
@@ -766,6 +1021,7 @@ class ImportRepository {
             user_id,
             user_nickname,
             shortterm_cache_crossserver_opt_in,
+            natural_nudge_opt_out,
             physical_appearance_tags,
             nai_char_ref_url,
             impersonation_prompt,
@@ -781,6 +1037,7 @@ class ImportRepository {
             ${userId},
             ${importData.user_nickname},
             ${importData.shortterm_cache_crossserver_opt_in ?? false},
+            ${importData.natural_nudge_opt_out ?? false},
             ${sql.array(physicalAppearanceTags, "TEXT")},
             ${naiCharRefUrl},
             ${impersonationPrompt},
@@ -796,6 +1053,7 @@ class ImportRepository {
           ON CONFLICT (user_id) DO UPDATE SET
             user_nickname = EXCLUDED.user_nickname,
             shortterm_cache_crossserver_opt_in = COALESCE(${importData.shortterm_cache_crossserver_opt_in ?? null}, user_personalization_configs.shortterm_cache_crossserver_opt_in),
+            natural_nudge_opt_out = COALESCE(${importData.natural_nudge_opt_out ?? null}, user_personalization_configs.natural_nudge_opt_out),
             physical_appearance_tags = EXCLUDED.physical_appearance_tags,
             nai_char_ref_url = EXCLUDED.nai_char_ref_url,
             impersonation_prompt = EXCLUDED.impersonation_prompt,
@@ -849,6 +1107,7 @@ class ImportRepository {
       if (importData.personal_dtm !== undefined) fieldsCount++;
       if (importData.personal_deliberate_tool_mode !== undefined) fieldsCount++;
       if (importData.shortterm_cache_crossserver_opt_in !== undefined) fieldsCount++;
+      if (importData.natural_nudge_opt_out !== undefined) fieldsCount++;
       if (importData.timezone_offset !== undefined) fieldsCount++;
       if (importData.message_proxy_service !== undefined) fieldsCount++;
       if (importData.prefix_override !== undefined) fieldsCount++;

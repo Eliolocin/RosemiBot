@@ -11,7 +11,7 @@ sidebar:
 
 Todos os comandos de barra (slash commands) atualmente registrados pela TomoriBot, gerados a partir dos mesmos construtores de comando e descrições em português usados para o registro no Discord (descrições ainda não traduzidas aparecem em inglês).
 
-Grupos de comandos de nível superior: **41**. Comandos de barra executáveis: **86**.
+Grupos de comandos de nível superior: **42**. Comandos de barra executáveis: **89**.
 
 ## `/comment`
 
@@ -208,6 +208,14 @@ Configurações e comandos com restrição de idade.
 | `/nsfw persona default` | Aplicar uma predefinição de personalidade NSFW |
 | `/nsfw persona import` | Importar uma persona a partir de um arquivo PNG, JSON ou CHARX, incluindo personas NSFW |
 
+## `/nudge-studio`
+
+Escolha quais toques ociosos eu uso neste servidor e escreva os seus.
+
+| Comando | Resumo |
+|---|---|
+| `/nudge-studio` | Escolha quais toques ociosos eu uso neste servidor e escreva os seus. |
+
 ## `/nuke`
 
 Apagar totalmente os dados do servidor. Requer executar /setup novamente depois.
@@ -339,7 +347,9 @@ Ver estatísticas de uso
 
 | Comando | Resumo |
 |---|---|
-| `/stats generate` | Gere um cartão de imagem de estatísticas compartilhável. |
+| `/stats generate persona` | Gere seu cartão de Afinidade da Persona com uma persona. |
+| `/stats generate personal` | Gere seu cartão de Retrospectiva Pessoal. |
+| `/stats generate server` | Gere o cartão de Tabela de Classificação deste servidor. |
 | `/stats persona` | Veja as estatísticas de uso de uma persona neste servidor. |
 | `/stats personal` | Veja suas próprias estatísticas de uso. |
 | `/stats server` | Veja as estatísticas de uso de todo o servidor. |

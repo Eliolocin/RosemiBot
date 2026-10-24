@@ -52,6 +52,9 @@ export default {
     section_speech_description: "Cài đặt giọng nói và âm thanh.",
     section_access_label: "Quyền truy cập",
     section_access_description: "Cài đặt quyền hạn và truy cập máy chủ.",
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description:
+      "Cài đặt Natural Nudges và gợi ý nhàn rỗi tùy chỉnh, không bao gồm danh sách kênh được phép.",
     section_profile_label: "Hồ sơ",
     section_profile_description: "Cài đặt hồ sơ cá nhân.",
     section_privacy_label: "Quyền riêng tư",

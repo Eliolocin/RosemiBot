@@ -1042,8 +1042,10 @@ describe("providers routes", () => {
 
     expect(calls).toEqual(["show:image:42"]);
     expect(openedWith).toEqual({
+      apiStyle: "comfyui",
       codeName: "anima-v1",
       text: undefined,
+      decision: undefined,
       image: {
         supports: { txt2img: true, img2img: false, inpaint: true, negative_prompt: false },
         allowInpaint: true,
@@ -2080,20 +2082,22 @@ describe("Decision registration routes", () => {
       memberPermissions: { has: () => true },
     } as unknown as ChatInputCommandInteraction;
 
-    const serverPayload = await buildInitialProvidersPanel(serverInteraction, "en-US", async () => null);
+    const serverPayload = await buildInitialProvidersPanel(serverInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(serverPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
 
-    const dmPayload = await buildInitialProvidersPanel(dmInteraction, "en-US", async () => null);
+    const dmPayload = await buildInitialProvidersPanel(dmInteraction, "en-US", { resolveScope: async () => null });
     expect(JSON.stringify(dmPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
 
-    const serverPersonalPayload = await buildInitialPersonalProvidersPanel(
-      serverInteraction,
-      "en-US",
-      async () => null,
-    );
+    const serverPersonalPayload = await buildInitialPersonalProvidersPanel(serverInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(serverPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup"));
 
-    const dmPersonalPayload = await buildInitialPersonalProvidersPanel(dmInteraction, "en-US", async () => null);
+    const dmPersonalPayload = await buildInitialPersonalProvidersPanel(dmInteraction, "en-US", {
+      resolveScope: async () => null,
+    });
     expect(JSON.stringify(dmPersonalPayload)).toContain(localizedCopy("en-US", "commands.providers.not_setup_dm"));
   });
 

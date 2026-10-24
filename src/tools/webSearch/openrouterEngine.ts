@@ -1,3 +1,13 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
+import { readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
+import {
+  reportProviderUsage,
+  findProviderRequestDeniedError,
+  notifyProviderToolFailure,
+} from "@/utils/provider/providerUsage";
+import { resolveSupporterMemberKey } from "@/modules/supporter-billing/runtime/managedProvider";
+import { getSupporterFundingFromUsageContext } from "@/modules/supporter-billing/runtime/types";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { z } from "zod";
 import { addFetchCapabilityReminder } from "@/tools/restAPIs/brave/braveSearchService";
 import { getSearchNoticeKey, getSearchNoticeTitleVars } from "@/tools/webSearch/categoryMetadata";
@@ -6,6 +16,7 @@ import type { ToolContext, ToolResult } from "@/types/tool/interfaces";
 import { sendToolNotice } from "@/utils/discord/toolProgressNotice";
 import { log } from "@/utils/misc/logger";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { readBoundedResponse } from "@/utils/security/boundedResponse";
 import { decryptApiKey } from "@/utils/security/crypto";
 
@@ -39,7 +50,11 @@ export class OpenRouterEngine implements WebSearchEngine {
   readonly name = "openrouter" as const;
 
   async available(context: ToolContext): Promise<boolean> {
-    return context.provider === "openrouter" && context.tomoriState.config.api_key !== null;
+    return (
+      context.provider === "openrouter" &&
+      (Boolean(getSupporterFundingFromUsageContext(context.usageContext)) ||
+        context.tomoriState.config.api_key !== null)
+    );
   }
 
   supportsCategory(category: SearchCategory): boolean {
@@ -59,8 +74,12 @@ export class OpenRouterEngine implements WebSearchEngine {
     try {
       signal.throwIfAborted();
       const { api_key: encryptedKey, key_version: keyVersion } = context.tomoriState.config;
-      if (!encryptedKey) return this.fail("missing_key");
-      const apiKey = await decryptApiKey(encryptedKey, keyVersion);
+      const funding = getSupporterFundingFromUsageContext(context.usageContext);
+      const apiKey = funding
+        ? await resolveSupporterMemberKey(funding)
+        : encryptedKey
+          ? await decryptApiKey(encryptedKey, keyVersion)
+          : null;
       if (!apiKey) return this.fail("missing_key");
       signal.throwIfAborted();
 
@@ -77,32 +96,46 @@ export class OpenRouterEngine implements WebSearchEngine {
       signal.throwIfAborted();
 
       const model = context.tomoriState.llm.llm_codename;
-      const response = await fetch(SEARCH_ENDPOINT, {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          ...buildOpenRouterAttributionHeaders(),
-        },
-        body: JSON.stringify({
-          ...(model !== "other-model" ? { model } : {}),
-          stream: false,
-          // The plugin attaches excerpts independently of completion length, so one token avoids paying for synthesis.
-          plugins: [{ id: "web", engine: "exa", max_results: boundedCount }],
-          max_tokens: 1,
-          messages: [{ role: "user", content: `List search results for: ${searchQuery}` }],
+      const response = await withProviderUsageContext(context.usageContext, async () =>
+        fetchWithProviderRequest(SEARCH_ENDPOINT, {
+          method: "POST",
+          redirect: "error",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            ...buildOpenRouterAttributionHeaders(),
+          },
+          body: JSON.stringify({
+            ...(model !== "other-model" ? { model } : {}),
+            stream: false,
+            // The plugin attaches excerpts independently of completion length, so one token avoids paying for synthesis.
+            plugins: [{ id: "web", engine: "exa", max_results: boundedCount }],
+            max_tokens: 1,
+            messages: [{ role: "user", content: `List search results for: ${searchQuery}` }],
+          }),
+          signal,
         }),
-        signal,
-      });
+      );
 
       if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
+        const limit = await readOpenRouterLimitResponse(response);
+        const denied = findProviderRequestDeniedError(limit, context.usageContext);
+        if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
         return this.fail("http_error", response.status);
       }
 
       const body = await readBoundedResponse(response, MAX_RESPONSE_BYTES, signal);
-      const parsed = responseSchema.safeParse(JSON.parse(body.toString("utf8")));
+      const payload: unknown = JSON.parse(body.toString("utf8"));
+      const metadata = z.object({ usage: z.unknown().optional(), id: z.string().optional() }).safeParse(payload);
+      const usage = metadata.success ? normalizeProviderUsage(metadata.data.usage) : null;
+      if (usage)
+        reportProviderUsage(context.usageContext, {
+          modelCodename: model,
+          ...usage,
+          costUsd: usage.costUsd,
+          providerRequestId: metadata.success ? metadata.data.id : undefined,
+        });
+      const parsed = responseSchema.safeParse(payload);
       if (!parsed.success) return this.fail("malformed");
 
       const results: string[] = [];
@@ -138,6 +171,8 @@ export class OpenRouterEngine implements WebSearchEngine {
         },
       };
     } catch (error) {
+      const denied = findProviderRequestDeniedError(error, context.usageContext);
+      if (denied) return { success: false, error: await notifyProviderToolFailure(context, denied) };
       return this.fail(signal.aborted ? "aborted" : "request_failed", undefined, error);
     }
   }

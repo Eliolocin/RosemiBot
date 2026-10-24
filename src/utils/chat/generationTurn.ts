@@ -1,16 +1,17 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import { createResponseReviewState } from "@/utils/chat/responseReview";
 import type { FallbackEntry, LlmRow, TomoriState } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
 import type { LLMProvider, ProviderConfig, StreamResult } from "@/types/provider/interfaces";
 import type { ProviderError } from "@/types/stream/interfaces";
 import type { ToolContext } from "@/types/tool/interfaces";
-import { getCachedChannelLlm } from "@/utils/cache/channelLlmCache";
-import { llmProviderRepo } from "@/utils/db/repositories";
+import { resolveServerTextModel } from "@/utils/provider/textModelSelection";
+import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { type FallbackNoticeAttempt, sendFallbackModelUsageNotice } from "@/utils/discord/fallbackModelNotice";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
-import type { sendStandardEmbed } from "@/utils/discord/embedHelper";
+import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { classifySendFailure } from "@/utils/discord/stream/sendFailureCache";
-import { log } from "@/utils/misc/logger";
+import { ColorCode, log } from "@/utils/misc/logger";
 import { buildCustomProviderName } from "@/utils/provider/customProviderUtils";
 import { getProviderForTomori, ProviderFactory } from "@/utils/provider/providerFactory";
 import { formatProviderErrorCodeForDisplay } from "@/utils/provider/providerErrorClassification";
@@ -18,6 +19,22 @@ import { applyProviderContextTruncation } from "@/utils/provider/contextBudget";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { withSavedProviderConfig } from "@/utils/provider/savedProviderConfig";
 import { decryptApiKey } from "@/utils/security/crypto";
+import {
+  buildSupporterFallbackTomoriState,
+  buildSupporterPrimaryTomoriState,
+  getSupporterUsageContext,
+  resolveSupporterFunding,
+  recordSupporterUsage,
+  resolveSupporterManagedProviderConfig,
+  type SupporterFundingContext,
+} from "@/modules/supporter-billing/runtime";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import {
+  SupporterRequestDeniedError,
+  findSupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
+import { getSupporterRequestFailureCopy } from "@/modules/supporter-billing/discord/requestFailure";
+import { resolveEnvironment } from "@/types/config";
 import { resolveMediaForModel } from "@/utils/text/context/mediaResolver";
 import {
   hasAvailableRotationKey,
@@ -32,7 +49,11 @@ import {
   enforceServerTriggerCooldownForAdmission,
   shouldApplyServerTextQuota,
 } from "@/utils/chat/admissionGuards";
-import { hasTextQuotaBeenRefused, markTextQuotaRefused } from "@/utils/chat/textQuotaState";
+import {
+  claimCredentialRefusalNotice,
+  hasTextQuotaBeenRefused,
+  markTextQuotaRefused,
+} from "@/utils/chat/textQuotaState";
 import {
   recordChatAttemptStarted,
   recordChatDiagnostic,
@@ -40,7 +61,9 @@ import {
   runWithChatDiagnosticStage,
 } from "@/utils/chat/diagnosticTimeline";
 import { applyAssistantPrefill } from "@/utils/chat/assistantPrefill";
-import type { ChatResponseSink, ChatTurnContext, GenerationTurnResult } from "@/utils/chat/types";
+import { getChannelTurnAbortSignal } from "@/utils/chat/channelQueue";
+import { setTimeout as sleep } from "node:timers/promises";
+import type { ChatResponseSink, ChatTurnContext, GenerationTurnResult, TextCredentialSource } from "@/utils/chat/types";
 import {
   carryDeliveredOutput,
   type DeliveredTurnOutput,
@@ -58,10 +81,9 @@ import {
 /** The channel shape quota notices are sent through, matching the admission path's own alias. */
 type SendableChannel = Parameters<typeof sendStandardEmbed>[0];
 
-type TextCredentialSource = ChatTurnContext["textCredentialSource"];
-
 interface GenerationAttempt {
   credentialSource: TextCredentialSource;
+  funding: SupporterFundingContext | null;
   label: string;
   tomoriState: TomoriState;
   provider: LLMProvider;
@@ -74,6 +96,8 @@ interface GenerationAttempt {
 /** The route a turn was planned on, plus the server route it may still reach. */
 interface GenerationPlan {
   attempts: GenerationAttempt[];
+  /** A subscription refusal raised while building the planned route's attempts. */
+  plannedRouteRefusal: SupporterRequestDeniedError | null;
   /**
    * Materializes the server route's attempts, or null when this turn owns no server fallback.
    *
@@ -90,6 +114,12 @@ interface GenerationPlan {
  * so a reply that overflowed once keeps losing context until it fits.
  */
 const OPENROUTER_LENGTH_EMPTY_RETRY_DROP_PAIRS = 2;
+
+/**
+ * Longest `Retry-After` a chat turn waits out before retrying a subscription attempt that hit
+ * OpenRouter's in-flight budget; longer waits go to the user as a retry time instead of a stall.
+ */
+const SUPPORTER_CAPACITY_RETRY_MAX_WAIT_MS = 10_000;
 
 export async function runGenerationTurn(
   context: ChatTurnContext,
@@ -121,6 +151,9 @@ async function runGenerationAttempts(
     context.streamingContext.holdResponseText = Boolean(context.responseReview);
     const plan = await buildGenerationPlan(context);
     const attempts = plan.attempts;
+    const exhaustedIdentities = new Set<number>();
+    const canUseAttempt = (attempt: GenerationAttempt) =>
+      !attempt.funding || !exhaustedIdentities.has(attempt.funding.sponsorIdentityId);
     const failures: FallbackNoticeAttempt[] = [];
     const baseContextItems = context.contextItems;
 
@@ -132,11 +165,21 @@ async function runGenerationAttempts(
     // receipt needs it: a success on the server route of a personal turn has an opt-out to name.
     let serverRouteStartIndex: number | null = null;
 
+    if (attempts.length === 0 && plan.extendWithServerRoute) {
+      const extend = plan.extendWithServerRoute;
+      plan.extendWithServerRoute = null;
+      serverRouteStartIndex = 0;
+      attempts.push(...(await extend(0)).filter(canUseAttempt));
+    }
+    const unservedRefusal = attempts.length === 0 ? plan.plannedRouteRefusal : null;
+
     for (let index = 0; index < attempts.length; index++) {
       const attempt = attempts[index];
       if (!attempt) continue;
       context.textCredentialSource = attempt.credentialSource;
       context.streamingContext.textCredentialSource = attempt.credentialSource;
+      context.usageContext = attempt.funding ? getSupporterUsageContext(attempt.funding) : undefined;
+      context.streamingContext.usageContext = context.usageContext;
       recordChatAttemptStarted(
         index + 1,
         context.textCredentialSource,
@@ -148,7 +191,6 @@ async function runGenerationAttempts(
       context.tomoriState = attempt.tomoriState;
       const attemptContextItems = await prepareProviderContextItems({
         contextItems: baseContextItems,
-        userId: context.streamingContext.triggererUserId,
         tomoriState: attempt.tomoriState,
         deliberateToolAllowedNames: context.streamingContext.deliberateToolAllowedNames,
       });
@@ -158,6 +200,7 @@ async function runGenerationAttempts(
       const excludedKeyIds = new Set<number>();
       let result!: GenerationTurnResult;
       let keyAttemptCount = 0;
+      let capacityRetried = false;
       context.streamingContext.rotationKeyRetriesUsed = false;
 
       while (true) {
@@ -171,7 +214,10 @@ async function runGenerationAttempts(
         const hasFallbackKey =
           attempt.credentialSource === "server" &&
           (await hasAvailableRotationKey(attempt.tomoriState, retryExcludedKeyIds));
-        setStreamUserErrorSuppression(context, hasFallbackKey || hasPendingModelFallback);
+        setStreamUserErrorSuppression(
+          context,
+          hasFallbackKey || hasPendingModelFallback || Boolean(context.supporterProviderFailure),
+        );
         context.streamingContext.forceModelFallback = hasPendingModelFallback;
 
         if (context.responseReview) {
@@ -208,22 +254,35 @@ async function runGenerationAttempts(
           ),
         );
         result = await runWithChatDiagnosticStage({ attempt: index + 1, keyAttempt: keyAttemptCount }, () =>
-          runToolLoop({
-            context,
-            provider: attempt.provider,
-            providerConfig: attempt.providerConfig,
-            tomoriState: attempt.tomoriState,
-          }),
+          withProviderUsageContext(context.usageContext, async () =>
+            runToolLoop({
+              context,
+              provider: attempt.provider,
+              providerConfig: attempt.providerConfig,
+              supporterFunding: attempt.funding ?? undefined,
+              tomoriState: attempt.tomoriState,
+            }),
+          ),
         );
         supersededResult = result;
         if (carried.text && result.status === "empty_response" && !isRetryableEmptyResponse(result)) {
           result = { ...result, status: "completed" };
         }
 
+        recordAttemptUsage(attempt, result);
+
         if (result.status !== "error") {
           // Don't credit a timed-out key as successful : a timeout is not a clean completion.
           if (result.status !== "timeout" && rotationKeyId != null) await recordKeySuccess(rotationKeyId);
           break;
+        }
+
+        const capacityRetryMs = capacityRetried ? null : getSupporterCapacityRetryDelayMs(attempt, result);
+        if (capacityRetryMs !== null) {
+          capacityRetried = true;
+          if (!(await waitForSupporterCapacity(context, capacityRetryMs))) break;
+          log.warn(`Retrying ${attempt.label} after OpenRouter's in-flight budget Retry-After.`);
+          continue;
         }
 
         if (!hasFallbackKey) break;
@@ -266,6 +325,22 @@ async function runGenerationAttempts(
       const isRetryableStatus =
         (result.status === "error" || result.status === "timeout") && !isUnreachableDestinationResult(result);
 
+      const denied = findAttemptSupporterFailure(attempt, result);
+      if (attempt.funding && (denied?.reason === "allowance_exhausted" || denied?.reason === "capacity_unavailable")) {
+        context.supporterProviderFailure ??= {
+          reason: denied.reason,
+          funding: attempt.funding,
+          details: denied.details,
+        };
+        // Capacity rejections skip nothing else: OpenRouter estimates each request separately, so a
+        // cheaper fallback can still fit the operator's remaining budget.
+        if (denied.reason === "allowance_exhausted") {
+          exhaustedIdentities.add(attempt.funding.sponsorIdentityId);
+          const remaining = attempts.slice(index + 1).filter(canUseAttempt);
+          attempts.splice(index + 1, attempts.length - index - 1, ...remaining);
+        }
+      }
+
       // The planned route is exhausted. Extend once with the server route, which admits itself and
       // may refuse, so this is also the point a fallback the server does not owe the user stops.
       if (isRetryableStatus && index === attempts.length - 1 && plan.extendWithServerRoute) {
@@ -273,7 +348,7 @@ async function runGenerationAttempts(
         plan.extendWithServerRoute = null;
         let serverAttempts: GenerationAttempt[] = [];
         try {
-          serverAttempts = await extendWithServerRoute(attempts.length);
+          serverAttempts = (await extendWithServerRoute(attempts.length)).filter(canUseAttempt);
         } catch (error) {
           // Preparing the server route is best effort, like each pool entry: a failure here leaves
           // the planned route's own failure as the turn's outcome instead of replacing it.
@@ -291,6 +366,8 @@ async function runGenerationAttempts(
           await sendFallbackNoticeIfNeeded(context, attempt, failures, {
             offerPersonalFallbackOptOut: serverRouteStartIndex !== null && index >= serverRouteStartIndex,
           });
+        } else if (context.supporterProviderFailure && (result.status === "error" || result.status === "timeout")) {
+          await sendSupporterFailureNotice(context);
         }
         setStreamUserErrorSuppression(context, false);
         context.streamingContext.forceModelFallback = false;
@@ -303,7 +380,7 @@ async function runGenerationAttempts(
           await sendDeferredTimeoutNoticeIfPending(context);
         }
 
-        if (result.status === "error") {
+        if (result.status === "error" && !context.supporterProviderFailure) {
           await emitStreamErrors(responseSink, result.streamResults);
         }
         // After the errors are emitted, because a carried attempt's error was suppressed for the
@@ -316,7 +393,9 @@ async function runGenerationAttempts(
 
       failures.push({
         modelCodename: attempt.tomoriState.llm.llm_codename,
-        errorDetail: extractErrorDetail(result.streamResults.at(-1)),
+        errorDetail: denied
+          ? getSupporterRequestFailureCopy(denied, context.locale, true).description
+          : extractErrorDetail(result.streamResults.at(-1)),
       });
     }
 
@@ -327,13 +406,15 @@ async function runGenerationAttempts(
     };
     setStreamUserErrorSuppression(context, false);
     context.streamingContext.forceModelFallback = false;
+    await sendSupporterFailureNotice(context, unservedRefusal ?? undefined);
     if (context.responseReview) skipped.usageEntries = context.responseReview.usage;
     await responseSink.finalize(skipped);
     return skipped;
   } catch (error) {
     setStreamUserErrorSuppression(context, false);
     context.streamingContext.forceModelFallback = false;
-    await responseSink.emitError(error);
+    if (context.supporterProviderFailure) await sendSupporterFailureNotice(context);
+    else await responseSink.emitError(error);
     const result: GenerationTurnResult = {
       status: "error",
       streamResults: [{ status: "error", data: error }],
@@ -345,13 +426,86 @@ async function runGenerationAttempts(
   }
 }
 
+function findAttemptSupporterFailure(
+  attempt: GenerationAttempt,
+  result: GenerationTurnResult,
+): SupporterRequestDeniedError | null {
+  for (const entry of result.streamResults) {
+    const denied = findSupporterRequestDeniedError(entry.data, attempt.funding);
+    if (denied) return denied;
+  }
+  return null;
+}
+
+function recordAttemptUsage(attempt: GenerationAttempt, result: GenerationTurnResult): void {
+  for (const entry of result.streamResults) {
+    recordSupporterUsage(attempt.funding, {
+      modelCodename: attempt.tomoriState.llm.llm_codename,
+      costUsd: entry.usage?.costUsd,
+      inputTokens: entry.usage?.inputTokens,
+      outputTokens: entry.usage?.outputTokens,
+    });
+  }
+}
+
+function getSupporterCapacityRetryDelayMs(attempt: GenerationAttempt, result: GenerationTurnResult): number | null {
+  const denied = findAttemptSupporterFailure(attempt, result);
+  const delayMs =
+    denied?.reason === "capacity_unavailable" && denied.details?.retryAt
+      ? denied.details.retryAt.getTime() - Date.now()
+      : null;
+  return delayMs !== null && delayMs <= SUPPORTER_CAPACITY_RETRY_MAX_WAIT_MS ? Math.max(delayMs, 0) : null;
+}
+
+async function waitForSupporterCapacity(context: ChatTurnContext, delayMs: number): Promise<boolean> {
+  const signal = getChannelTurnAbortSignal(context.channel.id);
+  try {
+    await sleep(delayMs, undefined, signal ? { signal } : undefined);
+  } catch {
+    return false;
+  }
+  return !StreamOrchestrator.hasStopRequest(context.channel.id);
+}
+
+async function sendSupporterFailureNotice(
+  context: ChatTurnContext,
+  refusal?: SupporterRequestDeniedError,
+): Promise<void> {
+  if (
+    !context.shouldSurfaceUserErrors ||
+    context.isUserImpersonation ||
+    StreamOrchestrator.hasStopRequest(context.channel.id)
+  )
+    return;
+  const failure = context.supporterProviderFailure;
+  const error =
+    refusal ??
+    (failure
+      ? new SupporterRequestDeniedError(
+          failure.reason,
+          failure.details,
+          failure.funding.capability,
+          failure.funding.fundingScope,
+          failure.funding,
+        )
+      : null);
+  if (!error) return;
+  if (refusal && !claimCredentialRefusalNotice(context.textQuotaTriggerKey)) return;
+  await sendStandardEmbed(context.channel as SendableChannel, context.locale, {
+    ...getSupporterRequestFailureCopy(error, context.locale),
+    color: ColorCode.ERROR,
+  }).catch((sendError) => log.warn("Failed to send subscription usage notice", sendError));
+}
+
 function setStreamUserErrorSuppression(context: ChatTurnContext, temporarySuppressed: boolean): void {
   context.streamingContext.suppressUserErrors = temporarySuppressed || !context.shouldSurfaceUserErrors;
 }
 
 async function buildGenerationPlan(context: ChatTurnContext): Promise<GenerationPlan> {
+  const plannedRoute = await buildPlannedRouteAttempts(context);
   return {
-    attempts: await buildPlannedRouteAttempts(context),
+    attempts: plannedRoute.attempts,
+    plannedRouteRefusal: plannedRoute.refusal,
     extendWithServerRoute: resolveServerRouteExtension(context),
   };
 }
@@ -367,7 +521,16 @@ async function buildGenerationPlan(context: ChatTurnContext): Promise<Generation
 function resolveServerRouteExtension(
   context: ChatTurnContext,
 ): ((startIndex: number) => Promise<GenerationAttempt[]>) | null {
-  if (context.textCredentialSource !== "personal" || context.isUserImpersonation) {
+  const isPersonal =
+    context.textCredentialSource === "personal" || context.supporterFunding?.fundingScope === "personal";
+  if (
+    !isPersonal ||
+    context.isUserImpersonation ||
+    (context.isDMChannel &&
+      (context.serverDiscId !== context.userDiscId ||
+        context.supporterFunding?.fundingScope === "personal" ||
+        context.personalTextProvider === "supporter"))
+  ) {
     return null;
   }
   if (context.currentPersona.config.user_byok_mode) {
@@ -386,13 +549,33 @@ function resolveServerRouteExtension(
   return (startIndex) => buildServerRouteAttempts(context, startIndex);
 }
 
-async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<GenerationAttempt[]> {
+async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<{
+  attempts: GenerationAttempt[];
+  refusal: SupporterRequestDeniedError | null;
+}> {
   const disableAllTools = !!context.streamingContext.disableAllTools;
   const primaryState = await resolveTomoriStateForRoute(context, "planned");
-  const personalUserId = context.textCredentialSource === "personal" ? (context.personalRoutingUserId ?? null) : null;
+  const funding = primaryState.llm.llm_provider === "openrouter" ? context.supporterFunding : null;
+  const personalUserId =
+    context.textCredentialSource === "personal" || funding?.fundingScope === "personal"
+      ? (context.personalRoutingUserId ?? null)
+      : null;
   const fallbackEntries = resolveFallbackEntries(primaryState);
 
-  const pool: FallbackEntry[] = [{ kind: "llm", model: primaryState.llm }, ...fallbackEntries];
+  const pool: FallbackEntry[] = [
+    {
+      kind: "llm",
+      model: primaryState.llm,
+      ...(funding ||
+      context.personalTextProvider === "supporter" ||
+      (personalUserId === null &&
+        primaryState.llm.llm_provider === "openrouter" &&
+        primaryState.config.subscription_capabilities.includes("text"))
+        ? { credentialProvider: "supporter" as const }
+        : {}),
+    },
+    ...fallbackEntries,
+  ];
 
   // Model randomizer: when enabled, splice a random pool member to the front so a different model
   // leads each turn. When disabled, the pool order is unchanged from the legacy behavior.
@@ -402,22 +585,19 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
   //    primary's own llm entry yields a state equivalent to primaryState (provider matches, no config
   //    swap), so index 0 stays semantically identical to the old dedicated "primary" attempt.
   const attempts: GenerationAttempt[] = [];
+  let refusal: SupporterRequestDeniedError | null = null;
   for (const [index, entry] of pool.entries()) {
     try {
       const attempt = await createFallbackAttempt(
+        context,
         primaryState,
         entry,
         index,
         disableAllTools,
         personalUserId,
-        context.textCredentialSource,
+        funding,
       );
       if (!attempt) {
-        // An unusable custom endpoint, or an llm whose provider has no key in the
-        // applicable scope, resolves to null. The primary's own llm entry shares
-        // the primary's provider and so never re-credentials, which is what
-        // guarantees at least one valid attempt survives however the pool is
-        // ordered.
         continue;
       }
       // Keep logs readable: the lead is always labelled "primary" regardless of the random draw.
@@ -427,11 +607,12 @@ async function buildPlannedRouteAttempts(context: ChatTurnContext): Promise<Gene
       }
       attempts.push(attempt);
     } catch (error) {
+      if (error instanceof SupporterRequestDeniedError) refusal ??= error;
       log.warn(`Skipping pool entry ${index}: failed to prepare provider config.`, error as Error);
     }
   }
 
-  return attempts;
+  return { attempts, refusal };
 }
 
 /**
@@ -449,14 +630,31 @@ async function buildServerRouteAttempts(context: ChatTurnContext, startIndex: nu
   }
 
   const serverState = await resolveTomoriStateForRoute(context, "server");
-  const serverPool: FallbackEntry[] = [{ kind: "llm", model: serverState.llm }, ...resolveFallbackEntries(serverState)];
+  const serverPool: FallbackEntry[] = [
+    {
+      kind: "llm",
+      model: serverState.llm,
+      ...(serverState.llm.llm_provider === "openrouter" && serverState.config.subscription_capabilities.includes("text")
+        ? { credentialProvider: "supporter" as const }
+        : {}),
+    },
+    ...resolveFallbackEntries(serverState),
+  ];
   applyModelRandomizer(serverPool, serverState.config.model_randomizer_enabled);
 
   const attempts: GenerationAttempt[] = [];
   for (const entry of serverPool) {
     const fallbackIndex = startIndex + attempts.length;
     try {
-      const attempt = await createFallbackAttempt(serverState, entry, fallbackIndex, disableAllTools, null, "server");
+      const attempt = await createFallbackAttempt(
+        context,
+        serverState,
+        entry,
+        fallbackIndex,
+        disableAllTools,
+        null,
+        null,
+      );
       if (attempt) {
         attempts.push(attempt);
       }
@@ -682,7 +880,7 @@ async function sendDeferredTimeoutNoticeIfPending(context: ChatTurnContext): Pro
   // The tool loop also defers on turns that suppress errors on purpose, such as auto-chat and
   // random triggers nobody addressed directly, and a bot-authored embed breaks an impersonation.
   // Those turns stayed silent before deferral existed and must stay silent here.
-  if (context.isUserImpersonation || !context.shouldSurfaceUserErrors) {
+  if (context.isUserImpersonation || !context.shouldSurfaceUserErrors || context.supporterProviderFailure) {
     return;
   }
 
@@ -723,24 +921,41 @@ type TextRoute = "planned" | "server";
 
 async function resolveTomoriStateForRoute(context: ChatTurnContext, route: TextRoute): Promise<TomoriState> {
   const incoming = context.turn.lockedTurn.admission.incoming;
-  const usePersonalRoute = route === "planned" && context.textCredentialSource === "personal";
+  const funding = context.supporterFunding;
+  const usePersonalRoute =
+    route === "planned" && (context.textCredentialSource === "personal" || funding?.fundingScope === "personal");
   const base = usePersonalRoute
-    ? (await applyPersonalProviderSelectionsToTomoriState(context.currentPersona, context.personalRoutingUserId))
-        .tomoriState
+    ? (
+        await applyPersonalProviderSelectionsToTomoriState(
+          context.currentPersona,
+          context.personalRoutingUserId,
+          context.personalTextProvider === "supporter",
+        )
+      ).tomoriState
     : context.currentPersona;
-  const channelLlmOverride =
-    context.isUserImpersonation || usePersonalRoute
-      ? null
-      : await getCachedChannelLlm(
-          context.currentPersona.server_id,
-          context.channel.id,
-          context.channel.isThread() ? context.channel.parentId : null,
-        );
-  const effectiveLlm =
-    usePersonalRoute || context.isUserImpersonation ? base.llm : (base.persona_llm ?? channelLlmOverride ?? base.llm);
-  const overriddenLlm = incoming.llmOverrideCodename
-    ? { ...effectiveLlm, llm_codename: incoming.llmOverrideCodename }
-    : effectiveLlm;
+  const overriddenLlm = usePersonalRoute
+    ? incoming.llmOverrideCodename
+      ? ((await llmModelRepo.loadByProviderAndCodename(base.llm.llm_provider, incoming.llmOverrideCodename)) ?? {
+          ...base.llm,
+          llm_codename: incoming.llmOverrideCodename,
+        })
+      : base.llm
+    : await resolveServerTextModel(base, context.channel, context.isUserImpersonation, incoming.llmOverrideCodename);
+  if (
+    route === "planned" &&
+    context.textCredentialSource === "supporter" &&
+    overriddenLlm.llm_provider === "openrouter"
+  ) {
+    if (funding?.modelCodename === overriddenLlm.llm_codename) {
+      return buildSupporterPrimaryTomoriState({
+        baseState: base,
+        funding,
+        loadModel: (provider, codename) => llmModelRepo.loadByProviderAndCodename(provider, codename),
+      });
+    }
+    return { ...base, llm: overriddenLlm, config: { ...base.config, api_key: null } };
+  }
+
   let state: TomoriState = { ...base, llm: overriddenLlm };
 
   if (overriddenLlm.llm_provider.toLowerCase() !== base.llm.llm_provider.toLowerCase()) {
@@ -751,13 +966,53 @@ async function resolveTomoriStateForRoute(context: ChatTurnContext, route: TextR
 }
 
 async function createFallbackAttempt(
+  context: ChatTurnContext,
   primaryState: TomoriState,
   entry: FallbackEntry,
   fallbackIndex: number,
   disableAllTools: boolean,
   personalUserId: number | null,
-  credentialSource: TextCredentialSource,
+  funding: SupporterFundingContext | null,
 ): Promise<GenerationAttempt | null> {
+  if (entry.kind === "llm" && entry.credentialProvider === "supporter") {
+    if (!isSupporterBillingEnabled(resolveEnvironment()) || entry.model.llm_provider.toLowerCase() !== "openrouter")
+      return null;
+    if (entry.model.is_deprecated) return null;
+    const resolvedFunding =
+      funding?.modelCodename === entry.model.llm_codename
+        ? { ok: true as const, context: funding }
+        : await resolveSupporterFunding({
+            scope:
+              personalUserId === null
+                ? { kind: "server", serverId: primaryState.server_id }
+                : { kind: "personal", userId: personalUserId },
+            capability: "text",
+            requestedModelCodename: entry.model.llm_codename,
+          });
+    if (!resolvedFunding.ok)
+      throw new SupporterRequestDeniedError(
+        resolvedFunding.reason,
+        undefined,
+        "text",
+        personalUserId === null ? "server" : "personal",
+      );
+    const supporterState = buildSupporterFallbackTomoriState(primaryState, entry);
+    if (!supporterState) {
+      log.warn("Skipping custom endpoint fallback: Supporter routing requires OpenRouter.");
+      return null;
+    }
+    const label = `fallback ${fallbackIndex}: ${entry.model.llm_codename}`;
+    return await createAttempt(
+      context,
+      label,
+      supporterState,
+      undefined,
+      disableAllTools,
+      resolvedFunding.context,
+      "supporter",
+    );
+  }
+
   if (entry.kind === "custom_endpoint") {
     const endpointServerId = personalUserId === null ? primaryState.server_id : null;
     if (
@@ -771,10 +1026,10 @@ async function createFallbackAttempt(
       return null;
     }
     const customProviderName = buildCustomProviderName(entry.endpoint.connection_id);
-    const savedConfig =
-      personalUserId !== null
-        ? await llmProviderRepo.loadUserSavedProviderConfig(personalUserId, customProviderName)
-        : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
+    const endpointUserId = entry.endpoint.user_id ?? null;
+    const savedConfig = endpointUserId
+      ? await llmProviderRepo.loadUserSavedProviderConfig(endpointUserId, customProviderName)
+      : await llmProviderRepo.loadSavedProviderConfig(primaryState.server_id, customProviderName);
     if (!savedConfig?.api_key) {
       log.warn(`Skipping custom endpoint fallback ${entry.endpoint.label}: no saved key.`);
       return null;
@@ -806,16 +1061,22 @@ async function createFallbackAttempt(
       },
     };
     return await createAttempt(
+      context,
       `fallback ${fallbackIndex}: ${entry.endpoint.label}`,
       state,
-      credentialSource,
       "custom",
       disableAllTools,
+      null,
+      personalUserId ? "personal" : "server",
     );
   }
 
   let state: TomoriState = { ...primaryState, llm: entry.model };
-  if (entry.model.llm_provider.toLowerCase() !== primaryState.llm.llm_provider.toLowerCase()) {
+  if (
+    funding ||
+    primaryState.config.api_key === null ||
+    entry.model.llm_provider.toLowerCase() !== primaryState.llm.llm_provider.toLowerCase()
+  ) {
     const recredentialed = await applyCrossProviderConfig(state, entry.model.llm_provider, personalUserId);
     if (!recredentialed) {
       log.warn(
@@ -826,26 +1087,46 @@ async function createFallbackAttempt(
     state = recredentialed;
   }
   return await createAttempt(
+    context,
     `fallback ${fallbackIndex}: ${entry.model.llm_codename}`,
     state,
-    credentialSource,
     undefined,
     disableAllTools,
+    null,
+    personalUserId ? "personal" : "server",
   );
 }
 
 async function createAttempt(
+  context: ChatTurnContext,
   label: string,
   tomoriState: TomoriState,
-  credentialSource: TextCredentialSource,
   forcedProviderName?: string,
   disableAllTools = false,
+  funding: SupporterFundingContext | null = null,
+  credentialSource: TextCredentialSource = context.textCredentialSource,
 ): Promise<GenerationAttempt> {
   const effectiveState = applyDeliberateToolKillSwitch(tomoriState, disableAllTools);
 
   const provider = forcedProviderName
     ? await ProviderFactory.getProviderByName(forcedProviderName)
     : await getProviderForTomori(effectiveState);
+
+  if (funding) {
+    const providerConfig = await resolveSupporterManagedProviderConfig(provider, effectiveState, {
+      funding,
+    });
+    return {
+      credentialSource,
+      funding,
+      label,
+      tomoriState: effectiveState,
+      provider,
+      providerConfig,
+      successModel: effectiveState.llm,
+      rotationKeyId: null,
+    };
+  }
 
   const rotationSelection = credentialSource === "server" ? await selectApiKey(effectiveState) : null;
   const apiKey = rotationSelection ? rotationSelection.apiKey : await resolveApiKey(effectiveState);
@@ -855,6 +1136,7 @@ async function createAttempt(
 
   return {
     credentialSource,
+    funding: null,
     label,
     tomoriState: effectiveState,
     provider,
@@ -936,7 +1218,6 @@ function extractErrorDetail(streamResult: StreamResult | undefined): string {
 }
 
 async function prepareProviderContextItems(args: {
-  userId?: number;
   contextItems: StructuredContextItem[];
   tomoriState: TomoriState;
   deliberateToolAllowedNames: string[] | undefined;
@@ -957,10 +1238,7 @@ async function prepareProviderContextItems(args: {
     // with neither: without them the custom model receives no tool schemas and no calling-format
     // instructions, so every tool (voice messages included) fails.
     if (!contextItems.some((item) => item.metadataTag === ContextItemTag.KNOWLEDGE_VERBATIM_TOOL_DEFINITIONS)) {
-      const toolItem = await buildVerbatimToolDefinitionsContextItem({
-        tomoriState: args.tomoriState,
-        userId: args.userId,
-      });
+      const toolItem = await buildVerbatimToolDefinitionsContextItem({ tomoriState: args.tomoriState });
       if (toolItem) {
         contextItems = injectVerbatimToolDefinitionsItem(contextItems, toolItem);
       }

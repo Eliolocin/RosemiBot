@@ -9,6 +9,15 @@ TomoriBot connects to external AI providers rather than hosting a built-in model
 connect hosted services like Google Gemini, OpenRouter, and NovelAI, or point her at local
 self-hosted endpoints. You need at least one provider to start chatting.
 
+## Subscription
+
+On hosted TomoriBot installations with Subscription enabled, use `/subscribe` to link your Patreon
+membership and view your remaining allowance. A member with Manage Server can choose
+`Sponsor this server` in its overview or `+ Sponsor Current Server` under `Sponsored Servers`.
+`/providers` also offers sponsorship.
+Each server has one active sponsor. `Server already sponsored` is disabled until that sponsorship
+is removed. You can sponsor multiple servers; they share your allowance with your personal usage.
+
 ## API Keys
 <!-- anchor: api-keys -->
 
@@ -23,11 +32,13 @@ collects:
 |---|---|
 | AI Provider (Recommended) | A provider from the catalog plus its API key, validated and encrypted as a draft. |
 | Custom Endpoint | The endpoint connection and one text model, registered inside the wizard. See [Custom Endpoints](#custom-endpoints). |
-| User BYOK (guilds only) | Nothing: the workspace keeps no provider of its own, so members must supply personal ones. |
+| User BYOK (servers only) | Nothing: the server keeps no provider of its own, so members must supply personal ones. |
 
 Nothing is written to the database until you press `Finish Setup`. An abandoned or expired
-wizard leaves the workspace's existing provider rows untouched. To replace an existing key, use
-`/providers`, because `/setup` will not run on an already configured workspace.
+wizard leaves the server's existing provider rows untouched. To replace an existing key, use
+`/providers`, because `/setup` will not run on an already configured server.
+
+Replacing a provider key preserves its saved sampler settings, including the output-token limit.
 
 Replacing a provider key preserves its saved sampler settings, including the output-token limit.
 
@@ -93,7 +104,7 @@ In `/config` > Models > Switch Models, you can assign models and endpoints acros
 - **Text**: the main chat model.
 - **Vision**: reads images when the chat model cannot.
 - **Embeddings**: powers the [document knowledge base](/features/knowledge/memory/#document-knowledge-base-rag).
-- **Decision**: a registered [Decision model](#decision-models). No feature uses it yet.
+- **Decision**: a registered [Decision model](#decision-models). [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) uses it to decide when to join a conversation.
 - **Standard Image**: standard image generation (see [Image Generation](/features/capabilities/media-generation/image-generation/)).
 - **NovelAI Image**: NovelAI image generation.
 - **Video**: video generation.
@@ -114,8 +125,11 @@ You can also manage backup keys for automatic failover and load balancing in `/p
 <!-- anchor: decision-models -->
 
 Decision Models are a separate category in `/providers` and `/personal providers`. They answer typed
-predicates with probabilities. Registration does not change the active chat model. Pick the server's
-Decision model in `/config` > Models > Switch Models; no feature uses it yet.
+questions (yes or no, or one choice out of several) with probabilities. Registration does not change
+the active chat model. Pick the server's Decision model in `/config` > Models > Switch Models.
+[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) uses it as its Active
+Nudge Checker to tell when a conversation matches a persona's interests, unless a different checker
+is picked in `/config` > Plugins > Natural Nudges.
 
 OpenRouter is the supported native provider. Save its key, open its model dropdown, and choose
 `+ Add new Decision Model`. Enter an ID from its verified Decision catalog. The global catalog
@@ -154,7 +168,7 @@ Configuration reset preserves saved registrations; parent deletion explicitly cl
 Custom endpoints let you register self-hosted or proxy-backed services (Ollama, LM Studio,
 LiteLLM, vLLM, ComfyUI, local TTS/STT) as labeled provider bundles.
 
-- **Server scope**: open `/providers` for workspace endpoint registration and editing.
+- **Server scope**: open `/providers` to register and edit server endpoints.
 - **Personal scope**: open `/personal providers` for personal model catalogs (see
   [Personalization](/features/knowledge/personalization/#your-own-providers)). Personal hosted speech models are selected independently under Voice Design and Voice Clone
   in `/personal config`; personal local speech endpoints are unsupported.

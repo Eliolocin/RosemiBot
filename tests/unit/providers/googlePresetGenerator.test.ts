@@ -41,9 +41,11 @@ describe("Google preset generation", () => {
   });
 
   it("classifies a retired Search grounding model as a model error", async () => {
+    let requests = 0;
     const client = {
       models: {
         generateContent: async () => {
+          requests++;
           throw new Error(
             '{"error":{"code":404,"message":"This model models/gemini-old is no longer available to new users."}}',
           );
@@ -66,7 +68,9 @@ describe("Google preset generation", () => {
     );
 
     expect(result.errorType).toBe("MODEL_ERROR");
-    expect(result.error).toContain("Error Code 404");
+    expect(result.failureStage).toBe("web_search");
+    expect(result.preset).toBeUndefined();
+    expect(requests).toBe(1);
   });
 
   it("replies with a localized summary, never the upstream message or an unrecognized code", async () => {

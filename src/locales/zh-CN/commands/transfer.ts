@@ -50,6 +50,8 @@ export default {
     section_speech_description: "语音与朗读设置。",
     section_access_label: "权限",
     section_access_description: "服务器访问与权限设置。",
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description: "Natural Nudges 设置与自定义空闲搭话，不含允许的频道。",
     section_profile_label: "个人资料",
     section_profile_description: "个人资料设置。",
     section_privacy_label: "隐私",

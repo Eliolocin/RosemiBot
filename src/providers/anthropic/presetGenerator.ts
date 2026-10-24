@@ -190,9 +190,11 @@ export async function generatePresetFromPromptAnthropic(
           );
         }
 
-        const convertedResult = anthropicAdapter.convertResult(
-          toolResult ?? buildToolErrorResult("Tool execution failed"),
-        );
+        if (!toolResult?.success) {
+          return { error: "Persona web search failed.", errorType: "MODEL_ERROR", failureStage: "web_search" };
+        }
+
+        const convertedResult = anthropicAdapter.convertResult(toolResult);
 
         toolResultBlocks.push({
           type: "tool_result",

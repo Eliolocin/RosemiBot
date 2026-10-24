@@ -241,3 +241,11 @@ or resource target blocks refresh until the bot host repairs its configuration o
 authorization. Other failures, including unrecognized HTTP 400 responses, set a database retry time
 and honor HTTP `Retry-After`. A crash after the provider rotates a
 token but before PostgreSQL commits it may require authorization by the bot host again.
+
+`src/utils/oauth/` owns the protocol helpers and refresh coordinator used by PluralBuddy.
+PluralBuddy supplies its instance-bound token store and retains its loopback callback. Token and
+discovery requests use the pinned public-network fetch path, refuse redirects, and bound response
+size and duration. Refresh honors `Retry-After`; an invalid grant, client, or resource target blocks
+the connection until the bot host repairs its configuration or authorizes it again. Other HTTP 400
+responses retain the retry policy. Storage failures report an allowlisted exception class and
+validated SQLSTATE without database messages, queries, or credentials.

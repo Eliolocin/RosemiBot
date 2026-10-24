@@ -156,6 +156,7 @@ export default {
     field_blacklisted_members_with_count: `{current} 位成員`,
     field_personal_dtm: `個人 DTM`,
     field_crossserver_stm: `跨伺服器短期記憶`,
+    field_ping_users: "來自人格的標註",
     field_nai_char_ref: `NAI 角色參考`,
     custom_endpoint_capability_label: `{capability}`,
     field_vision_model: `視覺模型`,

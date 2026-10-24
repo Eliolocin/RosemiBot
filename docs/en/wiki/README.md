@@ -14,3 +14,4 @@ Public operational and security reference pages, reachable through links from ot
 Cloud deployment pages live under `cloud/<provider>/` on the `release` branch and are absent from
 `main`. Use placeholders for production identifiers and look up deployment values through
 authenticated tools. Sidebar hiding and `noindex` do not restrict access to these public pages.
+Private operator procedures and deployment identifiers belong in gitignored playbooks.

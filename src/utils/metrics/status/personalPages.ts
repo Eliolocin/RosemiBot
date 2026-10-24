@@ -40,6 +40,7 @@ export type PersonalStatusIdentity = Pick<
   | "personal_dtm"
   | "personal_deliberate_tool_mode"
   | "shortterm_cache_crossserver_opt_in"
+  | "natural_nudge_opt_out"
   | "physical_appearance_tags"
   | "nai_char_ref_url"
 >;
@@ -129,6 +130,11 @@ export async function buildPersonalStatusPages(
       {
         nameKey: "commands.status.field_crossserver_stm",
         value: formatBooleanLocalized(userData.shortterm_cache_crossserver_opt_in ?? false, locale),
+        inline: true,
+      },
+      {
+        nameKey: "commands.status.field_ping_users",
+        value: formatBooleanLocalized(!userData.natural_nudge_opt_out, locale),
         inline: true,
       },
       {

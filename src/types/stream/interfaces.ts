@@ -1,3 +1,4 @@
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 /**
  * Streaming interfaces for modular LLM provider architecture
  *
@@ -82,6 +83,7 @@ export interface StreamConfig extends ProviderConfig {
  * Contains all the Discord and application context needed for streaming
  */
 export interface StreamContext {
+  usageContext?: ProviderUsageContext;
   channel: BaseGuildTextChannel | BaseGuildVoiceChannel | DMChannel | NewsChannel | TextChannel | AnyThreadChannel;
   client: Client;
   initialInteraction?: CommandInteraction;
@@ -103,7 +105,7 @@ export interface StreamContext {
   locale: string;
   suppressUserErrors?: boolean; // Suppress user-facing error embeds during retries or non-deliberate chat turns
   /** Whose credentials answered this turn; selects server- or personal-scoped provider error tips. */
-  textCredentialSource?: "server" | "personal";
+  textCredentialSource?: "server" | "personal" | "supporter";
   rotationKeyRetriesUsed?: boolean; // True if one or more rotation-key retries were attempted
   replyNoticeState?: { attempted: boolean; sent: boolean }; // Tracks the standalone alter reply notice across tool-call stream retries
 
@@ -119,6 +121,8 @@ export interface StreamContext {
     handle: string;
     userId: string;
   }>;
+  /** When set, delivered text may ping only these users: no roles, no everyone, nobody else. */
+  mentionableUserIds?: readonly string[];
 
   /** The attempt's `{bot}: {text}` prefill: stripped when the model echoes it, never shown. */
   outputPrefill?: string;

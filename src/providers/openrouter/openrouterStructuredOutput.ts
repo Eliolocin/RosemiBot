@@ -1,3 +1,4 @@
+import { ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import {
   parsePrivateStructuredOutput,
   privateStructuredFailure,
@@ -6,11 +7,14 @@ import {
 import type { z } from "zod";
 import type { ProviderStructuredJsonRequest, StructuredOutputResult } from "@/types/provider/featureInterfaces";
 import { log } from "@/utils/misc/logger";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
 import { fetchAndOptimizeImage } from "@/utils/image/imageProcessor";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { buildOpenRouterReasoningRequest } from "@/utils/provider/thinkingControl";
 import { buildOpenrouterProviderRouting } from "@/providers/openrouter/providerRouting";
+import { readOpenRouterLimitError, readOpenRouterLimitResponse } from "@/providers/openrouter/openrouterLimit";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 type GenericStructuredOutputRequest = ProviderStructuredJsonRequest;
 
 type OpenrouterContentPart = { type: "text"; text: string } | { type: "image_url"; image_url: { url: string } };
@@ -89,7 +93,7 @@ export async function callOpenrouterStructuredJSON<T>(
         : {}),
     };
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${request.apiKey}`,
@@ -102,10 +106,11 @@ export async function callOpenrouterStructuredJSON<T>(
 
     if (!response.ok) {
       if (request.privateOutput) {
-        await response.body?.cancel();
-        return privateStructuredFailure(request, "transport", response.status);
+        const limit = await readOpenRouterLimitResponse(response);
+        return privateStructuredFailure(request, "transport", response.status, undefined, limit ?? undefined);
       }
       const errorBody = await response.text();
+      const limit = readOpenRouterLimitError(response.status, response.headers, errorBody);
       log.error("OpenRouter structured JSON request failed", new Error(errorBody), {
         errorType: "OpenrouterStructuredJSONHttpError",
         metadata: { model: request.model, status: response.status },
@@ -113,6 +118,8 @@ export async function callOpenrouterStructuredJSON<T>(
       return {
         success: false,
         error: `OpenRouter request failed: ${response.status} ${response.statusText}`,
+        httpStatus: response.status,
+        cause: limit ?? undefined,
       };
     }
 
@@ -120,6 +127,8 @@ export async function callOpenrouterStructuredJSON<T>(
       usage?: unknown;
       choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
     };
+    const usage = request.privateOutput ? null : normalizeProviderUsage(result.usage);
+    if (usage) request.onUsage?.(usage);
     const messageContent = result.choices?.[0]?.message?.content;
     const responseText =
       typeof messageContent === "string"
@@ -179,6 +188,7 @@ export async function callOpenrouterStructuredJSON<T>(
 
     return { success: true, data: validationResult.data };
   } catch (error) {
+    if (error instanceof ProviderRequestDeniedError) return { success: false, error: error.message, cause: error };
     if (request.privateOutput) return privateStructuredFailure(request);
     log.error("Error calling OpenRouter structured JSON", error as Error, {
       errorType: "OpenrouterStructuredJSONError",

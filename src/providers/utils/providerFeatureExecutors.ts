@@ -1,5 +1,7 @@
+import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import type {
   DecisionInput,
+  DecisionModelOption,
   DecisionModelReference,
   DecisionResult,
   DecisionApiStyle,
@@ -37,13 +39,39 @@ import {
   resolveStructuredOutputCapability,
   resolveDecisionsCapability,
 } from "@/utils/provider/providerCapabilityResolver";
+import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
+import { resolveEnvironment } from "@/types/config";
+import { resolveSupporterFunding } from "@/modules/supporter-billing/runtime/funding";
+import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
+import { recordSupporterUsage } from "@/modules/supporter-billing/runtime/usageStatistics";
+import {
+  findSupporterRequestDeniedError,
+  SupporterRequestDeniedError,
+} from "@/modules/supporter-billing/runtime/funding";
+import {
+  getSupporterFundingFromUsageContext,
+  getSupporterUsageContext,
+  type SupporterFundingContext,
+} from "@/modules/supporter-billing/runtime/types";
+import type { ProviderOptionServerCredentials } from "@/utils/provider/providerOptionRegistry";
 
 export interface DecisionExecutionRequest extends DecisionInput {
   scope: OpenRouterModelScope;
   reference: DecisionModelReference | null;
+  supporterFunding?: SupporterFundingContext;
+  credentials?: ProviderOptionServerCredentials;
 }
 
-const loadDecisionModelsForScope = (scope: OpenRouterModelScope) => llmModelRepo.loadDecisionModelOptions(scope);
+export async function loadDecisionModelsForScope(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
+  const funding = await resolveSupporterFunding({
+    scope:
+      scope.kind === "server"
+        ? { kind: "server", serverId: scope.ownerId }
+        : { kind: "personal", userId: scope.ownerId },
+    capability: "decision",
+  });
+  return llmModelRepo.loadDecisionModelOptions(scope, funding.ok);
+}
 
 export async function callDecisionsForProvider(request: DecisionExecutionRequest): Promise<DecisionResult> {
   const correlationId = crypto.randomUUID();
@@ -53,6 +81,22 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
     return { status: "invalid-input", correlationId, errorLogged: false };
   }
   const reference = request.reference;
+  const requestedFunding =
+    request.supporterFunding ?? getSupporterFundingFromUsageContext(request.credentials?.usageContext);
+  if (reference.provider === "openrouter" && requestedFunding && !isSupporterBillingEnabled(resolveEnvironment()))
+    return {
+      status: "denied",
+      error: new SupporterRequestDeniedError("unsupported_capability", undefined, "decision", request.scope.kind),
+      correlationId,
+      errorLogged: false,
+    };
+  if (
+    requestedFunding &&
+    (requestedFunding.fundingScope !== request.scope.kind ||
+      (request.scope.kind === "personal" && requestedFunding.personalUserId !== request.scope.ownerId) ||
+      (request.scope.kind === "server" && requestedFunding.serverId !== request.scope.ownerId))
+  )
+    return { status: "unavailable", reason: "not-owned", correlationId, errorLogged: false };
   let apiStyle: DecisionApiStyle = reference.provider === "openrouter" ? "openrouter-decisions" : "system-one";
   const trace = () => ({ reference, apiStyle, correlationId });
   const cancelled = (): DecisionResult => {
@@ -100,15 +144,32 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
         elapsedMs: Date.now() - startedAt,
       },
     };
-    const nativeConfig = connection
-      ? null
-      : request.scope.kind === "server"
-        ? await llmProviderRepo.loadSavedProviderConfig(request.scope.ownerId, reference.provider)
-        : await llmProviderRepo.loadUserSavedProviderConfig(request.scope.ownerId, reference.provider);
-    let apiKey: string | null;
+    let apiKey: string | null = request.credentials?.apiKey ?? null;
+    let memberFunding: SupporterFundingContext | null = requestedFunding ?? null;
+    if (
+      reference.provider === "openrouter" &&
+      isSupporterBillingEnabled(resolveEnvironment()) &&
+      requestedFunding &&
+      !request.credentials
+    ) {
+      const managed = await resolveSupporterCapabilityCredentials({
+        scope:
+          request.scope.kind === "server"
+            ? { kind: "server", serverId: request.scope.ownerId }
+            : { kind: "personal", userId: request.scope.ownerId },
+        capability: "decision",
+        modelId: selected.model.decision_model_id,
+      });
+      apiKey = managed.apiKey;
+      memberFunding = managed.funding;
+    }
     try {
       if (connection) apiKey = await loadCustomConnectionCredential(connection, failureContext);
-      else {
+      else if (!apiKey) {
+        const nativeConfig =
+          request.scope.kind === "server"
+            ? await llmProviderRepo.loadSavedProviderConfig(request.scope.ownerId, reference.provider)
+            : await llmProviderRepo.loadUserSavedProviderConfig(request.scope.ownerId, reference.provider);
         apiKey = nativeConfig?.api_key
           ? await decryptApiKey(nativeConfig.api_key, nativeConfig.key_version, failureContext)
           : null;
@@ -123,18 +184,40 @@ export async function callDecisionsForProvider(request: DecisionExecutionRequest
     }
     const capability = await resolveDecisionsCapability(custom ? "custom" : reference.provider);
     if (!capability) return { status: "unavailable", reason: "unsupported", correlationId, errorLogged: false };
-    return await capability.callDecisions({
-      ...request,
-      reference,
-      correlationId,
-      model: selected.model.codename,
-      inputTokenLimit: selected.model.input_token_limit,
-      apiStyle,
-      apiKey,
-      endpointUrl: connection?.endpoint_url,
-    });
-  } catch {
+    const result = await withProviderUsageContext(
+      request.credentials?.usageContext ?? (memberFunding ? getSupporterUsageContext(memberFunding) : undefined),
+      async () =>
+        capability.callDecisions({
+          ...request,
+          reference,
+          correlationId,
+          model: selected.model.codename,
+          inputTokenLimit: selected.model.input_token_limit,
+          apiStyle,
+          apiKey,
+          endpointUrl: connection?.endpoint_url,
+          onUsage: (usage) => {
+            request.onUsage?.(usage);
+            recordSupporterUsage(memberFunding, {
+              modelCodename: selected.model.codename,
+              costUsd: usage.costUsd,
+              inputTokens: usage.inputTokens,
+              outputTokens: usage.outputTokens,
+            });
+          },
+        }),
+    );
+    const denied =
+      result.status === "failed"
+        ? findSupporterRequestDeniedError(result.cause, memberFunding)
+        : result.status === "denied"
+          ? findSupporterRequestDeniedError(result.error, memberFunding)
+          : null;
+    return denied ? { status: "denied", error: denied, correlationId, errorLogged: false } : result;
+  } catch (error) {
     if (request.abortSignal?.aborted) return cancelled();
+    const denied = findSupporterRequestDeniedError(error);
+    if (denied) return { status: "denied", error: denied, correlationId, errorLogged: false };
     return await reportDecisionFailure(trace(), "unexpected", "execution", startedAt);
   }
 }
@@ -147,6 +230,7 @@ export interface ProviderPresetGenerationRequest {
   locale: string;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderCompactSummaryRequest extends ProviderCapabilityCompactSummaryRequest {
@@ -162,6 +246,7 @@ export interface ProviderExpressionInitializationRequest {
   userPrompt: string;
   images: Array<{ url: string; name: string }>;
   temperature?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export interface ProviderHistoryExtractionRequest {
@@ -173,6 +258,7 @@ export interface ProviderHistoryExtractionRequest {
   userPrompt: string;
   temperature?: number;
   maxOutputTokens?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 export async function generatePresetForProvider(
@@ -193,6 +279,7 @@ export async function generatePresetForProvider(
     tomoriState: request.tomoriState,
     toolContext: request.toolContext,
     maxToolRounds: request.maxToolRounds,
+    onUsage: request.onUsage,
   };
 
   return await capability.generatePreset(capabilityRequest);
@@ -232,6 +319,7 @@ export async function callExpressionInitializationForProvider(
       images: request.images,
       temperature: request.temperature,
       schemaName: "expression_batch_result",
+      onUsage: request.onUsage,
     },
     buildExpressionResponseSchema(),
     ExpressionBatchResultSchema,
@@ -250,7 +338,7 @@ export type HistoryExtractionOutcome =
   /** `discarded` counts entries the model returned that could not be validated. */
   | { ok: true; entries: HistoryMemoryEntry[]; discarded: number }
   /** `unsupported`: provider exposes no structured-output capability at all. `failed`: the call itself errored. */
-  | { ok: false; reason: "unsupported" | "failed"; error: string };
+  | { ok: false; reason: "unsupported" | "failed"; error: string; cause?: Error };
 
 export async function extractHistoryWindowForProvider(
   request: ProviderHistoryExtractionRequest,
@@ -272,6 +360,7 @@ export async function extractHistoryWindowForProvider(
     temperature: request.temperature,
     maxOutputTokens: request.maxOutputTokens,
     schemaName: "history_extraction_result",
+    onUsage: request.onUsage,
   };
 
   const result = await capability.callStructuredJSON(structuredRequest, responseSchema, HistoryExtractionResultSchema);
@@ -287,5 +376,5 @@ export async function extractHistoryWindowForProvider(
   }
 
   log.warn(`History extraction failed (${request.providerName}): ${result.error}`);
-  return { ok: false, reason: "failed", error: result.error };
+  return { ok: false, reason: "failed", error: result.error, cause: result.cause };
 }

@@ -8,6 +8,7 @@ await initializeLocalizer();
 describe("shared model routing controls", () => {
   it("renders direct providers and bounds the current-value placeholder", () => {
     const row = buildModelRoutingControl({
+      locale: "en-US",
       capabilityLabel: "Text",
       activeModelName: "x".repeat(200),
       activeProvider: "openrouter",
@@ -32,6 +33,7 @@ describe("shared model routing controls", () => {
   it("routes overflow explicitly instead of truncating providers", () => {
     const providers = Array.from({ length: 25 }, (_, index) => `custom:${index + 1}`);
     const row = buildModelRoutingControl({
+      locale: "en-US",
       capabilityLabel: "Text",
       activeModelName: null,
       activeProvider: null,

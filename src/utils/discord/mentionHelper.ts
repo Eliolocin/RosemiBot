@@ -1,6 +1,9 @@
-import type { Client, Guild, TextBasedChannel } from "discord.js";
+import { ChannelType, type Client, type Guild, type TextBasedChannel, type TextChannel } from "discord.js";
+import type { TomoriState } from "@/types/db/schema";
 import type { ForcedMention } from "@/types/discord/mentions";
 import { getCachedUserRow } from "@/utils/cache/userCache";
+import { getOrCreateWebhook, resolvePersonaWebhookIdentity } from "@/utils/discord/webhookManager";
+import { sendPersonaPostViaWebhook } from "@/utils/discord/webhook/personaPost";
 import { isExternalUserId } from "@/utils/externalIdentityUserId";
 import { log } from "@/utils/misc/logger";
 
@@ -55,6 +58,53 @@ export async function buildForcedMentionsForUser(
     handle,
     userId,
   }));
+}
+
+/**
+ * Posts a fallback mention as an alter persona's webhook, so the ping keeps the identity of the persona
+ * that spoke. False when the persona is the main one or the channel cannot host a webhook, which
+ * leaves the caller's plain bot message as the fallback.
+ */
+export async function sendAlterPersonaMention(
+  channel: TextBasedChannel,
+  persona: TomoriState,
+  targetUserId: string,
+  content: string,
+): Promise<boolean> {
+  if (!persona.is_alter || !("guild" in channel) || !channel.guild) return false;
+  const supportsWebhooks =
+    channel.type === ChannelType.GuildText ||
+    channel.type === ChannelType.PublicThread ||
+    channel.type === ChannelType.PrivateThread ||
+    channel.type === ChannelType.AnnouncementThread;
+  if (!supportsWebhooks) return false;
+
+  const isThread = channel.isThread();
+  if (isThread && !channel.parent) return false;
+  const webhookChannel = isThread && channel.parent ? channel.parent : channel;
+  try {
+    const webhook = (await getOrCreateWebhook(webhookChannel as TextChannel)).webhook;
+    if (!webhook) return false;
+    const identity = await resolvePersonaWebhookIdentity(persona, channel.guild);
+    await sendPersonaPostViaWebhook(
+      webhook,
+      {
+        content,
+        allowedMentions: { users: [targetUserId], roles: [], parse: [] },
+        ...(isThread ? { threadId: channel.id } : {}),
+      },
+      {
+        username: identity.username ?? persona.persona_nickname,
+        avatarUrl: identity.avatarDataUri ?? identity.avatarUrl,
+        personaId: persona.persona_id,
+      },
+      channel,
+    );
+    return true;
+  } catch (error) {
+    log.warn(`Failed to send persona fallback mention for ${targetUserId}:`, error);
+    return false;
+  }
 }
 
 export async function ensureDiscordUserMention(params: {

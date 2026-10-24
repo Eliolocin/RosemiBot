@@ -52,7 +52,7 @@ Các công cụ phụ thuộc vào nhà cung cấp đang hoạt động và vi�
 | Tạo tin nhắn thoại | `{voice_message_tool}` | Phím ElevenLabs + giọng nói cá tính + `voice_message_enabled` | Gửi trả lời bằng giọng nói Discord. |
 
 :::note[For prompt authors]
-Khi tùy chỉnh lời nhắc hệ thống hoặc hướng dẫn cá nhân, hãy tham khảo các công cụ bằng **macro nhắc** từ bảng bên trên thay vì tên công cụ mã hóa cứng, vì macro sẽ mở rộng thành tên chính xác tại thời điểm tập hợp ngữ cảnh và giảm dần khi không có công cụ. `{pin_tool}` và `{timestamp_refresh_tool}` vẫn hoạt động như bí danh tương thích cho `{manage_message_tool}` và `{message_metadata_tool}`. Các công cụ tìm kiếm trên web và URL bên dưới cũng có macro: `{web_search_tool}`, `{image_search_tool}`, `{video_search_tool}`, `{news_search_tool}`, `{url_fetch_tool}` và `{url_metadata_tool}`. Chúng phân giải linh hoạt thành công cụ tốt nhất hiện có, bao gồm cả các công cụ thay thế MCP của bang hội.
+Khi tùy chỉnh lời nhắc hệ thống hoặc hướng dẫn cá nhân, hãy tham khảo các công cụ bằng **macro nhắc** từ bảng bên trên thay vì tên công cụ mã hóa cứng, vì macro sẽ mở rộng thành tên chính xác tại thời điểm tập hợp ngữ cảnh và giảm dần khi không có công cụ. `{pin_tool}` và `{timestamp_refresh_tool}` vẫn hoạt động như bí danh tương thích cho `{manage_message_tool}` và `{message_metadata_tool}`. Các công cụ tìm kiếm trên web và URL bên dưới cũng có macro: `{web_search_tool}`, `{image_search_tool}`, `{video_search_tool}`, `{news_search_tool}`, `{url_fetch_tool}` và `{url_metadata_tool}`. Chúng phân giải linh hoạt thành công cụ tốt nhất hiện có, bao gồm cả các công cụ thay thế MCP của máy chủ.
 :::
 
 ### Khối prompt có điều kiện
@@ -67,7 +67,7 @@ Do not promise to save long-term memories.
 {{/if}}
 ```
 
-Sử dụng `capability:<name>` cho cài đặt TomoriBot được bật hoặc `tool:<function_name>` khi văn bản chỉ xuất hiện nếu công cụ chính xác đó có sẵn cho nhà cung cấp và kiểu máy đang hoạt động. Sử dụng `tool_family:url_fetch` khi có sẵn trình đọc URL đi kèm hoặc bộ thay thế MCP của bang hội. Thêm tiền tố `!` vào một điều kiện để đảo ngược điều kiện đó. Các khối có thể được lồng vào nhau và có thể chứa một `{{else}}`; các biểu thức `and`/`or` chung không được hỗ trợ.
+Sử dụng `capability:<name>` cho cài đặt TomoriBot được bật hoặc `tool:<function_name>` khi văn bản chỉ xuất hiện nếu công cụ chính xác đó có sẵn cho nhà cung cấp và kiểu máy đang hoạt động. Sử dụng `tool_family:url_fetch` khi có sẵn trình đọc URL đi kèm hoặc bộ thay thế MCP của máy chủ. Thêm tiền tố `!` vào một điều kiện để đảo ngược điều kiện đó. Các khối có thể được lồng vào nhau và có thể chứa một `{{else}}`; các biểu thức `and`/`or` chung không được hỗ trợ.
 
 Các tên khả năng được hỗ trợ là `tool_use`, `self_teaching`, `personal_memories`, `emoji_usage`, `sticker_usage`, `web_search`, `manage_message`, `thread_creation`, `image_generation`, `video_generation`, `voice_message`, `user_blocking`, `short_term_memory`, và `time_awareness`.
 

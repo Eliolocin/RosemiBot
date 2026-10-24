@@ -4,12 +4,15 @@
  */
 
 import { log } from "@/utils/misc/logger";
+import { normalizeProviderUsage } from "@/utils/text/tokenEstimate";
+import { readOpenRouterLimitError } from "@/providers/openrouter/openrouterLimit";
 import type { GeneratePresetParams, PresetGenerationResult } from "@/types/provider/featureInterfaces";
 import type { ToolContext } from "@/types/tool/interfaces";
 import { executeTool } from "@/tools/toolRegistry";
 import { getOpenRouterSupportedParameters } from "@/utils/cache/openrouterCapabilityCache";
 import { buildOpenRouterAttributionHeaders } from "@/utils/provider/openrouterAttribution";
 import { resolvePresetGenerationMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
+import { fetchWithProviderRequest } from "@/utils/provider/providerRequestHook";
 import { getOpenrouterToolAdapter } from "./openrouterToolAdapter";
 import { buildOpenrouterProviderRouting } from "./providerRouting";
 import {
@@ -19,6 +22,8 @@ import {
   extractPresetGenerationFields,
   buildToolErrorResult,
   stripAnthropicUnsupportedConstraints,
+  PRESET_ATTRIBUTE_COUNT,
+  PRESET_DIALOGUE_PAIR_COUNT,
   PRESET_SCHEMA_MISS_CODES,
   presetGenerationFailureErrorType,
   presetGenerationFailureMessage,
@@ -33,6 +38,7 @@ interface OpenrouterPresetGenerationOptions {
   tools?: Array<Record<string, unknown>>;
   toolContext?: ToolContext;
   maxToolRounds?: number;
+  onUsage?: (usage: import("@/utils/text/tokenEstimate").TokenUsage) => void;
 }
 
 /**
@@ -59,7 +65,28 @@ export async function generatePresetFromPromptOpenrouter(
   const toolContext = options.toolContext;
   const toolsEnabled = tools.length > 0 && toolContext;
 
-  const rawPresetSchema = buildPresetResponseSchema();
+  const sharedPresetSchema = buildPresetResponseSchema();
+  const rawPresetSchema = {
+    ...sharedPresetSchema,
+    additionalProperties: false,
+    properties: {
+      attribute_list: {
+        ...sharedPresetSchema.properties.attribute_list,
+        minItems: PRESET_ATTRIBUTE_COUNT,
+        maxItems: PRESET_ATTRIBUTE_COUNT,
+      },
+      sample_dialogues_in: {
+        ...sharedPresetSchema.properties.sample_dialogues_in,
+        minItems: PRESET_DIALOGUE_PAIR_COUNT,
+        maxItems: PRESET_DIALOGUE_PAIR_COUNT,
+      },
+      sample_dialogues_out: {
+        ...sharedPresetSchema.properties.sample_dialogues_out,
+        minItems: PRESET_DIALOGUE_PAIR_COUNT,
+        maxItems: PRESET_DIALOGUE_PAIR_COUNT,
+      },
+    },
+  };
   const presetSchema = options.model.startsWith("anthropic/")
     ? stripAnthropicUnsupportedConstraints(rawPresetSchema)
     : rawPresetSchema;
@@ -69,6 +96,7 @@ export async function generatePresetFromPromptOpenrouter(
     json_schema: {
       name: "preset_export_data",
       description: "Structured persona preset data",
+      strict: true,
       schema: presetSchema,
     },
   };
@@ -108,14 +136,11 @@ export async function generatePresetFromPromptOpenrouter(
       response_format: responseFormat,
       plugins: [{ id: "response-healing" }],
       stream: false,
+      provider: buildOpenrouterProviderRouting({ requiresParameterSupport: true }),
     };
 
     if (toolsEnabled) {
       body.tools = tools;
-      const providerRouting = buildOpenrouterProviderRouting({ requiresParameterSupport: true });
-      if (providerRouting) {
-        body.provider = providerRouting;
-      }
 
       // OpenRouter defaults tool_choice to automatic selection when omitted.
       // Only send it when the model explicitly advertises support.
@@ -126,7 +151,7 @@ export async function generatePresetFromPromptOpenrouter(
       }
     }
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const response = await fetchWithProviderRequest("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -149,6 +174,7 @@ export async function generatePresetFromPromptOpenrouter(
       return {
         error: `OpenRouter request failed (HTTP ${response.status}).`,
         errorType: "CONNECTION",
+        cause: readOpenRouterLimitError(response.status, response.headers, errorBody) ?? undefined,
       };
     }
 
@@ -159,7 +185,10 @@ export async function generatePresetFromPromptOpenrouter(
           tool_calls?: PresetToolCall[];
         };
       }>;
+      usage?: unknown;
     };
+    const usage = normalizeProviderUsage(result.usage);
+    if (usage) options.onUsage?.(usage);
 
     const message = result.choices?.[0]?.message;
     if (!message) {
@@ -222,9 +251,11 @@ export async function generatePresetFromPromptOpenrouter(
           }
         }
 
-        const convertedResult = openrouterAdapter.convertResult(
-          toolResult ?? buildToolErrorResult("Tool execution failed"),
-        );
+        if (!toolResult?.success) {
+          return { error: "Persona web search failed.", errorType: "MODEL_ERROR", failureStage: "web_search" };
+        }
+
+        const convertedResult = openrouterAdapter.convertResult(toolResult);
         const resultContent =
           typeof convertedResult.content === "string"
             ? convertedResult.content
@@ -253,7 +284,10 @@ export async function generatePresetFromPromptOpenrouter(
       log.error("OpenRouter preset generation response could not be parsed", parseError),
     );
     if (!decoded.ok) {
-      log.error(`OpenRouter preset generation rejected: ${decoded.failure.code}`);
+      log.error("OpenRouter preset generation rejected", undefined, {
+        errorType: "OpenrouterPresetValidationError",
+        metadata: { reason: decoded.failure.code, received: decoded.failure.received },
+      });
       return {
         error: PRESET_SCHEMA_MISS_CODES.includes(decoded.failure.code)
           ? presetGenerationFailureMessage(decoded.failure)

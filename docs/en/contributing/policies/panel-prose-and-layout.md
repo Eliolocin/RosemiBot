@@ -16,8 +16,8 @@ stored content. Never add line breaks to shape the panel.
 
 Every panel passes its components through `buildPanelContainer()` in `src/utils/discord/ui/panel.ts`,
 which wraps every `TextDisplay` before Discord's limits are checked. It keeps links, code, emphasis,
-emoji, and grapheme clusters whole, never truncates, and leaves fenced blocks byte for byte. It picks
-the width per line from the component tree: a line beside a `Thumbnail` gets the narrow profile, and a
+emoji, Discord timestamps, and grapheme clusters whole, never truncates, and leaves fenced blocks byte
+for byte. It picks the width per line from the component tree: a line beside a `Thumbnail` gets the narrow profile, and a
 line with kana gets the Japanese profile. Lines are judged one at a time, so a stored Japanese name
 never narrows the English prose sharing its `TextDisplay`. The widths live in `panelProse.ts`, because
 Discord exposes no viewport width.
@@ -131,8 +131,9 @@ Keep the `/en/` segment, as every docs link in `src/locales/en-US/` does.
   an add option writes nothing until the modal is submitted, so it is not a navigation write.
 - Show user entries as the server display name followed by the username in parentheses when they differ:
   `Mika (mika_draws)`.
-- A modal holds five top-level components. Text inputs reopen with the stored value; selects and checkbox
-  groups cannot be prefilled and reopen empty.
+- A modal holds five top-level components. Text inputs reopen with the stored value, and selects and
+  checkbox groups reopen with their stored choices marked `default`. A multi-pick String Select is read
+  with `takeRawModalStringSelectValues`, because `takeRawModalSelectValue` keeps only the first value.
 - When a modal's selects are submitted together, every slot keeps its clear entry, even an empty one,
   because the modal cannot be repainted per slot.
 

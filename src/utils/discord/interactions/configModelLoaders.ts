@@ -38,6 +38,12 @@ import { resolveProviderEntryStart } from "@/utils/discord/ui/providerSelectWind
 import { resolveNaiImageParams } from "@/utils/image/naiImageParams";
 import { buildCustomProviderName, isCustomProvider, parseCustomProvider } from "@/utils/provider/customProviderUtils";
 import { getProviderDisplayName } from "@/utils/provider/providerInfoRegistry";
+import {
+  findProviderOption,
+  findProviderOptionByActiveProvider,
+  providerOptionCapabilityForModelView,
+  type ProviderOptionModelViewCapability,
+} from "@/utils/provider/providerOptionRegistry";
 import { loadSavedProvidersForCapability } from "@/utils/provider/savedProviderConfig";
 import { localizer, resolveDescription } from "@/utils/text/localizer";
 
@@ -216,10 +222,19 @@ export async function loadConfigSwitchModelsView(
         // collapsed slots never read would put the whole model table behind every repaint.
         expanded ? loadConfigModelChoices(state.server_id, capability, expanded).then((rows) => rows.length) : 0,
       ]);
+      const optionCapability = providerOptionCapabilityForModelView(capability as ProviderOptionModelViewCapability);
+      const optionOwner =
+        assignment.provider && optionCapability
+          ? findProviderOptionByActiveProvider(
+              assignment.provider,
+              { kind: "server", ownerId: state.server_id, state },
+              optionCapability,
+            )
+          : undefined;
       return {
         capability,
         currentModelName: assignment.modelName,
-        currentProvider: assignment.provider,
+        currentProvider: optionOwner?.value ?? assignment.provider,
         eligibleProviders: providers,
         providerPageStart: providerPage?.capability === capability ? providerPage.start : 0,
         expandedProvider: expanded,
@@ -317,7 +332,7 @@ function describeFallbackEntry(
     return `${localizer(locale, "general.unknown")} (#${rawRef.id})`;
   }
   if (entry.kind === "llm") {
-    return `${entry.model.llm_codename} (${getProviderDisplayName(entry.model.llm_provider)})`;
+    return `${entry.model.llm_codename} (${entry.credentialProvider === "supporter" ? localizer(locale, "commands.providers.subscription_label") : getProviderDisplayName(entry.model.llm_provider, locale)})`;
   }
   return `${entry.endpoint.label}:${entry.endpoint.model_name ?? entry.endpoint.label} (${localizer(
     locale,
@@ -427,10 +442,14 @@ export async function loadConfigFallbackOptions(
   }
 
   const models =
-    (await llmModelRepo.loadAvailableModelsForProvider(provider, false, {
-      kind: "server",
-      ownerId: state.server_id,
-    })) ?? [];
+    (await llmModelRepo.loadAvailableModelsForProvider(
+      findProviderOption(provider)?.catalogProvider ?? provider,
+      false,
+      {
+        kind: "server",
+        ownerId: state.server_id,
+      },
+    )) ?? [];
   // `other-model` is a migration placeholder rather than a routable model, so it never becomes a
   // fallback the chain would try to call.
   return models

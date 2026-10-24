@@ -35,7 +35,7 @@ type DiagnosticEvent =
   | { kind: "persona_jobs_queued"; count: number }
   | { kind: "turn_started"; ordinal: number; total: number }
   | { kind: "turn_finished"; status: GenerationTurnResult["status"]; responseCount: number }
-  | { kind: "attempt_started"; ordinal: number; credentialSource: "server" | "personal"; model: string }
+  | { kind: "attempt_started"; ordinal: number; credentialSource: "server" | "personal" | "supporter"; model: string }
   | { kind: "attempt_finished"; ordinal: number; status: GenerationTurnResult["status"]; keyAttempts: number }
   | {
       kind: "context_history";
@@ -276,7 +276,7 @@ export function recordChatMessageSent(
 
 export function recordChatAttemptStarted(
   ordinal: number,
-  credentialSource: "server" | "personal",
+  credentialSource: "server" | "personal" | "supporter",
   modelKey: string,
 ): void {
   const active = scope.getStore();

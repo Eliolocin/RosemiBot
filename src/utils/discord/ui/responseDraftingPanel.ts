@@ -17,10 +17,10 @@ import {
   checkerFingerprint,
   effectiveReviewerPrompt,
   type ResponseDraftingView,
-  type DraftModelGroup,
 } from "@/utils/discord/interactions/responseDraftingOperations";
 import { buildCheckboxGroupComponent, buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
+import type { StructuredOutputModelGroup } from "@/utils/discord/interactions/configModelOperations";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { DISCORD_SELECT_OPTION_LABEL_MAX, DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -87,7 +87,7 @@ export function buildDraftModelModal(
   state: TomoriState,
   locale: string,
   nonce: string,
-  group: DraftModelGroup,
+  group: StructuredOutputModelGroup,
   start: number,
 ): RawModalPayload {
   const payload = buildConfigModelSelectModal(
@@ -96,7 +96,9 @@ export function buildDraftModelModal(
     group.provider,
     nonce,
     group.models.slice(start, start + CONFIG_MODEL_PAGE_SIZE),
-    state.config.response_reviewer_llm_id,
+    state.config.subscription_capabilities.includes("reviewer") === (group.provider === "supporter")
+      ? state.config.response_reviewer_llm_id
+      : null,
   );
   payload.custom_id = buildConfigRouteId({ action: "draft-model-submit", locale, nonce, provider: group.provider });
   payload.title = localizer(locale, "commands.config.drafting.reviewer_button");
@@ -124,7 +126,7 @@ export function buildResponseDraftingBody(
     disabled,
   });
   const formatModel = (model: string, provider: string): string =>
-    formatModelSelectionLabel(model, getProviderDisplayName(provider), t("commands.config.panel.none_label"));
+    formatModelSelectionLabel(model, getProviderDisplayName(provider, locale), t("commands.config.panel.none_label"));
   const reviewerLabel = (): string => {
     const id = state.config.response_reviewer_llm_id;
     if (id === null) {
@@ -134,6 +136,7 @@ export function buildResponseDraftingBody(
         : `${inherited}: ${t("commands.config.drafting.unavailable")}`;
     }
     for (const group of view?.reviewers ?? []) {
+      if (state.config.subscription_capabilities.includes("reviewer") !== (group.provider === "supporter")) continue;
       const model = group.models.find((candidate) => candidate.id === id);
       if (model) return safeSelectOptionText(formatModel(model.name, group.provider), 180);
     }
@@ -205,6 +208,7 @@ export function buildResponseDraftingBody(
     });
     components.push(
       buildModelRoutingControl({
+        locale,
         capabilityLabel,
         activeModelName: null,
         activeProvider: null,

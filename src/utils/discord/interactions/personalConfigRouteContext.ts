@@ -6,7 +6,13 @@ import {
   type InteractionEditReplyOptions,
   type StringSelectMenuInteraction,
 } from "discord.js";
-import type { FallbackModelRef, PrivacyLevel, TomoriState, UserSavedProviderConfigRow } from "@/types/db/schema";
+import type {
+  FallbackModelRef,
+  PersonalFallbackSettings,
+  PrivacyLevel,
+  TomoriState,
+  UserSavedProviderConfigRow,
+} from "@/types/db/schema";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { UserPersonaNamingPreference } from "@/types/personaNaming";
 import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserRepository";
@@ -62,12 +68,14 @@ export interface PersonalConfigRouteDependencies {
   getMemoryCount(userId: number): Promise<number>;
   getStmCount(userDiscId: string): Promise<number>;
   loadUserSavedProviders(userId: number): Promise<UserSavedProviderConfigRow[]>;
+  loadPersonalFallbackSettings(userId: number): Promise<PersonalFallbackSettings>;
   loadPersonalModelDisplayInfo(
     userId: number,
     savedProviders: UserSavedProviderConfigRow[],
     selectedCap: PersonalConfigManagedCapability,
     selectedParamsProvider?: string,
     selectedFallbacksProvider?: string,
+    locale?: string,
   ): Promise<PersonalConfigModelDisplayInfo>;
   loadAvailableModelsForCapability(
     userId: number,
@@ -309,15 +317,16 @@ export async function repaint(
       selectedCapability ?? "text",
       selectedParametersProvider,
       selectedFallbacksProvider,
+      locale,
     );
   }
 
   let fallbackOptionCount = options.fallbackOptionCount;
   if (category === "models" && page === "fallbacks" && fallbackOptionCount === undefined) {
-    const activeFallbacksProvider = selectedFallbacksProvider ?? modelDisplayInfo?.fallbacksProviders[0];
+    const activeFallbacksProvider = modelDisplayInfo?.fallbacksProvider;
     if (activeFallbacksProvider) {
       try {
-        const fallbackOptions = await loadFallbackSelectionOptions(scope.userId, activeFallbacksProvider);
+        const fallbackOptions = await loadFallbackSelectionOptions(scope.userId, activeFallbacksProvider, locale);
         fallbackOptionCount = fallbackOptions.length;
       } catch {
         fallbackOptionCount = 0;
@@ -400,7 +409,6 @@ export async function repaint(
           savedProviders,
           selectedCapability,
           selectedParametersProvider,
-          selectedFallbacksProvider,
           selectedModelProvider,
           providerStart,
           modelTotalCount,

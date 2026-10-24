@@ -28,6 +28,7 @@ describe("OpenRouter speech model table", () => {
       shape: "design",
       promptCharacters: 2_048,
       scriptCharacters: 1_100,
+      maxDurationSeconds: 120,
     });
     expect(findOpenRouterSpeechModel("FISH-AUDIO/S2.1-PRO")).toEqual({ shape: "clone" });
     expect(findOpenRouterSpeechModel("fish-audio/s2-pro")).toBeNull();

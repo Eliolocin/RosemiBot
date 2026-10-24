@@ -25,6 +25,7 @@ Prompt assembly mirrors the production `messageCreate → tomoriChat` pipeline t
 - **Message boundary processing**: Respects conversation resets (`sliceMessagesAtResetMarker()`), link previews, stickers, and system-produced notice blocks (`extractNoticeTextFromComponents`).
 - **History truncation**: Truncates conversation history against `resolveContextBudget()`, reproducing the drop policy applied during generation turns.
 - **UI exclusion**: Diagnostic embeds and internal debug notices are omitted because they represent interface elements rather than model prompt input.
+- **Hidden agendas**: A Natural Nudges agenda renders above its opener only when the answering persona owns it, as in live context building, so the snapshot shows what that persona sees.
 
 ## Output formats
 

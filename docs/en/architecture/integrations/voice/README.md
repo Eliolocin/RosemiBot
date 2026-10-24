@@ -115,10 +115,15 @@ ElevenLabs, and admitted Fish models. Hosted rows are never `auto`, so a hosted 
 Transcription continues to use `is_default`.
 
 `speechEndpointResolver.ts` returns a discriminated hosted-model or custom-endpoint target with its
-credential owner. Hosted credentials come from that model's provider snapshot; custom endpoint keys
+credential owner. BYOK hosted credentials come from that model's provider snapshot; custom endpoint keys
 remain connection-bound. Personal `speech_design` and `speech_clone` assignments override their server
 slots independently when enabled. Disabling one mode preserves its saved model and owner, while
 resolution inherits the server target for that mode. Personal local endpoints are unsupported.
+
+Unavailable Subscription funding leaves its voice target unresolved and returns the denial for that
+mode alongside the targets. Availability checks and `/status` can still inspect the usable targets;
+the voice command presents the funding denial when it prevents the requested source from being used,
+including when sponsorship is revoked while its modal is open.
 
 The catalogue keeps one default per provider and voice mode: Flash TTS for Google and Vertex Design,
 Seed Audio 1.0 for OpenRouter Design, and paid Fish S2.1 Pro for OpenRouter Clone. Flash-Lite and free
@@ -146,7 +151,7 @@ is unavailable, the other usable pair wins. Existing Auto personas with a sample
 The command puts an uploaded reference first, then a typed description, then saved sources in persona
 priority order. Its source selection applies only to that invocation. Submission rechecks the target
 and saved source; stale forms require a new invocation. Revalidation includes target kind, model
-identity, provider, credential owner, and credential revision. Tool assembly records the selected
+identity, provider, credential owner, credential revision, and a hash of the resolved credential. Tool assembly records the selected
 source and target identity in the turn context; execution checks them against fresh selections and
 persona state before synthesis. Delivery direction and expressiveness apply
 to the selected target. Neither caller retries synthesis through the other slot after a failure.
@@ -159,7 +164,7 @@ chooses between the reference library and ElevenLabs catalogue, including when n
 selected. The quote below the selector identifies its contents and points to reference management.
 Clear actions name and remove only their own source, even if the provider changes before the click.
 The priority effect names the effective source and target and explains why a secondary source is used.
-Missing or incompatible targets produce a quote notice linking to `/providers` while authoring stays
+Missing or incompatible targets produce a quote notice linking to `/config` > Models while authoring stays
 available. Generation retains the legacy optional ElevenLabs credential path; the persona selector shows an
 ElevenLabs catalogue only when ElevenLabs is the active Clone target. A saved ElevenLabs ID has a separate
 clear action beside the reference library when another Clone target or no Clone target is selected.

@@ -1,6 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { stubLogMembers } from "../../helpers/mockSurface";
-import { createOpenRouterCatalog, parseOpenRouterCatalogModelList } from "@/utils/cache/openrouterCatalog";
+import {
+  createOpenRouterCatalog,
+  parseOpenRouterCatalogModelList,
+  getOpenRouterCatalogTtlMs,
+} from "@/utils/cache/openrouterCatalog";
+import { getOrFetchOpenRouterImageEndpoints } from "@/utils/cache/openrouterImageModelCache";
 import { stubGlobalFetch } from "../../helpers/fetchStub";
 
 stubLogMembers({ info: () => undefined, warn: () => undefined, success: () => undefined, error: () => undefined });
@@ -48,6 +53,53 @@ afterEach(() => {
 });
 
 describe("OpenRouter catalog refresh", () => {
+  it("coalesces image-pricing reads and applies catalog TTL and failure cooldown", async () => {
+    const model = "example/cached-image-pricing";
+    let now = Date.now();
+    const clock = spyOn(Date, "now").mockImplementation(() => now);
+    let calls = 0;
+    let resolve: ((response: Response) => void) | undefined;
+    let fail = false;
+    fetchSpy.mockImplementation(
+      Object.assign(
+        async () => {
+          calls += 1;
+          if (fail) return new Response(null, { status: 503 });
+          return new Promise<Response>((complete) => {
+            resolve = complete;
+          });
+        },
+        { preconnect: fetch.preconnect },
+      ),
+    );
+    const response = () =>
+      Response.json({
+        id: model,
+        endpoints: [{ pricing: [{ billable: "output_image", unit: "image", cost_usd: "0.1" }] }],
+      });
+    try {
+      const first = getOrFetchOpenRouterImageEndpoints(model);
+      const second = getOrFetchOpenRouterImageEndpoints(model);
+      expect(calls).toBe(1);
+      resolve?.(response());
+      const [pricing, samePricing] = await Promise.all([first, second]);
+      expect(pricing).toEqual([{ pricing: [{ billable: "output_image", unit: "image", cost_usd: 0.1 }] }]);
+      expect(samePricing).toBe(pricing);
+      expect(await getOrFetchOpenRouterImageEndpoints(model)).toBe(pricing);
+      expect(calls).toBe(1);
+      now += getOpenRouterCatalogTtlMs();
+      const refreshed = getOrFetchOpenRouterImageEndpoints(model);
+      expect(calls).toBe(2);
+      resolve?.(response());
+      await refreshed;
+      fail = true;
+      expect(await getOrFetchOpenRouterImageEndpoints("example/unavailable-image-pricing")).toBeUndefined();
+      expect(await getOrFetchOpenRouterImageEndpoints("example/unavailable-image-pricing")).toBeUndefined();
+      expect(calls).toBe(3);
+    } finally {
+      clock.mockRestore();
+    }
+  });
   it("bounds video discovery and cancels oversized or rejected responses", async () => {
     for (const status of [200, 503]) {
       let cancelled = false;
