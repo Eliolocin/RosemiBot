@@ -212,6 +212,8 @@ describe("v2 section semantics", () => {
   });
 
   it("covers every v1 table field exactly once or records it as excluded", () => {
+    // Natural Nudges postdates v1 files, so no v1 table can own its section.
+    const V2_ONLY_SECTIONS = new Set(["nudges"]);
     const expected = new Set<string>();
     const expectedExcluded = new Set<string>();
     let expectedClaimCount = 0;
@@ -237,6 +239,7 @@ describe("v2 section semantics", () => {
 
     const actual = new Set<string>();
     for (const [section, schema] of Object.entries(V2_CONFIG_SECTION_SCHEMAS)) {
+      if (V2_ONLY_SECTIONS.has(section)) continue;
       for (const field of Object.keys(schema.shape)) actual.add(`${section}.${field}`);
     }
 

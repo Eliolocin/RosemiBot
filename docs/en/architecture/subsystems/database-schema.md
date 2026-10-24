@@ -139,7 +139,7 @@ matching credential revision, including after the persona is removed.
 ### User identity, privacy, and personalization
 
 - **`users`**: stores account snowflakes (`user_disc_id`), language preferences, registration locales, and `privacy_level` (0 = minimal, 1 = partial, 2 = full).
-- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, and the personal text fallback chain (`fallback_model_refs`) with its `model_randomizer_enabled` flag. The chain is one per user and may mix providers; sampler parameters stay per provider on `user_saved_provider_configs`.
+- **`user_personalization_configs`**: stores personal nicknames, numeric timezone offsets, deliberate tool modes, cross-server short-term memory opt-ins, physical appearance tags, NovelAI character reference URLs, impersonation prompts, personal fallback routing toggles, the Pings from Personas opt-out (`natural_nudge_opt_out`), and the personal text fallback chain (`fallback_model_refs`) with its `model_randomizer_enabled` flag. The chain is one per user and may mix providers; sampler parameters stay per provider on `user_saved_provider_configs`.
 - **`user_persona_naming_preferences`**: stores nullable nickname, prefix, and suffix overrides per `(user_id, persona_lineage_id)`. Survives persona deletion and re-import because it has no foreign key to local persona IDs.
 - **`personalization_blacklist`**: server-scoped table keyed by `(server_id, user_disc_id)`. Excludes the user from personalization enrichments in that guild without deleting their account.
 - **`persona_user_blocks`**: stores persona-scoped moderation records keyed by `(server_id, persona_id, user_disc_id)`. Supports `mute` (stops triggering persona) and `block` (also hides user messages from dialogue history).
@@ -163,6 +163,7 @@ including link expressions. Existing rows remain editable when the limit is reac
 
 - **`llms`, `image_diffusion_models`, `video_generation_models`, `embedding_models`, `decision_models`, `speech_models`**: global model catalogs seeded from typed code definitions.
 - **Pricing storage**: first-party models record token prices directly in `llms.input_price_per_million` and `output_price_per_million`. OpenRouter pricing uses the live API cache first, falling back to database column values.
+- **Decision primitives**: `decision_models.supported_primitives` lists the question types a model answers. Every Decision API style the bot calls accepts `predicate` and `choice`, so new rows default to both; the Active Nudge matcher needs `choice`.
 - **Token limits**: `context_window` and `max_output_tokens` record model ceilings. Runtime code queries them through `resolveModelLimits()`, where live provider responses take precedence.
 - **`custom_endpoint_connections`**: logical connection metadata scoped to either `server_id` or `user_id`, grouped by `(owner, label, capability)`.
 - **`custom_endpoints`**: model registrations under a connection, linking to synthetic catalog rows through `model_ref_id`.
@@ -191,6 +192,39 @@ the schema.
 - **`command_catalog`**: dimension table recording all registered slash commands. Synced at boot by `StatRepository.syncCommandCatalog()`, enabling telemetry joins to identify unused commands.
 - **`api_key_rotation` and `api_key_rotation_runtime_state`**: provider key rotation pool and error cooldown tracking per server. Excluded from export.
 - **`persona_autoch_runtime_state`**: high-frequency autochat counter per persona. Excluded from export.
+
+## Natural Nudges
+<!-- anchor: natural-nudges -->
+
+Natural Nudges stores events and derives its meters on read
+(see [Natural Nudges](/architecture/subsystems/natural-nudges/)):
+
+- **`server_natural_nudge_configs`**: per-server settings, read fresh by the runtime rather than
+  through `tomoriState`. A missing row means the column defaults, and `idle_nudges_enabled` defaults
+  to true, so the timer enumerates servers from recent `stat_counters` activity instead of from
+  these rows. `active_nudges_enabled` defaults to true as well, and each mode's `idle_nudge_frequency` or
+  `active_nudge_frequency` (0-3) selects that mode's daily cap from constants in `runtime/tuning.ts`;
+  the idle nudge category weights are constants there too, not columns. An empty `channel_disc_ids`
+  means automatic channels, and a null `llm_id` means the server's chat model. Reset restores it;
+  the workspace export carries it without `channel_disc_ids`, and import checks `llm_id` against
+  the target workspace's structured-output models.
+- **`server_natural_nudge_custom_idle_nudges`**: custom idle nudges, at most 25 per server. Prerequisite IDs are
+  checked against the code registry on write and import, not by a CHECK. Reset deletes them.
+- **`server_natural_nudge_persona_scopes`**: the personas one idle nudge is limited to, keyed by
+  `(server_id, idle_nudge_key)`. `persona_ids` is a JSONB array without a foreign key, so deleted
+  personas leave stale IDs that readers filter. Excluded from export; reset deletes them.
+- **`persona_natural_nudge_configs`**: talkativeness and interests per persona. Pointer personas
+  without a row read `persona_presets.natural_nudge_interests` and `natural_nudge_talkativeness`.
+- **`server_natural_nudge_runtime_state`**: idle nudge jitter and the failure stop. Excluded from export.
+- **`natural_nudge_fires`**: the fire log every meter reads, with `target_user_id` for a Ping User. Active Nudge
+  rows (`mode = 'active'`) have no category or verdict and set `detour` when another persona took the
+  turn. Pruned after 30 days.
+- **`natural_nudge_agendas`**: hidden agendas keyed by `(message_disc_id, persona_id)`. Pruned after
+  90 days; `target_user_id` cascades so erasing a user removes agendas built from their data.
+
+Deleting the owning model clears `server_natural_nudge_configs.llm_id` through the same paths
+that clear `response_reviewer_llm_id`: deprecated catalog models, provider removal, and
+registration removal.
 
 ## Response Drafting workspace settings
 
@@ -229,11 +263,11 @@ Sensitive provider credentials are encrypted using PostgreSQL `pgcrypto` (`pgp_s
 
 The reset subsystem in `src/utils/db/repositories/ResetRepository.ts` categorizes tables into distinct reset scopes:
 
-- **Server singletons restored to DDL defaults (18 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`.
+- **Server singletons restored to DDL defaults (19 tables)**: `server_chat_configs`, `server_model_configs`, `server_member_permissions_configs`, `server_capabilities_configs`, `server_notice_embeds_configs`, `server_nsfw_configs`, `server_speech_configs`, `server_auto_trigger_configs`, `server_channel_scope_configs`, `server_trigger_behavior_configs`, `server_novelai_imagegen_configs`, `server_byok_configs`, `server_memory_configs`, `server_stm_configs`, `server_welcome_configs`, `image_quota_configs`, `text_quota_configs`, `video_quota_configs`, `server_natural_nudge_configs`.
 - **Preserved server configuration**: active model foreign keys, credentials, custom endpoint parameters, and the cached Other-model identity/capabilities in `server_model_configs`, plus active NovelAI diffusion model identity (`nai_diffusion_model_id`). `SERVER_SINGLETON_RESET_TABLES` owns the exact preserved columns.
-- **Cleared server collections (11 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`.
+- **Cleared server collections (13 tables)**: `server_auto_trigger_persona_overrides`, `stm_categories`, `random_triggers`, `channel_llm_overrides`, `channel_prompt_overrides`, `channel_context_notes`, `personalization_blacklist`, `persona_user_blocks`, `channel_whitelist`, `role_whitelist`, `channel_persona_whitelist`, `server_natural_nudge_custom_idle_nudges`, `server_natural_nudge_persona_scopes`.
 - **Preserved server domains**: personas and persona settings, server memories, short-term memories, expressions (emojis, stickers, and custom expressions), recorded quota consumption, saved provider configurations, and external integrations (Matrix, MCP, and message-proxy instances).
-- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores all configuration columns in `user_personalization_configs` to schema defaults, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
+- **Personal reset**: restores `users.language_pref` ('en-US') and `users.privacy_level` (0), restores every configuration column in `user_personalization_configs` to its schema default except `natural_nudge_opt_out`, which a reset must never silently turn back on, deletes `user_persona_naming_preferences`, and removes all `personal_spotlights` (cascading to `personal_spotlight_personas`). Preserves user account identity, message-proxy selection and host links, personal memories, saved provider credentials, custom endpoints, and scheduled reminders.
 
 Message-proxy tables link service instances, external identities, namespaces, authorized host accounts, and immutable message attribution. PluralBuddy OAuth credentials are encrypted with separate version tags for each field. See [message-proxy persistence](/architecture/integrations/message-proxy/#persistence) for table ownership.
 

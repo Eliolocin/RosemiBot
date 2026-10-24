@@ -53,6 +53,9 @@ export default {
     section_speech_description: "Configurações de voz e fala.",
     section_access_label: "Acesso",
     section_access_description: "Configurações de acesso e permissão do servidor.",
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description:
+      "Configurações do Natural Nudges e toques ociosos personalizados, sem canais permitidos.",
     section_profile_label: "Perfil",
     section_profile_description: "Configurações de perfil pessoal.",
     section_privacy_label: "Privacidade",

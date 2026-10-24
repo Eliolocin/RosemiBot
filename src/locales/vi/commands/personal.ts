@@ -204,6 +204,11 @@ TomoriBot sẽ xem bạn như người dùng mới từ tin nhắn tiếp theo.`
       crossserver_stm_on:
         "Mình có thể lưu bộ nhớ hội thoại gần đây với bạn qua các máy chủ vì STM liên máy chủ đang bật.",
       crossserver_stm_footer: `\`/personal memories\` luôn lưu qua các máy chủ, nhưng STM thì không`,
+      ping_user_section_title:
+        "[Persona tag bạn](https://docs.tomoribot.app/vi/features/chatting-personality/natural-nudges/#ping-user)",
+      ping_user_on:
+        "Các persona của mình có thể bắt đầu cuộc trò chuyện bằng cách tag bạn khi kênh trở nên yên ắng, nếu bạn đã nói chuyện với mình trong máy chủ này trong 14 ngày qua.",
+      ping_user_off: "Các persona của mình không bao giờ bắt đầu cuộc trò chuyện bằng cách tag bạn.",
       models_title: `Định tuyến model cá nhân`,
       models_description:
         "Tùy chỉnh cá nhân đi theo bạn qua các máy chủ. Tính năng đặt Mặc định máy chủ sẽ dùng model của máy chủ hiện tại.",
@@ -470,6 +475,10 @@ Dùng Xóa prompt để gỡ bỏ.`,
       crossserver_enabled_detail: `Chia sẻ bộ nhớ ngắn hạn liên máy chủ hiện đã được bật.`,
       crossserver_disabled_heading: `Đã tắt STM liên máy chủ`,
       crossserver_disabled_detail: `Chia sẻ bộ nhớ ngắn hạn liên máy chủ hiện đã bị tắt.`,
+      ping_user_enabled_heading: "Đã bật tag từ persona",
+      ping_user_enabled_detail: "Các persona của mình có thể tag bạn để bắt đầu trò chuyện trở lại.",
+      ping_user_disabled_heading: "Đã tắt tag từ persona",
+      ping_user_disabled_detail: "Các persona của mình sẽ không còn tag bạn để bắt đầu trò chuyện.",
       no_changes_heading: `Không có thay đổi nào`,
       no_changes_detail: `Không có cài đặt nào bị sửa đổi.`,
       write_failed_heading: `Thao tác thất bại`,

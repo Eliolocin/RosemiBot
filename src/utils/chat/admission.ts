@@ -20,7 +20,12 @@ import {
 } from "@/utils/chat/triggerProcessor";
 import { getCachedImpersonatedUserIdForWebhook } from "@/utils/chat/webhookIdentity";
 import { escapeRegExp, isUnspacedScriptText, wrapWithWordBoundary } from "@/utils/text/processors/regexUtils";
-import { isActiveNaturalStopTurn, selfReplySuppressionUntil } from "@/utils/chat/channelQueue";
+import {
+  interruptNudgeScene,
+  isActiveNaturalStopTurn,
+  isNudgeOutputActive,
+  selfReplySuppressionUntil,
+} from "@/utils/chat/channelQueue";
 import { cleanupTextQuotaTriggerStates } from "@/utils/chat/textQuotaState";
 import { evaluateAdmissionQueueAndTriggerGate } from "@/utils/chat/admissionQueue";
 import { applyWelcomeHandoff } from "@/utils/chat/welcomeHandoff";
@@ -106,6 +111,9 @@ export function normalizeChatInvocation(input: TomoriChatInput): ChatIncoming {
     systemTriggerIdentity: input.systemTriggerIdentity,
     manualStreamingContextOverrides: input.manualStreamingContextOverrides,
     sceneTurn: input.sceneTurn,
+    naturalNudge: input.naturalNudge,
+    nudgeSceneCatcherPersonaId: input.nudgeSceneCatcherPersonaId,
+    borrowsTriggerMessage: input.borrowsTriggerMessage,
     carriedExpressionDelivery: input.carriedExpressionDelivery,
     onGenerationResult: input.onGenerationResult,
     onQueueDiscard: input.onQueueDiscard,
@@ -191,6 +199,11 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
     return ignored("self_reply_suppressed");
   }
 
+  if (!incoming.isManuallyTriggered && isLikelySelfMessage && isNudgeOutputActive(channel.id)) {
+    updateSelfReplyChainState(channel.id, false);
+    return ignored("nudge_output");
+  }
+
   if (!incoming.isManuallyTriggered && isLikelySelfMessage && message.reference?.messageId) {
     const referencedMessage = await getReferencedMessage();
     if (
@@ -204,6 +217,10 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
 
   if (isRealUserMessage && !isActiveNaturalStopMessage && !incoming.isPersonaJob) {
     updateSelfReplyChainState(channel.id, false);
+    // Before every gate below, so a member the trigger checks would ignore still ends the scene.
+    if (!incoming.isManuallyTriggered && !incoming.isFromQueue) {
+      incoming.nudgeSceneCatcherPersonaId = interruptNudgeScene(channel.id);
+    }
   }
 
   if (channel.type === ChannelType.DM && isBotAuthor && !incoming.isManuallyTriggered) {
@@ -285,6 +302,7 @@ export async function evaluateChatAdmission(incoming: ChatIncoming): Promise<Cha
   if (
     !channelScope.isDMChannel &&
     !incoming.isStopResponse &&
+    !incoming.borrowsTriggerMessage &&
     (await getCachedBlacklistStatus(channelScope.serverDiscId, userDiscId))
   ) {
     return blocked("server_blacklisted_user");

@@ -29,6 +29,8 @@ The gateway event `interactionCreate` routes to `src/events/interactionCreate/ha
 
 The `messageCreate` event routes to `src/events/messageCreate/tomoriChat.ts`. The handler normalizes incoming messages, evaluates server admission and ignore rules, manages per-channel execution queues, and runs turn planning and generation. See [Normalize Invocation](/architecture/pipelines/chat/01-normalize-invocation/) for chat normalization and admission details.
 
+`src/events/messageCreate/activeNudge.ts` sorts first and feeds the Natural Nudges active-nudge counter. It starts the counter without awaiting it, because handlers run one after another and a cold settings read must never delay `tomoriChat`. A tripped check runs detached as well. See [Natural Nudges](/architecture/subsystems/natural-nudges/#active-nudges).
+
 ### Startup initialization
 
 The `clientReady` event runs startup initialization tasks, including registering application slash commands with Discord (`src/events/clientReady/01_registercommands.ts`) and initializing Model Context Protocol (MCP) servers.
@@ -52,5 +54,6 @@ Adding a new event handler or mapping a new Discord event is documented in the c
 - `src/handlers/eventHandler.ts`: single event dispatcher and listener setup.
 - `src/events/interactionCreate/handleCommands.ts`: slash command, autocomplete, and interaction dispatch.
 - `src/events/messageCreate/tomoriChat.ts`: chat pipeline entry point.
+- `src/events/messageCreate/activeNudge.ts`: Natural Nudges active-nudge counter.
 - `src/events/guildMemberAdd/newUser.ts`: member registration and welcome gate runner.
 - `src/utils/misc/healthTracker.ts`: liveness tracking.

@@ -146,6 +146,7 @@ function policyParams() {
     isPersonaJob: false,
     isManuallyTriggered: false,
     isUserImpersonation: false,
+    borrowsTriggerMessage: false,
     shouldSurfaceUserErrors: true,
     refusalNoticeKey: turn.admission.message.id,
   };

@@ -37,10 +37,12 @@ type PersonaPage =
   | "advanced"
   | "overrides"
   | "voice"
-  | "naming";
+  | "naming"
+  | "nudges";
 type BehaviorPage = "general" | "trigger" | "experimental" | "notices" | "memory";
 type PluginsPage =
   | "response-drafting"
+  | "natural-nudges"
   | "available-tools"
   | "context-additions"
   | "mcp-servers"
@@ -57,12 +59,24 @@ export type ConfigPage = PersonaPage | BehaviorPage | PluginsPage | ChannelsPage
  * custom ID, which is why the category field must stay ahead of the page field in every codec.
  */
 export const CONFIG_PAGES_BY_CATEGORY: Record<ConfigCategory, readonly ConfigPage[]> = {
-  persona: ["general", "triggers", "memories", "naming", "sprites", "appearance", "voice", "overrides", "advanced"],
+  persona: [
+    "general",
+    "triggers",
+    "memories",
+    "naming",
+    "sprites",
+    "appearance",
+    "voice",
+    "nudges",
+    "overrides",
+    "advanced",
+  ],
   behavior: ["general", "trigger", "notices", "experimental", "memory"],
   plugins: [
     "available-tools",
     "context-additions",
     "response-drafting",
+    "natural-nudges",
     "mcp-servers",
     "sillytavern-presets",
     "nsfw-jailbreaks",
@@ -407,6 +421,30 @@ export function computeLogitBiasFingerprint(serverId: number, entryIds: readonly
 }
 
 export type ConfigPanelRoute =
+  | { action: "nudge-talk-select"; locale: string; personaId: number }
+  | { action: "nudge-interest-select"; locale: string; personaId: number }
+  | { action: "nudge-interest-add-submit"; locale: string; personaId: number; nonce: string }
+  | {
+      action: "nudge-interest-edit-submit";
+      locale: string;
+      personaId: number;
+      index: number;
+      fp: string;
+      nonce: string;
+    }
+  | { action: "nudge-interest-remove-open"; locale: string; personaId: number }
+  | { action: "nudge-interest-generate"; locale: string; personaId: number }
+  | { action: "nudge-interest-remove-submit"; locale: string; personaId: number; fp: string; nonce: string }
+  | { action: "nudge-idle-nudges-set"; locale: string; enabled: boolean }
+  | { action: "nudge-channels-select"; locale: string }
+  | { action: "nudge-provider"; locale: string }
+  | { action: "nudge-model-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-checker-provider"; locale: string }
+  | { action: "nudge-checker-model-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-checker-decision-submit"; locale: string; provider: string; nonce: string }
+  | { action: "nudge-idle-nudges-frequency-select"; locale: string }
+  | { action: "nudge-active-nudges-set"; locale: string; enabled: boolean }
+  | { action: "nudge-active-nudges-frequency-select"; locale: string }
   | { action: "draft-set"; locale: string; enabled: boolean }
   | { action: "draft-items-open"; locale: string }
   | { action: "draft-items-submit"; locale: string; nonce: string }
@@ -912,6 +950,26 @@ const requiredChannelIdField: RouteFieldCodec<"channelId", string> = {
  * action is a compile error until it has a wire token.
  */
 export const CONFIG_ROUTE_CODECS: ConfigRouteCodecs = {
+  "nudge-talk-select": { wireToken: "nn-talk", fields: [personaIdField] },
+  "nudge-interest-select": { wireToken: "nn-int-select", fields: [personaIdField] },
+  "nudge-interest-add-submit": { wireToken: "nn-int-add", fields: [personaIdField, nonceField] },
+  "nudge-interest-edit-submit": {
+    wireToken: "nn-int-edit",
+    fields: [personaIdField, indexField, fpField, nonceField],
+  },
+  "nudge-interest-remove-open": { wireToken: "nn-int-rem-open", fields: [personaIdField] },
+  "nudge-interest-generate": { wireToken: "nn-int-gen", fields: [personaIdField] },
+  "nudge-interest-remove-submit": { wireToken: "nn-int-rem", fields: [personaIdField, fpField, nonceField] },
+  "nudge-idle-nudges-set": { wireToken: "nn-idle-set", fields: [enabledField] },
+  "nudge-channels-select": { wireToken: "nn-channels", fields: [] },
+  "nudge-provider": { wireToken: "nn-provider", fields: [] },
+  "nudge-model-submit": { wireToken: "nn-model", fields: [providerField, nonceField] },
+  "nudge-checker-provider": { wireToken: "nn-checker", fields: [] },
+  "nudge-checker-model-submit": { wireToken: "nn-checker-model", fields: [providerField, nonceField] },
+  "nudge-checker-decision-submit": { wireToken: "nn-checker-decision", fields: [providerField, nonceField] },
+  "nudge-idle-nudges-frequency-select": { wireToken: "nn-idle-frequency", fields: [] },
+  "nudge-active-nudges-set": { wireToken: "nn-active-set", fields: [enabledField] },
+  "nudge-active-nudges-frequency-select": { wireToken: "nn-active-frequency", fields: [] },
   "draft-set": { wireToken: "draft-set", fields: [enabledField] },
   "draft-items-open": { wireToken: "draft-items-open", fields: [] },
   "draft-items-submit": { wireToken: "draft-items-submit", fields: [nonceField] },

@@ -156,6 +156,7 @@ export default {
     field_blacklisted_members_with_count: `{current} miembros`,
     field_personal_dtm: `MAD Personal`,
     field_crossserver_stm: `MCP entre Servidores`,
+    field_ping_users: "Menciones de personas",
     field_nai_char_ref: `Referencia de Personaje de NAI`,
     custom_endpoint_capability_label: `{capability}`,
     field_vision_model: `Modelo de Visión`,

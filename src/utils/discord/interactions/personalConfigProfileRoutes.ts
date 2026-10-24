@@ -727,6 +727,74 @@ export async function handlePersonalConfigProfileWrites(context: PersonalConfigP
     return true;
   }
 
+  if (route.action === "ping-user-set") {
+    const repaintPrivacy = (panelReceipt: Parameters<typeof repaint>[1]["panelReceipt"]) =>
+      repaint(interaction, {
+        locale: route.locale,
+        scope: context.scope,
+        category: "privacy",
+        page: "controls",
+        panelReceipt,
+        dependencies,
+      });
+    if (context.scope.readStatus !== "fresh") {
+      await repaintPrivacy({
+        tone: "error",
+        heading: localizer(route.locale, "commands.personal.config.unavailable"),
+        detail: localizer(route.locale, "commands.personal.config.stale_warning"),
+      });
+      return true;
+    }
+    const action = await performPanelAction(
+      () =>
+        dependencies.operations.setNaturalNudgeOptOut({
+          userId: context.scope.userId,
+          userDiscId: context.scope.userDiscId,
+          current: context.scope.user.natural_nudge_opt_out,
+          optedOut: !route.enabled,
+        }),
+      () => dependencies.resolveScope(interaction, true),
+    );
+    const result = action.result;
+    context.scope = action.state ?? context.scope;
+
+    if (result.status === "no-changes") {
+      await repaintPrivacy(noChangesReceipt(route.locale));
+      return true;
+    }
+    if (result.status === "success") {
+      if (context.scope.internalServerId) {
+        dependencies.recordAction({
+          action: "personal-config.personal.ping-user.set",
+          serverId: context.scope.internalServerId,
+          userDiscId: interaction.user.id,
+        });
+      }
+      await repaintPrivacy({
+        tone: "success",
+        heading: localizer(
+          route.locale,
+          result.optedOut
+            ? "commands.personal.config.ping_user_disabled_heading"
+            : "commands.personal.config.ping_user_enabled_heading",
+        ),
+        detail: localizer(
+          route.locale,
+          result.optedOut
+            ? "commands.personal.config.ping_user_disabled_detail"
+            : "commands.personal.config.ping_user_enabled_detail",
+        ),
+      });
+      return true;
+    }
+    await repaintPrivacy({
+      tone: "error",
+      heading: localizer(route.locale, "commands.personal.config.write_failed_heading"),
+      detail: localizer(route.locale, "commands.personal.config.write_failed_detail"),
+    });
+    return true;
+  }
+
   if (route.action === "crossserver-toggle") {
     const action = await performPanelAction(
       () =>

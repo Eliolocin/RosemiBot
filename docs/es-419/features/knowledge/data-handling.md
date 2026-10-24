@@ -87,7 +87,7 @@ Para obtener tablas de bases de datos exactas y listas de columnas conservadas, 
 
 ## Optar por no participar
 
-- `/personal config`: controle su visibilidad, hasta la invisibilidad total (optando fuera del contexto de la memoria).
+- `/personal config`: controla tu visibilidad, hasta la invisibilidad total (excluirte del contexto de memoria), y desactiva las [Menciones de personas](/features/chatting-personality/natural-nudges/#ping-user), las intervenciones espontáneas donde una persona te menciona para iniciar una conversación.
 - `/config` > `Permisos`: los administradores del servidor pueden desactivar las funciones de memoria y autoaprendizaje.
 
 Consulta [Memoria](/es-419/features/knowledge/memory/) para conocer la administración de la memoria diaria.

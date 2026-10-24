@@ -207,6 +207,11 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       crossserver_stm_on:
         "Eu posso carregar a memória de conversas recentes com você entre servidores porque o STM Entre Servidores está ativado.",
       crossserver_stm_footer: `\`/personal memories\` sempre persistem entre servidores, mas não STM`,
+      ping_user_section_title:
+        "[Menções de Personas](https://docs.tomoribot.app/pt-BR/features/chatting-personality/natural-nudges/#ping-user)",
+      ping_user_on:
+        "Minhas personas podem iniciar uma conversa mencionando você quando um canal ficar silencioso, se você conversou comigo neste servidor nos últimos 14 dias.",
+      ping_user_off: "Minhas personas nunca iniciam uma conversa mencionando você.",
       models_title: `Roteamento de Modelos Pessoais`,
       models_description:
         "Substituições pessoais seguem você entre servidores. Uma capacidade definida como Padrão do Servidor usa os modelos do servidor atual em vez disso.",
@@ -473,6 +478,10 @@ O TomoriBot o tratará como um novo usuário a partir de sua próxima mensagem.`
       crossserver_enabled_detail: `O compartilhamento de memória de curto prazo entre servidores agora está ativado.`,
       crossserver_disabled_heading: `STM Entre Servidores Desativado`,
       crossserver_disabled_detail: `O compartilhamento de memória de curto prazo entre servidores agora está desativado.`,
+      ping_user_enabled_heading: "Menções de Personas Ativadas",
+      ping_user_enabled_detail: "Minhas personas podem mencionar você novamente para iniciar uma conversa.",
+      ping_user_disabled_heading: "Menções de Personas Desativadas",
+      ping_user_disabled_detail: "Minhas personas não irão mais mencionar você para iniciar uma conversa.",
       no_changes_heading: `Nenhuma Alteração Feita`,
       no_changes_detail: `Nenhuma configuração foi modificada.`,
       write_failed_heading: `Falha na Operação`,

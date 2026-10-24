@@ -87,7 +87,7 @@ Para tabelas exatas de banco de dados e listas de colunas preservadas, consulte 
 
 ## Optando por Sair
 
-- `/personal config`: controle sua visibilidade, até a invisibilidade total (optando por sair do contexto de memória).
+- `/personal config`: controle sua visibilidade, até a invisibilidade total (optando por sair do contexto de memória), e desative as [Menções de Personas](/features/chatting-personality/natural-nudges/#ping-user), os toques ociosos em que uma persona menciona você para iniciar uma conversa.
 - `/config` > `Permissões`: os gerenciadores de servidores podem desativar os recursos de autoaprendizado e memória.
 
 Consulte [Memória](/pt-BR/features/knowledge/memory/) para gerenciamento diário de memória.

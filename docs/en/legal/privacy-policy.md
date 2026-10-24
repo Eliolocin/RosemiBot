@@ -25,11 +25,13 @@ We use saved data to provide the features you choose, remember your preferences,
 
 ### 2.1) Your account and preferences
 
-We store your Discord user ID, privacy choices, and the profile details and preferences you choose to save. We also keep usage totals so you can view statistics for yourself, the Server, and its personas.
+We store your Discord user ID, privacy choices, and the profile details and preferences you choose to save. We also keep usage totals so you can view statistics for yourself, the Server, and its personas. Your saved preferences include whether personas may ping you to start a conversation (Pings from Personas).
 
 ### 2.2) Memories and Server settings
 
 We keep personal and Server memories, persona customizations, reminders, and Server settings to provide the features you configure.
+
+When a persona starts a conversation on its own (Natural Nudges), we record which persona spoke, the channel, whether anyone answered, and the member it pinged. We also save the persona's private goal for that conversation, which may mention that member.
 
 Optional short-term memory saves conversation summaries. Other saved memories remain until deleted and may describe people who did not write them.
 
@@ -59,7 +61,7 @@ TomoriBot temporarily reads recent messages, relevant media, Server and channel 
 
 ## 4) Who receives your data
 
-- **AI providers:** your selected provider receives the prompt, relevant conversation context, persona information, and media needed for text, images, video, voice, or document search. Subscription requests use OpenRouter and the selected model's providers. We check spending with OpenRouter to enforce your allowance.
+- **AI providers:** your selected provider receives the prompt, relevant conversation context, persona information, and media needed for text, images, video, voice, or document search. Before a persona pings someone, the Server's model also receives that member's name, current activity, and recent personal memories, unless their privacy level hides those. Subscription requests use OpenRouter and the selected model's providers. We check spending with OpenRouter to enforce your allowance.
 - **Patreon:** linking authorizes us to verify your membership. Patreon provides account and membership updates; Patreon and its payment providers handle payments and payment details.
 - **Search providers:** when web search is used, the search provider receives search queries and relevant context.
 - **Matrix:** when a bridge is configured, messages are shared between the linked Discord channel and Matrix room.
@@ -74,6 +76,7 @@ These services may process data outside your country and have their own privacy 
 | Short-term memory summaries | 90 days after last activity by default |
 | Error logs | 90 days |
 | Performance records and bot-message identifiers | 30 days |
+| Natural Nudges records | 30 days; the persona's private goal up to 90 days |
 | Patreon membership-update records | 30 days by default |
 | Completed or expired Patreon sign-in records | Eligible for deletion after one hour by default |
 | Detailed subscription usage | 90 days; current-period records stay until that period ends if later |
@@ -92,6 +95,7 @@ Removing the bot keeps Server data for re-invitation; run `/nuke` first to delet
 | What you want | Where to do it |
 |---|---|
 | Control message visibility and personal memory use | `/personal config` |
+| Stop personas pinging you to start a conversation | `/personal config` > `Privacy` > `Pings from Personas` |
 | Review or remove personal memories | `/personal memories` |
 | Review or remove Server memories and documents | `/memories` |
 | Export your personal settings or memories | `/export personal config`, `/export personal memories` |
@@ -104,7 +108,7 @@ Removing the bot keeps Server data for re-invitation; run `/nuke` first to delet
 
 Your Server memories and documents stay, with your authorship removed; ask a manager to delete them with `/memories`. If a shared memory or document contains personal data about you and you cannot get it removed, contact us directly using Section 9. You do not need a manager's permission to request review and removal.
 
-Privacy settings limit message visibility and personalization; they do not erase existing memories. Privacy opt-outs survive erasure so collection is not silently re-enabled.
+Privacy settings limit message visibility and personalization; they do not erase existing memories. Privacy opt-outs survive erasure so collection is not silently re-enabled. Your Pings from Personas choice is a personalization setting, so `/personal nuke` erases it; turn Pings from Personas off again afterwards if you still want them off.
 
 For subscriptions, use the subscription panel to review your allowance and sponsorships or stop sponsoring a Server. Cancel renewal through Patreon; stopping sponsorship or deleting bot data does not stop billing.
 

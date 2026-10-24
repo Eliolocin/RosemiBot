@@ -71,12 +71,12 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Reset classification: regression", () => {
     columnsByTable.clear();
   });
 
-  it("classifies exactly 18 server singleton tables", () => {
-    expect(SERVER_SINGLETON_RESET_TABLES).toHaveLength(18);
+  it("classifies exactly 19 server singleton tables", () => {
+    expect(SERVER_SINGLETON_RESET_TABLES).toHaveLength(19);
   });
 
-  it("classifies exactly 11 server collection tables", () => {
-    expect(SERVER_COLLECTION_RESET_TABLES).toHaveLength(11);
+  it("classifies exactly 13 server collection tables", () => {
+    expect(SERVER_COLLECTION_RESET_TABLES).toHaveLength(13);
   });
 
   it("classifies exactly 2 personal singleton tables", () => {

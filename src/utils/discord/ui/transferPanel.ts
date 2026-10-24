@@ -63,6 +63,10 @@ const SECTION_LOCALE_KEYS: Record<ConfigSectionName, { label: string; descriptio
     label: "commands.transfer.section_access_label",
     description: "commands.transfer.section_access_description",
   },
+  nudges: {
+    label: "commands.transfer.section_nudges_label",
+    description: "commands.transfer.section_nudges_description",
+  },
   profile: {
     label: "commands.transfer.section_profile_label",
     description: "commands.transfer.section_profile_description",

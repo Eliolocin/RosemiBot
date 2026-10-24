@@ -87,7 +87,7 @@ aiGenerated: true
 
 ## 選擇退出
 
-- `/personal config`：控制你的可見性，直至完全不可見（選擇退出記憶體上下文）。
+- `/personal config`：控制你的可見性，直至完全不可見（選擇退出記憶脈絡），並關閉[來自人格的標註](/features/chatting-personality/natural-nudges/#ping-user)（即人格主動 @標註 你發起對話的閒置搭話）。
 - `/config` > `權限`：伺服器管理員可以關閉自學習和記憶體功能。
 
 日常記憶體管理請參考[記憶體](/zh-TW/features/knowledge/memory/)。

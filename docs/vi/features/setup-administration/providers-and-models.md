@@ -62,6 +62,7 @@ Trong `/config` > `Model` > `Chuyển đổi model`, bạn có thể chỉ đị
 - **Văn bản**: model trò chuyện chính.
 - **Tầm nhìn**: đọc hình ảnh khi model trò chuyện không thể đọc được.
 - **Phần nhúng**: hỗ trợ [cơ sở kiến thức tài liệu](/vi/features/knowledge/memory/#document-knowledge-base-rag).
+- **Quyết định**: một [model quyết định](#decision-models) đã đăng ký. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) sử dụng nó để quyết định thời điểm tham gia cuộc trò chuyện.
 - **Hình ảnh tiêu chuẩn**: tạo hình ảnh tiêu chuẩn (xem [Tạo hình ảnh](/vi/features/capabilities/media-generation/image-generation/)).
 - **Hình ảnh NovelAI**: Tạo hình ảnh NovelAI.
 - **Video**: tạo video.
@@ -75,7 +76,7 @@ Bạn cũng có thể quản lý các khóa dự phòng để tự động chuy�
 ## Model quyết định
 <!-- anchor: decision-models -->
 
-Model quyết định là một danh mục riêng biệt trong `/providers` và `/personal providers`. Chúng trả lời các vị từ được định kiểu bằng xác suất. Việc đăng ký không làm thay đổi model trò chuyện đang hoạt động, không thiết lập hiệu chuẩn hoặc kích hoạt tính năng bỏ qua duyệt phản hồi. Các bảng điều khiển này vẫn chưa chọn một model quyết định.
+Model quyết định là một danh mục riêng biệt trong `/providers` và `/personal providers`. Chúng trả lời các câu hỏi có định kiểu (có hoặc không, hoặc chọn một trong nhiều lựa chọn) bằng xác suất. Việc đăng ký không làm thay đổi model trò chuyện đang hoạt động. Chọn model Quyết định của máy chủ trong `/config` > `Model` > `Chuyển đổi model`. [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) sử dụng nó làm Trình kiểm tra gợi ý chủ động để biết khi nào cuộc trò chuyện phù hợp với sở thích của persona, trừ khi một trình kiểm tra khác được chọn trong `/config` > `Plugins` > `Natural Nudges`.
 
 OpenRouter là nhà cung cấp gốc được hỗ trợ. Hãy lưu khóa của nó, mở menu thả xuống model và chọn `+ Thêm một model quyết định`. Nhập ID từ danh mục Quyết định đã được xác minh của nó. Danh mục toàn cầu bao gồm `typesafe/jev-1.13`; các đăng ký bổ sung thuộc về máy chủ hoặc chủ sở hữu cá nhân của chúng. Tính năng khám phá gốc cung cấp giới hạn đầu vào và giá đã được ghi nhận. Danh mục trò chuyện không thể thiết lập hỗ trợ Quyết định.
 

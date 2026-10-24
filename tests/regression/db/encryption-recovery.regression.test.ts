@@ -279,7 +279,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
       expect(sentinel.server_disc_id).toBe("_recovery_sentinel");
       expect(readFileSync(childEnv.TOMORI_ENV_FILE ?? "", "utf8")).toBe(selectedEnv);
     }
-    expect((await run("backupData", ["--restore", "--from", bundle])).code).toBe(0);
+    const initialRestore = await run("backupData", ["--restore", "--from", bundle]);
+    expect(initialRestore.code, initialRestore.stderr).toBe(0);
     const [restored] = await testSql`SELECT server_disc_id FROM servers WHERE server_id = ${serverId}`;
     expect(restored.server_disc_id).toBe("_encryption_recovery_server");
     expect((await run("backupData", ["--restore", "--from", legacy], { CRYPTO_SECRET_V1: undefined })).code).toBe(1);
@@ -307,7 +308,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Encrypted credential recovery", () => {
     ).toBe(1);
     expect((await testSql`SELECT 1 FROM pg_tables WHERE schemaname = 'public'`).length).toBe(0);
     await testSql`DROP EXTENSION pgcrypto`;
-    expect((await run("backupData", ["--restore", "--from", bundle])).code).toBe(0);
+    const emptyRestore = await run("backupData", ["--restore", "--from", bundle]);
+    expect(emptyRestore.code, emptyRestore.stderr).toBe(0);
     expect((await testSql`SELECT 1 FROM pg_extension WHERE extname = 'pgcrypto'`).length).toBe(1);
     expect(
       (

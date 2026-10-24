@@ -15,6 +15,7 @@ const issueList: Issue[] = [];
 const RUNTIME_STATE_EXPORT_EXCLUDED_TABLES = new Set([
   "api_key_rotation_runtime_state",
   "persona_autoch_runtime_state",
+  "server_natural_nudge_runtime_state",
   "stat_counters",
 ]);
 

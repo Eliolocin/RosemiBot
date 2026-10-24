@@ -119,6 +119,11 @@ async function evaluateLockedChannelAdmission(
     reason,
   });
 
+  // A queued nudge would speak after the turn that made the channel busy, so it is dropped instead.
+  if (incoming.naturalNudge) {
+    return ignored("locked_natural_nudge");
+  }
+
   if (StreamOrchestrator.hasStopRequest(channelId) && !StreamOrchestrator.isFollowUpRequest(channelId)) {
     return ignored("locked_stop_requested");
   }
@@ -212,7 +217,9 @@ async function evaluateLockedChannelAdmission(
     shouldBotReply(triggerMessage, stateForQueueCheck, earlyAllPersonas, {
       personalAutoTriggerPersonaId: accessState.personalSpotlightStatus?.autoTriggerPersonaId ?? null,
       allowedPersonaIds: accessState.allowedPersonaIds,
+      personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     });
 
   if (!wouldReply) {
@@ -287,11 +294,13 @@ async function evaluateLockedChannelAdmission(
       forcedMentions: incoming.forcedMentions,
       manualTriggerInvoker: incoming.manualTriggerInvoker,
       systemTriggerIdentity: incoming.systemTriggerIdentity,
+      borrowsTriggerMessage: incoming.borrowsTriggerMessage,
       reminderRecipientID: incoming.reminderRecipientID,
       reminderData: incoming.reminderData,
       onGenerationResult: incoming.onGenerationResult,
       onQueueDiscard: incoming.onQueueDiscard,
       sceneTurn: incoming.sceneTurn,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
       manualStreamingContextOverrides: incoming.manualStreamingContextOverrides
         ? {
             ...(incoming.manualStreamingContextOverrides.disableCrossChannelMessage
@@ -377,6 +386,7 @@ async function evaluatePreLockReplyGate(args: AdmissionQueueAndTriggerArgs): Pro
       allowedPersonaIds: accessState.allowedPersonaIds,
       personalDtm: accessState.personalDtm,
       referencedMessage: args.referencedMessage,
+      nudgeSceneCatcherPersonaId: incoming.nudgeSceneCatcherPersonaId,
     })
   ) {
     return null;

@@ -62,6 +62,7 @@ Em `/config` > `Modelos` > Switch Models, você pode atribuir modelos e endpoint
 - **Texto**: o modelo de chat principal.
 - **Visão**: lê imagens quando o modelo de chat não consegue.
 - **Incorporações**: alimenta a [base de conhecimento de documentos](/pt-BR/features/knowledge/memory/#document-knowledge-base-rag).
+- **Decisão**: um [modelo de Decisão](#decision-models) registrado. O [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) o utiliza para decidir quando entrar em uma conversa.
 - **Imagem padrão**: geração de imagem padrão (consulte [Geração de imagem](/pt-BR/features/capabilities/media-generation/image-generation/)).
 - **Imagem NovelAI**: geração de imagem NovelAI.
 - **Vídeo**: geração de vídeo.
@@ -75,7 +76,7 @@ Você também pode gerenciar chaves de backup para failover automático e balanc
 ## Modelos de Decisões
 <!-- anchor: decision-models -->
 
-Os modelos de decisões são uma categoria separada em `/providers` e `/personal providers`. Eles respondem a predicados tipados com probabilidades. O registro não altera o modelo de chat ativo, não estabelece calibração nem ativa a dispensa da revisão de respostas. Esses painéis ainda não selecionam um modelo de decisões.
+Os modelos de decisões são uma categoria separada em `/providers` e `/personal providers`. Eles respondem a perguntas tipadas (sim ou não, ou uma escolha entre várias) com probabilidades. O registro não altera o modelo de chat ativo. Escolha o modelo de Decisão do servidor em `/config` > `Modelos` > `Trocar Modelos`. O [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) o utiliza como seu Verificador de Toques Ativos para saber quando uma conversa combina com os interesses de uma persona, a menos que um verificador diferente seja escolhido em `/config` > `Plugins` > `Natural Nudges`.
 
 OpenRouter é o provedor nativo com suporte. Salve sua chave, abra o menu suspenso de modelos e escolha `+ Adicionar um modelo de decisões`. Insira um ID do catálogo de decisões verificado dele. O catálogo global inclui `typesafe/jev-1.13`; registros adicionais pertencem ao seu servidor ou proprietário pessoal. A descoberta nativa fornece o limite de entrada documentado e os preços. Catálogos de chat não podem estabelecer suporte a decisões.
 

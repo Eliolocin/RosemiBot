@@ -3,7 +3,7 @@
  *
  * Covers resetRepository.resetPersonalConfiguration:
  * - Resets language_pref to 'en-US' and privacy_level to 0 in users table.
- * - Preserves registration_locale.
+ * - Preserves registration_locale and the Ping User nudge opt-out.
  * - Resets all 13 columns in user_personalization_configs to DDL defaults.
  * - Deletes user_persona_naming_preferences for the user.
  * - Deletes all personal_spotlights for the user across workspaces, cascading to personal_spotlight_personas.
@@ -56,7 +56,8 @@ async function dirtyPersonalSingletons(userId: number): Promise<void> {
       suffix_override,
       gender_identity,
       pronouns,
-      addressing_style
+      addressing_style,
+      natural_nudge_opt_out
     ) VALUES (
       ${userId},
       '_rt_dirty_nickname',
@@ -71,7 +72,8 @@ async function dirtyPersonalSingletons(userId: number): Promise<void> {
       '_suf',
       'non-binary',
       'they/them',
-      'neutral'
+      'neutral',
+      true
     )
     ON CONFLICT (user_id) DO UPDATE SET
       user_nickname = EXCLUDED.user_nickname,
@@ -87,6 +89,7 @@ async function dirtyPersonalSingletons(userId: number): Promise<void> {
       gender_identity = EXCLUDED.gender_identity,
       pronouns = EXCLUDED.pronouns,
       addressing_style = EXCLUDED.addressing_style,
+      natural_nudge_opt_out = EXCLUDED.natural_nudge_opt_out,
       updated_at = NOW()
   `;
 }
@@ -218,7 +221,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Atomic personal configuration reset: regre
           suffix_override,
           gender_identity,
           pronouns,
-          addressing_style
+          addressing_style,
+          natural_nudge_opt_out
         FROM user_personalization_configs
         WHERE user_id = ${targetUserId}
       `;
@@ -236,6 +240,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Atomic personal configuration reset: regre
       expect(configRow.gender_identity).toBeNull();
       expect(configRow.pronouns).toBeNull();
       expect(configRow.addressing_style).toBeNull();
+      expect(configRow.natural_nudge_opt_out).toBe(true);
 
       // Verify user_persona_naming_preferences deleted
       const [namingCount] = await testSql<Array<{ count: number }>>`

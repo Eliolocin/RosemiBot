@@ -11,6 +11,7 @@ import {
 import type { CooldownType } from "@/types/db/schema";
 import type { PanelReceipt } from "@/types/discord/panel";
 import type { GlobalInteractionRoute, GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
+import { storeChecklistSnapshot, takeChecklistSnapshot } from "@/utils/discord/interactions/checklistSnapshotStore";
 import {
   beginPanelInteraction,
   deliverGuardedPanel,
@@ -161,22 +162,6 @@ export interface ModerationRouteDependencies {
     interaction: ModalSubmitInteraction | GlobalRoutableInteraction | ChatInputCommandInteraction,
     roleId: string,
   ): Promise<{ id: string; name: string } | null>;
-}
-
-const removalSnapshots = new Map<string, { values: string[]; expiresAt: number }>();
-
-function storeRemovalSnapshot(nonce: string, values: string[]): void {
-  const now = Date.now();
-  for (const [key, snapshot] of removalSnapshots) {
-    if (snapshot.expiresAt < now) removalSnapshots.delete(key);
-  }
-  removalSnapshots.set(nonce, { values: [...values], expiresAt: now + 15 * 60_000 });
-}
-
-function takeRemovalSnapshot(nonce: string): string[] | undefined {
-  const snapshot = removalSnapshots.get(nonce);
-  removalSnapshots.delete(nonce);
-  return snapshot && snapshot.expiresAt >= Date.now() ? snapshot.values : undefined;
 }
 
 function isAuthorized(interaction: GlobalRoutableInteraction | ChatInputCommandInteraction): boolean {
@@ -383,8 +368,8 @@ export function createModerationInteractionRoute(
       showRoutedRawModal(interaction, buildModerationRemovalModal(locale, nonce, action, options)),
     showPersonaChannelAddModal: (interaction, locale, nonce, personas) =>
       showRoutedRawModal(interaction, buildPersonaChannelAddModal(locale, nonce, personas)),
-    storeRemovalSnapshot,
-    takeRemovalSnapshot,
+    storeRemovalSnapshot: storeChecklistSnapshot,
+    takeRemovalSnapshot: takeChecklistSnapshot,
     takeCheckboxValues: (interactionId, nonce) =>
       takeRawModalCheckboxGroupValues(interactionId, buildMemberAccessModalFieldId(nonce)),
     takeUserSelectValue: (interactionId, nonce) =>

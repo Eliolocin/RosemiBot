@@ -156,7 +156,28 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
       metric: "model_used",
       metricKey: modelCodename,
     });
-    statRepository.recordStat({ serverId, userId, lineageId: primaryLineage, metric: "active_hour", metricKey: hour });
+    // A nudge borrows the latest channel message as its trigger, so counting it would let each nudge
+    // raise heat and pull the learned waking hours toward its own fire times.
+    const isNaturalNudge = context.turn.lockedTurn.admission.incoming.naturalNudge !== undefined;
+    if (!isNaturalNudge) {
+      statRepository.recordStat({
+        serverId,
+        userId,
+        lineageId: primaryLineage,
+        metric: "active_hour",
+        metricKey: hour,
+      });
+    }
+    // Automatic Natural Nudges channels come from human-triggered turns, so a random trigger cannot
+    // keep its own channel eligible.
+    if (!isNaturalNudge && !context.turn.lockedTurn.admission.incoming.borrowsTriggerMessage) {
+      statRepository.recordStat({
+        serverId,
+        userId,
+        metric: "channel_turn",
+        metricKey: context.channel.isThread() ? (context.channel.parentId ?? context.channel.id) : context.channel.id,
+      });
+    }
 
     // Per responding persona: one message exchanged (drives favorite-persona
     //    affinity), plus that persona's output-token volume: both persona-scoped,
@@ -170,8 +191,10 @@ async function recordUsageStats(context: ChatTurnContext, result: GenerationTurn
       //     only as the fallback when the provider reported no real usage (5).
       if (response.text) estimatedOutputTokens += charsToTokensText(response.text.length);
     }
-    for (const lineageId of lineages) {
-      statRepository.recordStat({ serverId, userId, lineageId, metric: "message_sent" });
+    if (!isNaturalNudge) {
+      for (const lineageId of lineages) {
+        statRepository.recordStat({ serverId, userId, lineageId, metric: "message_sent" });
+      }
     }
 
     // Custom-emoji uses that actually reached Discord, one increment per occurrence,
@@ -407,6 +430,8 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
     manualTriggerInvoker: incoming.manualTriggerInvoker,
     manualStreamingContextOverrides: incoming.manualStreamingContextOverrides,
     sceneTurn: incoming.sceneTurn,
+    naturalNudge: incoming.naturalNudge,
+    borrowsTriggerMessage: incoming.borrowsTriggerMessage,
     carriedExpressionDelivery: context.currentPersona.persona_id
       ? { personaId: context.currentPersona.persona_id, state: context.expressionDelivery }
       : undefined,
@@ -417,6 +442,11 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
 
 export function shouldRetryEmptyResponse(incoming: ChatIncoming, result: GenerationTurnResult): boolean {
   return result.status === "empty_response" && incoming.retryCount < MAX_EMPTY_RESPONSE_RETRIES;
+}
+
+/** A tool can post the reply on its own, so a turn with no persona response may still have spoken. */
+export function isDeliveredTurnResult(result: GenerationTurnResult): boolean {
+  return result.status === "completed" && (result.personaResponses.length > 0 || result.toolResponseDelivered === true);
 }
 
 async function consumeTextQuota(context: ChatTurnContext, result: GenerationTurnResult): Promise<void> {
@@ -458,7 +488,10 @@ function updateSelfReplyBookkeeping(context: ChatTurnContext, result: Generation
 }
 
 async function writeShortTermMemory(context: ChatTurnContext, result: GenerationTurnResult): Promise<void> {
+  // A nudge answers nobody, so storing it would hand whoever spoke last a short-term memory, which
+  // Ping User counts as a relationship.
   if (
+    context.turn.lockedTurn.admission.incoming.naturalNudge ||
     context.isStopResponse ||
     context.simplifiedMessages.length === 0 ||
     context.turn.requestSnapshot.triggererPrivacyLevel === PrivacyLevel.FULL ||

@@ -5,6 +5,7 @@ import {
   takeRawModalChannelSelectValues,
   takeRawModalCheckboxGroupValues,
   takeRawModalSelectValue,
+  takeRawModalStringSelectValues,
 } from "@/utils/discord/ui/modals";
 
 describe("routed raw modal gateway support", () => {
@@ -402,6 +403,48 @@ describe("routed raw modal gateway support", () => {
       expect(
         takeRawModalChannelSelectValues("modal-submit-never-captured", "document_channels_empty1234"),
       ).toBeUndefined();
+    } finally {
+      if (previousPatchState === undefined) delete globalState.__webSocketPatched;
+      else globalState.__webSocketPatched = previousPatchState;
+    }
+  });
+
+  it("keeps every String Select pick, an empty pick as empty, and consumes a select from both stores", () => {
+    const globalState = globalThis as GlobalDiscordState;
+    const previousPatchState = globalState.__webSocketPatched;
+    delete globalState.__webSocketPatched;
+
+    try {
+      const client = { ws: { handlePacket: (_packet: RawDiscordWebSocketPacket, _shard: RawDiscordShard) => {} } };
+      initializeRawModalInterception(client);
+      client.ws.handlePacket(
+        {
+          op: 0,
+          t: "INTERACTION_CREATE",
+          d: {
+            id: "modal-submit-multi-string-select",
+            type: 5,
+            data: {
+              custom_id: "nudge-studio:v1:add:en-US:ping_user:multi1234",
+              components: [
+                {
+                  type: 18,
+                  component: { type: 3, custom_id: "nstudio_needs_multi1234", values: ["recent_memory", "tool:image"] },
+                },
+                { type: 18, component: { type: 3, custom_id: "nstudio_tools_multi1234" } },
+              ],
+            },
+          },
+        },
+        { id: 0 },
+      );
+
+      expect(takeRawModalStringSelectValues("modal-submit-multi-string-select", "nstudio_needs_multi1234")).toEqual([
+        "recent_memory",
+        "tool:image",
+      ]);
+      expect(takeRawModalSelectValue("modal-submit-multi-string-select", "nstudio_needs_multi1234")).toBeUndefined();
+      expect(takeRawModalStringSelectValues("modal-submit-multi-string-select", "nstudio_tools_multi1234")).toEqual([]);
     } finally {
       if (previousPatchState === undefined) delete globalState.__webSocketPatched;
       else globalState.__webSocketPatched = previousPatchState;

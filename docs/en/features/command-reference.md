@@ -11,7 +11,7 @@ sidebar:
 
 Every slash command currently registered by TomoriBot, generated from the same command builders and English locale descriptions used for Discord registration.
 
-Top-level command groups: **41**. Runnable slash commands: **88**.
+Top-level command groups: **42**. Runnable slash commands: **89**.
 
 ## `/comment`
 
@@ -207,6 +207,14 @@ Age-restricted commands and settings.
 | `/nsfw jailbreaks` | Manage optional jailbreak behaviors for my prompts on this server. |
 | `/nsfw persona default` | Apply an NSFW preset personality configuration |
 | `/nsfw persona import` | Import a persona from a PNG, JSON, or CHARX file, including NSFW personas |
+
+## `/nudge-studio`
+
+Choose which idle nudges I use in this server, and write your own.
+
+| Command | Summary |
+|---|---|
+| `/nudge-studio` | Choose which idle nudges I use in this server, and write your own. |
 
 ## `/nuke`
 

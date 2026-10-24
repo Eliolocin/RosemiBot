@@ -3,6 +3,7 @@ import { log } from "../utils/misc/logger";
 import { serverScheduleRepository } from "@/utils/db/repositories";
 import { RandomTriggerProcessor } from "./randomTriggerProcessor";
 import { ReminderProcessor } from "./reminderProcessor";
+import { NaturalNudgeProcessor } from "@/modules/natural-nudges/runtime/processor";
 import {
   clearScheduledWorkNudgeHandler,
   emitScheduledWorkNudge,
@@ -23,6 +24,7 @@ export type ScheduledWorkStatus = {
 export class ScheduledWorkCoordinator {
   private readonly reminderProcessor: ReminderProcessor;
   private readonly randomTriggerProcessor: RandomTriggerProcessor;
+  private readonly naturalNudgeProcessor: NaturalNudgeProcessor;
   private readonly reconcileIntervalMs: number;
   private wakeTimeout: NodeJS.Timeout | null = null;
   private reconcileInterval: NodeJS.Timeout | null = null;
@@ -36,6 +38,7 @@ export class ScheduledWorkCoordinator {
     this.reconcileIntervalMs = reconcileIntervalMs;
     this.reminderProcessor = new ReminderProcessor(client);
     this.randomTriggerProcessor = new RandomTriggerProcessor(client);
+    this.naturalNudgeProcessor = new NaturalNudgeProcessor(client);
   }
 
   public start(): void {
@@ -144,6 +147,8 @@ export class ScheduledWorkCoordinator {
         }
         await this.reminderProcessor.processDueReminders();
         await this.randomTriggerProcessor.processDueRandomTriggers();
+        // Natural Nudges has no due-time column to wake on, so the 60 s reconcile is its only clock.
+        await this.naturalNudgeProcessor.processDueIdleNudges();
         this.lastRunAt = new Date();
         reason = "rerun";
       } while (this.rerunRequested && this.isRunning);

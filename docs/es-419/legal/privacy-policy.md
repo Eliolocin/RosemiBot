@@ -27,11 +27,13 @@ Usamos los datos guardados para ofrecer las funciones que eliges, recordar tus p
 
 ### 2.1) Tu cuenta y preferencias
 
-Guardamos tu ID de usuario de Discord, elecciones de privacidad y los datos de perfil y preferencias que elijas guardar. También conservamos totales de uso para que puedas consultar estadísticas tuyas, del servidor y de sus personas.
+Guardamos tu ID de usuario de Discord, elecciones de privacidad y los datos de perfil y preferencias que elijas guardar. También conservamos totales de uso para que puedas consultar estadísticas tuyas, del servidor y de sus personas. Las preferencias guardadas incluyen si las personas pueden mencionarte para iniciar una conversación (Menciones de personas).
 
 ### 2.2) Memorias y configuración del servidor
 
 Conservamos memorias personales y del servidor, personalizaciones de personas, recordatorios y configuración del servidor para ofrecer las funciones que configures.
+
+Cuando una persona inicia una conversación por su cuenta (Natural Nudges), registramos qué persona habló, el canal, si alguien respondió y el miembro al que mencionó. También guardamos el objetivo privado de la persona para esa conversación, que puede mencionar a ese miembro.
 
 La memoria a corto plazo opcional guarda resúmenes de conversaciones. Otras memorias guardadas permanecen hasta su eliminación y pueden describir a personas que no las escribieron.
 
@@ -61,7 +63,7 @@ TomoriBot lee temporalmente mensajes recientes, medios relevantes, detalles del 
 
 ## 4) Quién recibe tus datos
 
-- **Proveedores de IA:** el proveedor seleccionado recibe el prompt, contexto relevante de conversación, información de la persona y medios necesarios para texto, imágenes, video, voz o búsqueda de documentos. Las solicitudes por suscripción usan OpenRouter y los proveedores del modelo seleccionado. Consultamos los gastos con OpenRouter para aplicar tu asignación.
+- **Proveedores de IA:** el proveedor seleccionado recibe el prompt, contexto relevante de conversación, información de la persona y medios necesarios para texto, imágenes, video, voz o búsqueda de documentos. Antes de que una persona mencione a alguien, el modelo del servidor también recibe el nombre de ese miembro, su actividad actual y sus recuerdos personales recientes, a menos que su nivel de privacidad los oculte. Las solicitudes por suscripción usan OpenRouter y los proveedores del modelo seleccionado. Consultamos los gastos con OpenRouter para aplicar tu asignación.
 - **Patreon:** la vinculación nos autoriza a verificar tu membresía. Patreon proporciona actualizaciones de cuenta y membresía; Patreon y sus proveedores de pago gestionan pagos y datos de pago.
 - **Proveedores de búsqueda:** al usar búsqueda web, reciben las consultas y el contexto relevante.
 - **Matrix:** al configurar un puente, los mensajes se comparten entre el canal de Discord y la sala de Matrix vinculados.
@@ -76,6 +78,7 @@ Estos servicios pueden procesar datos fuera de tu país y tienen sus propias pol
 | Resúmenes de memoria a corto plazo | 90 días después de la última actividad, de forma predeterminada |
 | Registros de errores | 90 días |
 | Registros de rendimiento e identificadores de mensajes del bot | 30 días |
+| Registros de Natural Nudges | 30 días; el objetivo privado de la persona hasta 90 días |
 | Registros de actualización de membresía de Patreon | 30 días de forma predeterminada |
 | Registros de inicio de sesión de Patreon completados o vencidos | Pueden eliminarse después de una hora de forma predeterminada |
 | Uso detallado de suscripción | 90 días; los registros del período actual quedan hasta que termine si es posterior |
@@ -94,6 +97,7 @@ Quitar el bot conserva los datos del servidor para volver a invitarlo; ejecuta `
 | Qué quieres hacer | Dónde hacerlo |
 |---|---|
 | Controlar la visibilidad de mensajes y el uso de memoria personal | `/personal config` |
+| Evitar que las personas te mencionen para iniciar una conversación | `/personal config` > `Privacidad` > `Menciones de personas` |
 | Consultar o quitar memorias personales | `/personal memories` |
 | Consultar o quitar memorias y documentos del servidor | `/memories` |
 | Exportar configuración o memorias personales | `/export personal config`, `/export personal memories` |
@@ -106,7 +110,7 @@ Quitar el bot conserva los datos del servidor para volver a invitarlo; ejecuta `
 
 Tus memorias y documentos del servidor permanecen, sin la asociación de autoría; pide a un administrador que los elimine con `/memories`. Si una memoria o documento compartido contiene datos personales sobre ti y no consigues que lo quiten, contáctanos directamente mediante la Sección 9. No necesitas permiso de un administrador para pedir revisión y eliminación.
 
-La configuración de privacidad limita la visibilidad de mensajes y personalización; no borra memorias existentes. Las elecciones para excluirte de la recopilación permanecen tras la eliminación para que esta no se reactive silenciosamente.
+La configuración de privacidad limita la visibilidad de mensajes y personalización; no borra memorias existentes. Las elecciones para excluirte de la recopilación permanecen tras la eliminación para que esta no se reactive silenciosamente. Tu elección de Menciones de personas es un ajuste de personalización, por lo que `/personal nuke` lo borra; desactiva Menciones de personas nuevamente después si aún deseas tenerlas desactivadas.
 
 Para suscripciones, usa el panel de suscripción para consultar tu asignación y patrocinios o dejar de patrocinar un servidor. Cancela la renovación en Patreon; detener un patrocinio o eliminar datos del bot no detiene los cobros.
 
