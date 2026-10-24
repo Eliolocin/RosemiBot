@@ -58,6 +58,9 @@ the source and isolates those files. Regression files share one database with fi
 they stay in one lane; `setupTestDb()` initializes the schema once per process. Output is printed per
 lane (`unit`, `unit-isolated`, `db`) after all lanes finish.
 
+Only the DB lane receives database connection settings. Unit lanes run without them, so an indirect
+error-log write cannot race a database restore or insert fixture references from another process.
+
 `tests/unit/checks/testIsolationHygiene.test.ts` enforces two rules, sharing its detectors with the
 runner through `scripts/checks/lib/testIsolation.ts`:
 
