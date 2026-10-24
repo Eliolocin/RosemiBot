@@ -1232,6 +1232,7 @@ const systemPromptPresetSchema = z.object({
   system_prompt_preset_name: z.string(),
   system_prompt_preset_desc: z.string(),
   descriptions: z.record(z.string(), z.string()).nullable().optional(),
+  display_names: z.record(z.string(), z.string()).nullable().optional(),
   preset_prompt_text: z.string(),
   created_at: z.date().optional(),
   updated_at: z.date().optional(),

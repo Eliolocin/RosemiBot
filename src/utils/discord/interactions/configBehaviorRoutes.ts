@@ -64,7 +64,7 @@ import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/contextBuilder";
 import { combineModalPromptParts } from "@/utils/text/modalPromptParts";
 import { UTC_OFFSET_MAX, UTC_OFFSET_MIN } from "@/constants/utcOffset";
 import { formatUTCOffset, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
-import { localizer } from "@/utils/text/localizer";
+import { localizer, resolvePresetDisplayName } from "@/utils/text/localizer";
 import { getShortTermMemoriesForServer } from "@/utils/cache/shortTermMemoryCache";
 import { shortTermMemoryRepository } from "@/utils/db/repositories/ShortTermMemoryRepository";
 import {
@@ -592,7 +592,7 @@ async function runGeneralWrite(
         "commands.config.panel.system_prompt_updated_heading",
         "commands.config.panel.system_prompt_preset_updated_detail",
         {
-          preset: selected.system_prompt_preset_name,
+          preset: resolvePresetDisplayName(selected, locale),
         },
       ),
       telemetry: "server-config.workspace.system-prompt.preset",

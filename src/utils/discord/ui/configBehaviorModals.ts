@@ -28,7 +28,7 @@ import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
 import { ASSISTANT_PREFILL_MAX_LENGTH } from "@/utils/chat/assistantPrefill";
 import { selectablePersonas, SELECT_OPTION_LIMIT } from "@/utils/discord/ui/configChannelModals";
-import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { localizer, resolveDescription, resolvePresetDisplayName } from "@/utils/text/localizer";
 import { formatUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { splitPromptIntoModalParts } from "@/utils/text/modalPromptParts";
 import { promptPartDescription, promptPartLabel } from "@/utils/discord/ui/modalPromptPartLabels";
@@ -682,7 +682,7 @@ export function buildBehaviorPresetModal(
             description: localizer(locale, "commands.setup.wizard.settings_built_in_prompt_description"),
           },
           ...presets.map((preset) => ({
-            label: preset.system_prompt_preset_name,
+            label: resolvePresetDisplayName(preset, locale),
             value: preset.system_prompt_preset_name,
             description: resolveDescription(preset.descriptions, locale) ?? "",
           })),
