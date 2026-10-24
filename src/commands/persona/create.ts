@@ -184,18 +184,14 @@ export async function execute(
     // Validate content lengths (server-side validation, modal maxLength can be bypassed)
     const descValidation = validateAttribute(characterDesc);
     if (!descValidation.isValid) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.create.desc_too_long_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.persona.create.desc_too_long_description", {
-                current_length: characterDesc.length.toString(),
-                max_allowed: (descValidation.maxAllowed || memoryLimits.maxAttributeLength).toString(),
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.persona.create.desc_too_long_title",
+        descriptionKey: "commands.persona.create.desc_too_long_description",
+        descriptionVars: {
+          current_length: characterDesc.length,
+          max_allowed: descValidation.maxAllowed || memoryLimits.maxAttributeLength,
+        },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -203,20 +199,14 @@ export async function execute(
     if (exampleUser) {
       const userDialogueValidation = validateSampleDialogue(exampleUser);
       if (!userDialogueValidation.isValid) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.create.example_user_too_long_title", ColorCode.ERROR),
-              )
-              .setDescription(
-                localizer(locale, "commands.persona.create.example_user_too_long_description", {
-                  current_length: exampleUser.length.toString(),
-                  max_allowed: (userDialogueValidation.maxAllowed || memoryLimits.maxSampleDialogueLength).toString(),
-                }),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.create.example_user_too_long_title",
+          descriptionKey: "commands.persona.create.example_user_too_long_description",
+          descriptionVars: {
+            current_length: exampleUser.length,
+            max_allowed: userDialogueValidation.maxAllowed || memoryLimits.maxSampleDialogueLength,
+          },
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -225,20 +215,14 @@ export async function execute(
     if (exampleBot) {
       const botDialogueValidation = validateSampleDialogue(exampleBot);
       if (!botDialogueValidation.isValid) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.create.example_bot_too_long_title", ColorCode.ERROR),
-              )
-              .setDescription(
-                localizer(locale, "commands.persona.create.example_bot_too_long_description", {
-                  current_length: exampleBot.length.toString(),
-                  max_allowed: (botDialogueValidation.maxAllowed || memoryLimits.maxSampleDialogueLength).toString(),
-                }),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.create.example_bot_too_long_title",
+          descriptionKey: "commands.persona.create.example_bot_too_long_description",
+          descriptionVars: {
+            current_length: exampleBot.length,
+            max_allowed: botDialogueValidation.maxAllowed || memoryLimits.maxSampleDialogueLength,
+          },
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -249,17 +233,11 @@ export async function execute(
     if (!quotaReserve.allowed) {
       const resetTime = quotaReserve.resetAt ? new Date(quotaReserve.resetAt).toLocaleString(locale) : "unknown";
 
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "rate_limit.error_quota_exceeded_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "rate_limit.error_quota_exceeded_description", {
-                reset_time: resetTime,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "rate_limit.error_quota_exceeded_title",
+        descriptionKey: "rate_limit.error_quota_exceeded_description",
+        descriptionVars: { reset_time: resetTime },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -313,13 +291,10 @@ export async function execute(
       }
 
       if (!imageAttachment.content_type?.startsWith("image/")) {
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.create.invalid_image_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "commands.persona.create.invalid_image_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.create.invalid_image_title",
+          descriptionKey: "commands.persona.create.invalid_image_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -340,16 +315,10 @@ export async function execute(
           errorKey = "commands.persona.create.error_download_failed";
         }
 
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, errorKey, ColorCode.ERROR, {
-                  max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB.toString(),
-                }),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: errorKey,
+          titleVars: { max_size: PERSONA_LIMITS.MAX_AVATAR_SIZE_MB },
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -381,18 +350,13 @@ export async function execute(
         .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
         .join("\n");
 
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.create.validation_failed_title", ColorCode.ERROR))
-            .setDescription(
-              `${localizer(
-                locale,
-                "commands.persona.create.validation_failed_description",
-              )}\n\n**Details:**\n\`\`\`\n${errorDetails.substring(0, 500)}\n\`\`\``,
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.persona.create.validation_failed_title",
+        description: `${localizer(
+          locale,
+          "commands.persona.create.validation_failed_description",
+        )}\n\n**Details:**\n\`\`\`\n${errorDetails.substring(0, 500)}\n\`\`\``,
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -408,15 +372,10 @@ export async function execute(
         log.info("Uploaded image cropped to 1:1 square");
       } catch (error) {
         log.error("Failed to process uploaded image:", error);
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.create.image_processing_failed_title", ColorCode.ERROR),
-              )
-              .setDescription(localizer(locale, "commands.persona.create.image_processing_failed_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.create.image_processing_failed_title",
+          descriptionKey: "commands.persona.create.image_processing_failed_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -428,15 +387,10 @@ export async function execute(
         log.info("Server avatar cropped to 1:1 square");
       } catch (error) {
         log.error("Failed to get server avatar:", error);
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.create.avatar_fetch_failed_title", ColorCode.ERROR),
-              )
-              .setDescription(localizer(locale, "commands.persona.create.avatar_fetch_failed_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.persona.create.avatar_fetch_failed_title",
+          descriptionKey: "commands.persona.create.avatar_fetch_failed_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -455,15 +409,10 @@ export async function execute(
       log.success("Metadata embedded in PNG");
     } catch (error) {
       log.error("Failed to embed metadata in PNG:", error);
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(
-              localizedStatusTitle(locale, "commands.persona.create.metadata_embed_failed_title", ColorCode.ERROR),
-            )
-            .setDescription(localizer(locale, "commands.persona.create.metadata_embed_failed_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.persona.create.metadata_embed_failed_title",
+        descriptionKey: "commands.persona.create.metadata_embed_failed_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -555,33 +504,21 @@ export async function execute(
     log.success(`Preset created successfully for: ${characterName}`);
   } catch (error) {
     log.error("Error in preset create command:", error);
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
     try {
-      const errorEmbed = new EmbedBuilder()
-        .setTitle(localizedStatusTitle(locale, "general.errors.unexpected_title", ColorCode.ERROR))
-        .setDescription(
-          localizer(locale, "general.errors.unexpected_description", {
-            error: errorMessage,
-          }),
-        )
-        .setColor(ColorCode.ERROR);
-
       if (replyUsesComponentsV2 && (replyInteraction.deferred || replyInteraction.replied)) {
         await replyComponentsV2Status(
           replyInteraction,
           locale,
-          "general.errors.unexpected_title",
-          "general.errors.unexpected_description",
+          "general.errors.unknown_error_title",
+          "general.errors.unknown_error_description",
           ColorCode.ERROR,
-          { error: errorMessage },
         );
-      } else if (replyInteraction.deferred || replyInteraction.replied) {
-        await replyInteraction.editReply({ embeds: [errorEmbed] });
       } else {
-        await replyInteraction.reply({
-          embeds: [errorEmbed],
-          flags: MessageFlags.Ephemeral,
+        await replyInfoEmbed(replyInteraction, locale, {
+          titleKey: "general.errors.unknown_error_title",
+          descriptionKey: "general.errors.unknown_error_description",
+          color: ColorCode.ERROR,
         });
       }
     } catch {

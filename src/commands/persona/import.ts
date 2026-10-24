@@ -9,6 +9,7 @@ import { localizer } from "../../utils/text/localizer";
 import { log, ColorCode } from "../../utils/misc/logger";
 import { replyInfoEmbed } from "../../utils/discord/interactionHelper";
 import type { PersonaSpriteRow, UserRow } from "../../types/db/schema";
+import type { StandardEmbedOptions } from "@/types/discord/embed";
 import { memoryGuard, IMPORT_LIMITS, reserveImportQuota } from "../../utils/security/rateLimiter";
 import { invalidateTomoriStateCache } from "../../utils/cache/tomoriStateCache";
 import { presetRepository } from "@/utils/db/repositories/PresetRepository";
@@ -161,19 +162,11 @@ async function replyCardConversionFailure(options: {
   );
   const debugFilename = `${options.attachmentName}-${Date.now()}.txt`;
 
-  await options.interaction.editReply({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(
-          localizedStatusTitle(options.locale, "commands.persona.import.card_conversion_failed_title", ColorCode.WARN),
-        )
-        .setDescription(
-          localizer(options.locale, "commands.persona.import.card_conversion_failed_description", {
-            source: options.sourceLabel,
-          }),
-        )
-        .setColor(ColorCode.WARN),
-    ],
+  await replyInfoEmbed(options.interaction, options.locale, {
+    titleKey: "commands.persona.import.card_conversion_failed_title",
+    descriptionKey: "commands.persona.import.card_conversion_failed_description",
+    descriptionVars: { source: options.sourceLabel },
+    color: ColorCode.WARN,
     files: [new AttachmentBuilder(debugBuffer, { name: debugFilename })],
   });
 }
@@ -207,13 +200,30 @@ async function replyInvalidCharx(
   locale: string,
   reason: CharxReadFailureReason,
 ): Promise<void> {
-  await interaction.editReply({
-    embeds: [
-      new EmbedBuilder()
-        .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_charx_title", ColorCode.ERROR))
-        .setDescription(localizeCharxFailure(locale, reason))
-        .setColor(ColorCode.ERROR),
-    ],
+  await replyInfoEmbed(interaction, locale, {
+    titleKey: "commands.persona.import.invalid_charx_title",
+    description: localizeCharxFailure(locale, reason),
+    color: ColorCode.ERROR,
+  });
+}
+
+async function replyInvalidFile(
+  interaction: ChatInputCommandInteraction,
+  locale: string,
+  validationError: string | undefined,
+): Promise<void> {
+  await replyInfoEmbed(interaction, locale, {
+    titleKey: "commands.persona.import.invalid_file_title",
+    description: localizeError(locale, validationError ?? "commands.persona.import.invalid_file_description"),
+    color: ColorCode.ERROR,
+  });
+}
+
+async function replyUnknownError(interaction: ChatInputCommandInteraction, locale: string): Promise<void> {
+  await replyInfoEmbed(interaction, locale, {
+    titleKey: "general.errors.unknown_error_title",
+    descriptionKey: "general.errors.unknown_error_description",
+    color: ColorCode.ERROR,
   });
 }
 
@@ -534,30 +544,21 @@ export async function importPersona(
     if (!quotaReserve.allowed) {
       const resetTime = quotaReserve.resetAt ? new Date(quotaReserve.resetAt).toLocaleString(locale) : "unknown";
 
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "rate_limit.error_quota_exceeded_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "rate_limit.error_quota_exceeded_description", {
-                reset_time: resetTime,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "rate_limit.error_quota_exceeded_title",
+        descriptionKey: "rate_limit.error_quota_exceeded_description",
+        descriptionVars: { reset_time: resetTime },
+        color: ColorCode.ERROR,
       });
       return;
     }
 
     const memCheck = memoryGuard.checkMemory();
     if (memCheck.status === "critical") {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "rate_limit.error_memory_critical_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "rate_limit.error_memory_critical_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "rate_limit.error_memory_critical_title",
+        descriptionKey: "rate_limit.error_memory_critical_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -579,24 +580,18 @@ export async function importPersona(
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         log.warn("Persona import download timed out");
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.error_download_timeout", ColorCode.ERROR))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(interaction, locale, {
+          titleKey: "commands.persona.import.error_download_timeout",
+          color: ColorCode.ERROR,
         });
         return;
       }
 
       log.error("Failed to download attachment:", error as Error);
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.import.download_failed_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.persona.import.download_failed_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.import.download_failed_title",
+        descriptionKey: "commands.persona.import.download_failed_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -646,13 +641,10 @@ export async function importPersona(
       const pngValidation = validatePNGBuffer(importFileBuffer, MAX_FILE_SIZE);
       if (!pngValidation.isValid) {
         log.warn(`Invalid PNG buffer during preset import: ${pngValidation.error}`);
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_png_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "commands.persona.import.invalid_png_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(interaction, locale, {
+          titleKey: "commands.persona.import.invalid_png_title",
+          descriptionKey: "commands.persona.import.invalid_png_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -662,18 +654,7 @@ export async function importPersona(
         const validation = presetRepository.validatePresetFile(metadata);
 
         if (!validation.valid || !validation.data) {
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
-                .setDescription(
-                  validation.error
-                    ? localizeError(locale, validation.error)
-                    : localizer(locale, "commands.persona.import.invalid_file_description"),
-                )
-                .setColor(ColorCode.ERROR),
-            ],
-          });
+          await replyInvalidFile(interaction, locale, validation.error);
           return;
         }
 
@@ -685,13 +666,10 @@ export async function importPersona(
       } else {
         const sillyTavernData = extractSillyTavernMetadataFromPNG(importFileBuffer);
         if (!sillyTavernData) {
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle(localizedStatusTitle(locale, "commands.persona.import.no_metadata_title", ColorCode.ERROR))
-                .setDescription(localizer(locale, "commands.persona.import.no_metadata_description"))
-                .setColor(ColorCode.ERROR),
-            ],
+          await replyInfoEmbed(interaction, locale, {
+            titleKey: "commands.persona.import.no_metadata_title",
+            descriptionKey: "commands.persona.import.no_metadata_description",
+            color: ColorCode.ERROR,
           });
           return;
         }
@@ -731,14 +709,7 @@ export async function importPersona(
         parsedJson = parseJsonAttachment(importFileBuffer);
       } catch (error) {
         log.warn("Persona import JSON parse failed", error);
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
-              .setDescription(localizeError(locale, "commands.persona.import.error_not_json"))
-              .setColor(ColorCode.ERROR),
-          ],
-        });
+        await replyInvalidFile(interaction, locale, "commands.persona.import.error_not_json");
         return;
       }
 
@@ -773,18 +744,7 @@ export async function importPersona(
           `[Persona Import] Converted SillyTavern JSON card to preset format for "${conversion.data.tomori_nickname}"`,
         );
       } else {
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
-              .setDescription(
-                validation.error
-                  ? localizeError(locale, validation.error)
-                  : localizer(locale, "commands.persona.import.invalid_file_description"),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
-        });
+        await replyInvalidFile(interaction, locale, validation.error);
         return;
       }
     }
@@ -793,14 +753,7 @@ export async function importPersona(
     const avatarImageBuffer = resolvedImport?.avatarImageBuffer ?? null;
 
     if (!presetDataFromFile || !resolvedImport) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-            .setColor(ColorCode.ERROR),
-        ],
-      });
+      await replyUnknownError(interaction, locale);
       return;
     }
 
@@ -822,30 +775,16 @@ export async function importPersona(
     };
     const mergedPresetValidation = presetRepository.validatePresetData(mergedPresetData);
     if (!mergedPresetValidation.valid || !mergedPresetValidation.data) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.import.invalid_file_title", ColorCode.ERROR))
-            .setDescription(
-              mergedPresetValidation.error
-                ? localizeError(locale, mergedPresetValidation.error)
-                : localizer(locale, "commands.persona.import.invalid_file_description"),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
-      });
+      await replyInvalidFile(interaction, locale, mergedPresetValidation.error);
       return;
     }
     const presetData = mergedPresetValidation.data;
 
     if (!options.allowNsfw && (await isNsfwPersonaImport(presetData))) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.persona.import.error_nsfw_persona"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.import.failed_title",
+        descriptionKey: "commands.persona.import.error_nsfw_persona",
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -867,13 +806,10 @@ export async function importPersona(
             errorType: "PersonaImportSpriteSnapshotError",
             metadata: { personaId: mainPersonaId, serverDiscId },
           });
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
-                .setDescription(localizer(locale, "commands.persona.import.sprite_snapshot_failed_description"))
-                .setColor(ColorCode.ERROR),
-            ],
+          await replyInfoEmbed(interaction, locale, {
+            titleKey: "commands.persona.import.failed_title",
+            descriptionKey: "commands.persona.import.sprite_snapshot_failed_description",
+            color: ColorCode.ERROR,
           });
           return;
         }
@@ -882,17 +818,10 @@ export async function importPersona(
       const importResult = await presetRepository.importPresetData(serverDiscId, presetData, identityMode);
 
       if (!importResult.success) {
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
-              .setDescription(
-                importResult.error
-                  ? localizeError(locale, importResult.error)
-                  : localizer(locale, "commands.persona.import.failed_description"),
-              )
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(interaction, locale, {
+          titleKey: "commands.persona.import.failed_title",
+          description: localizeError(locale, importResult.error ?? "commands.persona.import.failed_description"),
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -914,13 +843,10 @@ export async function importPersona(
             errorType: "PersonaImportSpriteCleanupError",
             metadata: { personaId: mainPersonaId, serverDiscId },
           });
-          await interaction.editReply({
-            embeds: [
-              new EmbedBuilder()
-                .setTitle(localizedStatusTitle(locale, "commands.persona.import.failed_title", ColorCode.ERROR))
-                .setDescription(localizer(locale, "commands.persona.import.sprite_cleanup_failed_description"))
-                .setColor(ColorCode.ERROR),
-            ],
+          await replyInfoEmbed(interaction, locale, {
+            titleKey: "commands.persona.import.failed_title",
+            descriptionKey: "commands.persona.import.sprite_cleanup_failed_description",
+            color: ColorCode.ERROR,
           });
           return;
         }
@@ -984,14 +910,7 @@ export async function importPersona(
 
       if (!itemsImported) {
         log.error("Import result missing itemsImported data");
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-              .setColor(ColorCode.ERROR),
-          ],
-        });
+        await replyUnknownError(interaction, locale);
         return;
       }
 
@@ -1056,14 +975,7 @@ export async function importPersona(
 
       if (!interaction.channel || !("send" in interaction.channel)) {
         log.error("No channel available for persona import success message");
-        await interaction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-              .setColor(ColorCode.ERROR),
-          ],
-        });
+        await replyUnknownError(interaction, locale);
         return;
       }
 
@@ -1101,21 +1013,18 @@ export async function importPersona(
         nicknameUpdateFailed
           ? ColorCode.WARN
           : ColorCode.SUCCESS;
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.import.success_title", confirmationColor))
-            .setDescription(
-              missingPostPermission
-                ? localizer(locale, "commands.persona.import.post_missing_permission", {
-                    permission: missingPostPermission,
-                  })
-                : localizer(locale, "commands.persona.import.success_confirmation", {
-                    nickname: itemsImported.nickname,
-                  }),
-            )
-            .setColor(confirmationColor),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.import.success_title",
+        ...(missingPostPermission
+          ? {
+              descriptionKey: "commands.persona.import.post_missing_permission",
+              descriptionVars: { permission: missingPostPermission },
+            }
+          : {
+              descriptionKey: "commands.persona.import.success_confirmation",
+              descriptionVars: { nickname: itemsImported.nickname },
+            }),
+        color: confirmationColor,
       });
 
       // Quota already reserved at step 6.25 - no increment needed
@@ -1135,46 +1044,42 @@ export async function importPersona(
       });
 
       if (!alterResult.ok) {
-        const errorEmbed = new EmbedBuilder().setColor(ColorCode.ERROR);
+        let failureCopy: Pick<StandardEmbedOptions, "titleKey" | "descriptionKey" | "descriptionVars">;
         switch (alterResult.reason) {
           case "limit_reached":
-            errorEmbed
-              .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_limit_title", ColorCode.ERROR))
-              .setDescription(
-                localizer(locale, "commands.persona.import.alter_limit_description", {
-                  current: alterResult.current,
-                  max: alterResult.max,
-                }),
-              );
+            failureCopy = {
+              titleKey: "commands.persona.import.alter_limit_title",
+              descriptionKey: "commands.persona.import.alter_limit_description",
+              descriptionVars: { current: alterResult.current, max: alterResult.max },
+            };
             break;
           case "name_conflict":
-            errorEmbed
-              .setTitle(
-                localizedStatusTitle(locale, "commands.persona.import.alter_name_conflict_title", ColorCode.ERROR),
-              )
-              .setDescription(
-                localizer(locale, "commands.persona.import.alter_name_conflict_description", {
-                  name: alterResult.name,
-                }),
-              );
+            failureCopy = {
+              titleKey: "commands.persona.import.alter_name_conflict_title",
+              descriptionKey: "commands.persona.import.alter_name_conflict_description",
+              descriptionVars: { name: alterResult.name },
+            };
             break;
           case "no_main_persona":
-            errorEmbed
-              .setTitle(localizedStatusTitle(locale, "general.errors.tomori_not_setup_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.tomori_not_setup_description"));
+            failureCopy = {
+              titleKey: "general.errors.tomori_not_setup_title",
+              descriptionKey: "general.errors.tomori_not_setup_description",
+            };
             break;
           case "config_failed":
-            errorEmbed
-              .setTitle(localizedStatusTitle(locale, "general.errors.update_failed_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.update_failed_description"));
+            failureCopy = {
+              titleKey: "general.errors.update_failed_title",
+              descriptionKey: "general.errors.update_failed_description",
+            };
             break;
           default:
-            errorEmbed
-              .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "general.errors.unknown_error_description"));
+            failureCopy = {
+              titleKey: "general.errors.unknown_error_title",
+              descriptionKey: "general.errors.unknown_error_description",
+            };
             break;
         }
-        await interaction.editReply({ embeds: [errorEmbed] });
+        await replyInfoEmbed(interaction, locale, { ...failureCopy, color: ColorCode.ERROR });
         return;
       }
 
@@ -1236,22 +1141,18 @@ export async function importPersona(
         }
       }
 
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.persona.import.alter_success_title", alterEmbedColor))
-            .setDescription(
-              missingAlterPostPermission
-                ? localizer(locale, "commands.persona.import.post_missing_permission", {
-                    permission: missingAlterPostPermission,
-                  })
-                : localizer(locale, "commands.persona.import.alter_success_confirmation", {
-                    nickname: alterResult.nickname,
-                    trigger_count: alterResult.uniqueTriggerCount,
-                  }),
-            )
-            .setColor(alterEmbedColor),
-        ],
+      await replyInfoEmbed(interaction, locale, {
+        titleKey: "commands.persona.import.alter_success_title",
+        ...(missingAlterPostPermission
+          ? {
+              descriptionKey: "commands.persona.import.post_missing_permission",
+              descriptionVars: { permission: missingAlterPostPermission },
+            }
+          : {
+              descriptionKey: "commands.persona.import.alter_success_confirmation",
+              descriptionVars: { nickname: alterResult.nickname, trigger_count: alterResult.uniqueTriggerCount },
+            }),
+        color: alterEmbedColor,
       });
     }
   } catch (error) {
@@ -1260,26 +1161,6 @@ export async function importPersona(
       metadata: { commandName: "preset import" },
     });
 
-    if (!interaction.replied && !interaction.deferred) {
-      await replyInfoEmbed(
-        interaction,
-        locale,
-        {
-          titleKey: "general.errors.unknown_error_title",
-          descriptionKey: "general.errors.unknown_error_description",
-          color: ColorCode.ERROR,
-        },
-        MessageFlags.Ephemeral,
-      );
-    } else {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.errors.unknown_error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "general.errors.unknown_error_description"))
-            .setColor(ColorCode.ERROR),
-        ],
-      });
-    }
+    await replyUnknownError(interaction, locale);
   }
 }

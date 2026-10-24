@@ -97,8 +97,6 @@ export default {
       update_failed_description: `データベースの設定の更新に失敗しました。もう一度お試しください。`,
       unknown_error_title: `不明なエラー`,
       unknown_error_description: `予期しないエラーが発生しました。問題が解決しない場合は、\`/support discord\`で報告してください。`,
-      unexpected_title: `予期しないエラー`,
-      unexpected_description: `予期しないエラーが発生しました：{error}`,
       invalid_option_title: `無効なオプション`,
       invalid_option_description: `選択されたオプションは無効です。有効なオプションを選択してください。`,
       permission_denied_title: `権限がありません`,

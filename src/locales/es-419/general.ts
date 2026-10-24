@@ -97,8 +97,6 @@ export default {
       update_failed_description: `Error al actualizar la configuración en la base de datos. Por favor, inténtalo de nuevo.`,
       unknown_error_title: `Error desconocido`,
       unknown_error_description: `Ocurrió un error inesperado. Si el problema persiste, repórtalo a través de \`/support discord\`.`,
-      unexpected_title: `Error inesperado`,
-      unexpected_description: `Ocurrió un error inesperado: {error}`,
       invalid_option_title: `Opción inválida`,
       invalid_option_description: `La opción seleccionada es inválida. Por favor, elige una opción válida.`,
       permission_denied_title: `Permiso denegado`,

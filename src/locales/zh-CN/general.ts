@@ -96,8 +96,6 @@ export default {
       update_failed_description: `没能把配置更新到数据库。请再试一次。`,
       unknown_error_title: `未知错误`,
       unknown_error_description: `发生了意料之外的错误。如果一直这样，请通过 \`/support discord\` 反馈。`,
-      unexpected_title: `意外错误`,
-      unexpected_description: `发生了意料之外的错误：{error}`,
       invalid_option_title: `选项无效`,
       invalid_option_description: `所选选项无效。请选一个有效的选项。`,
       permission_denied_title: `权限不足`,

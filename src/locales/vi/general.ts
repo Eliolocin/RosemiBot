@@ -97,8 +97,6 @@ export default {
       update_failed_description: `Không thể cập nhật cấu hình trong cơ sở dữ liệu. Vui lòng thử lại.`,
       unknown_error_title: `Lỗi không xác định`,
       unknown_error_description: `Đã xảy ra lỗi ngoài dự kiến. Nếu sự cố vẫn tiếp diễn, vui lòng báo cáo qua \`/support discord\`.`,
-      unexpected_title: `Lỗi ngoài dự kiến`,
-      unexpected_description: `Đã xảy ra lỗi ngoài dự kiến: {error}`,
       invalid_option_title: `Tùy chọn không hợp lệ`,
       invalid_option_description: `Tùy chọn đã chọn không hợp lệ. Vui lòng chọn một tùy chọn hợp lệ.`,
       permission_denied_title: `Từ chối quyền truy cập`,

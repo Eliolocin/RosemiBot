@@ -1,6 +1,6 @@
 import type { SlashCommandBuilder } from "discord.js";
-import type { ChatInputCommandInteraction, Client, Message } from "discord.js";
-import { DiscordAPIError, EmbedBuilder, MessageFlags, PermissionFlagsBits, RESTJSONErrorCodes } from "discord.js";
+import type { ChatInputCommandInteraction, Client, Message, ModalSubmitInteraction } from "discord.js";
+import { DiscordAPIError, MessageFlags, PermissionFlagsBits, RESTJSONErrorCodes } from "discord.js";
 import { promptWithPaginatedModal, replyInfoEmbed, safeSelectOptionText } from "@/utils/discord/interactionHelper";
 import { sendCooldownDM } from "@/utils/discord/cooldownDM";
 import { ColorCode, log } from "@/utils/misc/logger";
@@ -17,9 +17,7 @@ import { resolveFallbackPersona } from "@/utils/discord/personaTurnDetectionReso
 import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/persona/personaAccess";
 import { CooldownType } from "@/types/db/schema";
 import { cooldownRepository } from "@/utils/db/repositories/CooldownRepository";
-import { NOTICE_CONFIG_HINT_KEY } from "@/constants/toolNotices";
 import { isNoticeEmbedVisible } from "@/utils/discord/toolProgressNotice";
-import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 
 export const configureCommand = (command: SlashCommandBuilder) =>
   command
@@ -31,6 +29,17 @@ export const configureCommand = (command: SlashCommandBuilder) =>
         .setDescription(localizer("en-US", "commands.respond.extra_options_description"))
         .setRequired(false),
     );
+
+async function replyPersonaAccessBlocked(
+  interaction: ChatInputCommandInteraction | ModalSubmitInteraction,
+  locale: string,
+): Promise<void> {
+  await replyInfoEmbed(interaction, locale, {
+    titleKey: "general.message_cooldown_title",
+    descriptionKey: "commands.respond.persona_access_blocked",
+    color: ColorCode.WARN,
+  });
+}
 
 /**
  * Execute the respond command - manually trigger Tomori to respond to the latest message
@@ -322,14 +331,7 @@ export async function execute(
     }
 
     if (!isPersonaAllowedForTrigger(whitelistStatus, personalSpotlightStatus, selectedPersona?.persona_id)) {
-      await replyInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.message_cooldown_title", ColorCode.WARN))
-            .setDescription(localizer(locale, "commands.respond.persona_access_blocked"))
-            .setColor(ColorCode.WARN),
-        ],
-      });
+      await replyPersonaAccessBlocked(replyInteraction, locale);
       return;
     }
 
@@ -344,13 +346,10 @@ export async function execute(
       const smartestModel = await llmModelRepo.loadSmartestModel(currentProvider);
 
       if (!smartestModel) {
-        await replyInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.respond.no_smart_model_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "commands.respond.no_smart_model_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(replyInteraction, locale, {
+          titleKey: "commands.respond.no_smart_model_title",
+          descriptionKey: "commands.respond.no_smart_model_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -363,14 +362,7 @@ export async function execute(
     await interaction.deferReply({ flags: deferFlags });
 
     if (!isPersonaAllowedForTrigger(whitelistStatus, personalSpotlightStatus, selectedPersona?.persona_id)) {
-      await interaction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "general.message_cooldown_title", ColorCode.WARN))
-            .setDescription(localizer(locale, "commands.respond.persona_access_blocked"))
-            .setColor(ColorCode.WARN),
-        ],
-      });
+      await replyPersonaAccessBlocked(interaction, locale);
       return;
     }
   }
@@ -387,24 +379,13 @@ export async function execute(
         ),
       ) === "instruction";
     const successDescription = localizer(locale, "commands.respond.success_description");
-    const successEmbed = new EmbedBuilder()
-      .setTitle(localizedStatusTitle(locale, "commands.respond.success_title", ColorCode.SUCCESS))
-      .setDescription(
-        prefillBecomesInstruction
-          ? `${successDescription}\n${localizer(locale, "commands.respond.prefill_instruction_notice")}`
-          : successDescription,
-      )
-      .setColor(ColorCode.SUCCESS);
-
-    if (!hideEmbed) {
-      successEmbed.setFooter({
-        text: localizer(locale, NOTICE_CONFIG_HINT_KEY),
-      });
-    }
-
-    // Send success response (interaction already deferred above)
-    await replyInteraction.editReply({
-      embeds: [successEmbed],
+    await replyInfoEmbed(replyInteraction, locale, {
+      titleKey: "commands.respond.success_title",
+      description: prefillBecomesInstruction
+        ? `${successDescription}\n${localizer(locale, "commands.respond.prefill_instruction_notice")}`
+        : successDescription,
+      color: ColorCode.SUCCESS,
+      configHint: !hideEmbed,
     });
 
     // tomoriChat injects its "[Continue your last message]" prompt when a manual

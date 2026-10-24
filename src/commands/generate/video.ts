@@ -410,17 +410,11 @@ export async function execute(
     //     against clearly invalid entries here (non-numeric or out of configured bounds).
     const durationResult = parseModalInteger(modalResult.values?.[DURATION_INPUT_ID], 1, MAX_VIDEO_DURATION_SECONDS);
     if (durationResult.error || durationResult.value === undefined) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_duration_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.invalid_duration_description", {
-                max: MAX_VIDEO_DURATION_SECONDS.toString(),
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.invalid_duration_title",
+        descriptionKey: "commands.generate.video.invalid_duration_description",
+        descriptionVars: { max: MAX_VIDEO_DURATION_SECONDS },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -428,17 +422,11 @@ export async function execute(
 
     const fpsResult = parseModalInteger(modalResult.values?.[FPS_INPUT_ID], 1, MAX_VIDEO_FPS);
     if (fpsResult.error) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_fps_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.invalid_fps_description", {
-                max: MAX_VIDEO_FPS.toString(),
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.invalid_fps_title",
+        descriptionKey: "commands.generate.video.invalid_fps_description",
+        descriptionVars: { max: MAX_VIDEO_FPS },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -453,13 +441,10 @@ export async function execute(
         referenceImages = [converted];
       } catch (error) {
         log.warn(`Failed to process video reference image:`, error as Error);
-        await modalSubmitInteraction.editReply({
-          embeds: [
-            new EmbedBuilder()
-              .setTitle(localizedStatusTitle(locale, "commands.generate.video.invalid_image_title", ColorCode.ERROR))
-              .setDescription(localizer(locale, "commands.generate.video.invalid_image_description"))
-              .setColor(ColorCode.ERROR),
-          ],
+        await replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.generate.video.invalid_image_title",
+          descriptionKey: "commands.generate.video.invalid_image_description",
+          color: ColorCode.ERROR,
         });
         return;
       }
@@ -546,44 +531,31 @@ export async function execute(
       videoData = result.videoData;
       videoFilename = result.filename ?? videoFilename;
     } else {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.unsupported_provider_description", {
-                provider: executionProvider,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.error_title",
+        descriptionKey: "commands.generate.video.unsupported_provider_description",
+        descriptionVars: { provider: executionProvider },
+        color: ColorCode.ERROR,
       });
       return;
     }
 
     if (!videoData) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.generate.video.no_data_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.error_title",
+        descriptionKey: "commands.generate.video.no_data_description",
+        color: ColorCode.ERROR,
       });
       return;
     }
 
     if (videoData.length > DISCORD_FILE_SIZE_LIMIT) {
       const sizeMB = (videoData.length / (1024 * 1024)).toFixed(1);
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.file_too_large_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.file_too_large_description", { size_mb: sizeMB }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.file_too_large_title",
+        descriptionKey: "commands.generate.video.file_too_large_description",
+        descriptionVars: { size_mb: sizeMB },
+        color: ColorCode.ERROR,
       });
       return;
     }
@@ -647,37 +619,25 @@ export async function execute(
       return;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorEmbed = new EmbedBuilder()
-      .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-      .setDescription(
-        isOpenRouterVideoCapabilityError(error)
-          ? localizer(
-              locale,
-              error.code === "last_frame_unsupported"
-                ? "commands.generate.video.loop_unsupported_description"
-                : "commands.generate.video.reference_unsupported_description",
-              { model: error.model },
-            )
-          : errorMessage.includes("timed out")
-            ? localizer(locale, "commands.generate.video.timeout_description")
-            : errorMessage.includes("content") || errorMessage.includes("safety") || errorMessage.includes("blocked")
-              ? localizer(locale, "commands.generate.video.blocked_description")
-              : localizer(locale, "commands.generate.video.generic_error_description"),
-      )
-      .setColor(ColorCode.ERROR);
+    const capabilityError = isOpenRouterVideoCapabilityError(error) ? error : undefined;
+    const descriptionKey = capabilityError
+      ? capabilityError.code === "last_frame_unsupported"
+        ? "commands.generate.video.loop_unsupported_description"
+        : "commands.generate.video.reference_unsupported_description"
+      : errorMessage.includes("timed out")
+        ? "commands.generate.video.timeout_description"
+        : errorMessage.includes("content") || errorMessage.includes("safety") || errorMessage.includes("blocked")
+          ? "commands.generate.video.blocked_description"
+          : "commands.generate.video.generic_error_description";
 
-    if (modalSubmitInteraction) {
-      await safeReply(modalSubmitInteraction.editReply({ embeds: [errorEmbed] }), "video error embed");
-    } else {
-      await safeReply(
-        replyInfoEmbed(interaction, locale, {
-          titleKey: "commands.generate.video.error_title",
-          descriptionKey: "commands.generate.video.generic_error_description",
-          color: ColorCode.ERROR,
-          flags: MessageFlags.Ephemeral,
-        }),
-        "video fallback error embed",
-      );
-    }
+    await safeReply(
+      replyInfoEmbed(modalSubmitInteraction ?? interaction, locale, {
+        titleKey: "commands.generate.video.error_title",
+        descriptionKey,
+        descriptionVars: capabilityError ? { model: capabilityError.model } : undefined,
+        color: ColorCode.ERROR,
+      }),
+      "video error embed",
+    );
   }
 }

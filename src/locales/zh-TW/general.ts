@@ -96,8 +96,6 @@ export default {
       update_failed_description: `無法更新資料庫中的設定。請再試一次。`,
       unknown_error_title: `未知錯誤`,
       unknown_error_description: `發生未預期的錯誤。如果問題持續發生，請透過 \`/support discord\` 回報。`,
-      unexpected_title: `未預期的錯誤`,
-      unexpected_description: `發生未預期的錯誤：{error}`,
       invalid_option_title: `選項無效`,
       invalid_option_description: `選擇的選項無效。請選擇有效的選項。`,
       permission_denied_title: `權限不足`,

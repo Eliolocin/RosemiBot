@@ -97,8 +97,6 @@ export default {
       update_failed_description: `Failed to update the configuration in the database. Please try again.`,
       unknown_error_title: `Unknown Error`,
       unknown_error_description: `An unexpected error occurred. If the issue persists, please report it through \`/support discord\`.`,
-      unexpected_title: `Unexpected Error`,
-      unexpected_description: `An unexpected error occurred: {error}`,
       invalid_option_title: `Invalid Option`,
       invalid_option_description: `The selected option is invalid. Please choose a valid option.`,
       permission_denied_title: `Permission Denied`,
