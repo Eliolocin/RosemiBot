@@ -72,6 +72,7 @@ function ratingsForChoice(choice: string | null): readonly DanbooruRating[] {
 
 export async function autocomplete(_client: Client, interaction: AutocompleteInteraction): Promise<void> {
   let choices: ApplicationCommandOptionChoiceData<string>[] = [];
+  let failure: DanbooruFailure | null = null;
   const prefix = toDanbooruTag(interaction.options.getFocused());
 
   if (prefix.length >= MIN_AUTOCOMPLETE_CHARS) {
@@ -86,7 +87,7 @@ export async function autocomplete(_client: Client, interaction: AutocompleteInt
           value: tag,
         }));
     } else {
-      await reportDanbooruFailure(result.failure, { operation: "booru_autocomplete" });
+      failure = result.failure;
     }
   }
 
@@ -95,6 +96,9 @@ export async function autocomplete(_client: Client, interaction: AutocompleteInt
   } catch {
     // Discord rejects an answer after the 3-second autocomplete window, and an expired autocomplete has no other reply.
   }
+
+  // Reported after answering, so a slow report can never push the answer past Discord's window.
+  if (failure) await reportDanbooruFailure(failure, { operation: "booru_autocomplete", expected: true });
 }
 
 export async function execute(

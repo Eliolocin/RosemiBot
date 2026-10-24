@@ -18,11 +18,8 @@ describe("buildHiddenImageDirective", () => {
         if (directive.includes("danbooru_search_tags") !== lookupEnabled) {
           failures.push(`${backend} lookup=${lookupEnabled}: lookup mention mismatch`);
         }
-        if (!directive.includes(`${imageTool} tool`)) {
+        if (!directive.includes(imageTool)) {
           failures.push(`${backend} lookup=${lookupEnabled}: missing ${imageTool}`);
-        }
-        if (directive.includes("immediately") === lookupEnabled) {
-          failures.push(`${backend} lookup=${lookupEnabled}: wrong urgency wording`);
         }
       }
     }

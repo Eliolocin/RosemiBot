@@ -41,6 +41,10 @@ const MAX_TOOL_CONTEXT_TURNS = 10;
 const URL_PATTERN = /\bhttps?:\/\/\S+/i;
 /** The host must open the link or follow whitespace, so a lookalike subdomain does not match. */
 const DANBOORU_POST_LINK_PATTERN = /(?:https?:\/\/|^|\s)danbooru\.donmai\.us\/posts\/\d+/i;
+/** A request to see existing art "of" or "from" something, such as "show me art of Ryza" or "send pics from Atelier". */
+const EXISTING_ART_REQUEST_PATTERN =
+  /\b(?:show|send|post|find|share|get)\b.{0,40}\b(?:art|arts|fanarts?|pics?|pictures?|images?|illustrations?)\s+(?:of|from)\b/i;
+const DANBOORU_NAME_PATTERN = /\b(?:danbooru|booru)\b/i;
 
 const RELATIVE_TIME_PATTERN =
   /\b(?:in|for|after)\s+(?:about\s+|around\s+|like\s+|another\s+|a\s+)?\d+\s*(?:seconds?|secs?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?)\b/i;
@@ -188,6 +192,9 @@ const URL_READING_TOOL_NAMES = ["fetch_url", "fetch", "fetch-url", "url-metadata
 const REMINDER_TOOL_NAMES = ["create_task", "update_task"];
 const MEMORY_TOOL_NAMES = ["create_long_term_memory", "update_long_term_memory"];
 const IMAGE_GENERATION_TOOL_NAMES = ["generate_image", "generate_image_nai"];
+/** The image tools plus the tag lookup, so a drawing of an existing character can check its tags first. */
+const IMAGE_REQUEST_TOOL_NAMES = [...IMAGE_GENERATION_TOOL_NAMES, "danbooru_search_tags"];
+const DANBOORU_ART_TOOL_NAMES = ["danbooru_search_tags", "danbooru_search_posts"];
 const VIDEO_GENERATION_TOOL_NAMES = ["generate_video"];
 const VOICE_GENERATION_TOOL_NAMES = ["generate_voice_message"];
 const SHORT_TERM_MEMORY_TOOL_NAMES = ["update_short_term_memory"];
@@ -215,7 +222,7 @@ export const DELIBERATE_TOOL_TRIGGER_TARGETS = [
     value: "image",
     labelKey: "commands.config.panel.tool_target_image",
     label: "Image generation",
-    toolNames: IMAGE_GENERATION_TOOL_NAMES,
+    toolNames: IMAGE_REQUEST_TOOL_NAMES,
   },
   {
     value: "video",
@@ -569,6 +576,10 @@ export function getDeliberateToolIntentResult(
     addToolMatches(allowedToolNames, matches, ["danbooru_get_post"], "Danbooru post link", "built-in");
   }
 
+  if (EXISTING_ART_REQUEST_PATTERN.test(text) || DANBOORU_NAME_PATTERN.test(text)) {
+    addToolMatches(allowedToolNames, matches, DANBOORU_ART_TOOL_NAMES, "existing art request", "built-in");
+  }
+
   if (
     /\b(remember|save\s+(?:this|that|it)|forget|delete\s+(?:that\s+)?memory|update\s+(?:your\s+)?memory|store\s+(?:this|that|it))\b/i.test(
       text,
@@ -606,7 +617,7 @@ export function getDeliberateToolIntentResult(
     addToolMatches(
       allowedToolNames,
       matches,
-      IMAGE_GENERATION_TOOL_NAMES,
+      IMAGE_REQUEST_TOOL_NAMES,
       getRegexTrigger(text, /\b(image|picture|photo|pic|img)\b/i, "image request"),
       "built-in",
     );
@@ -632,7 +643,7 @@ export function getDeliberateToolIntentResult(
         ? VIDEO_GENERATION_TOOL_NAMES
         : target === "voice" || target === "audio" || target === "speech"
           ? VOICE_GENERATION_TOOL_NAMES
-          : IMAGE_GENERATION_TOOL_NAMES;
+          : IMAGE_REQUEST_TOOL_NAMES;
     addToolMatches(allowedToolNames, matches, generationToolNames, target || "generation request", "built-in");
   }
 

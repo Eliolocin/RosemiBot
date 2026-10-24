@@ -4,6 +4,7 @@ import { getCachedBlacklistStatus, getCachedPrivacyLevel } from "@/utils/cache/u
 import { PrivacyLevel } from "@/types/db/schema";
 import { verifyMessageWebhook } from "@/utils/chat/webhookIdentity";
 import { findLastPersonaTurnBlock } from "@/utils/discord/personaTurnDetection";
+import { classifySendFailure, getBlockedSendReason, noteSendFailure } from "@/utils/discord/stream/sendFailureCache";
 import { log } from "@/utils/misc/logger";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { ServerNaturalNudgeConfig } from "@/modules/natural-nudges/db/types";
@@ -29,11 +30,26 @@ export async function resolveEffectiveChannelIds(
   return naturalNudgeRepository.loadAutomaticChannelIds(serverId, automaticChannelWindowStart(now));
 }
 
+/**
+ * Phase A re-reads its channel list every minute, so a deleted or inaccessible channel that stays in the
+ * automatic window (or the pinned list) would otherwise cost a REST fetch each tick.
+ */
+async function fetchUncachedChannel(client: Client, channelId: string) {
+  if (getBlockedSendReason(channelId)) return null;
+  try {
+    return await client.channels.fetch(channelId);
+  } catch (error) {
+    const reason = classifySendFailure(error);
+    if (reason) noteSendFailure(channelId, reason);
+    return null;
+  }
+}
+
 /** Listed guild text channels the bot can still see, with their last activity from the gateway cache. */
 export async function resolveAllowedChannels(client: Client, channelIds: readonly string[]): Promise<NudgeChannel[]> {
   const channels: NudgeChannel[] = [];
   for (const channelId of channelIds) {
-    const channel = client.channels.cache.get(channelId) ?? (await client.channels.fetch(channelId).catch(() => null));
+    const channel = client.channels.cache.get(channelId) ?? (await fetchUncachedChannel(client, channelId));
     if (!channel || channel.type !== ChannelType.GuildText) continue;
     const lastMessageId = channel.lastMessageId ?? null;
     channels.push({

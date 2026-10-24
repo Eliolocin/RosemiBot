@@ -127,8 +127,11 @@ The same toggle lets her share existing art and read a post's tags:
   message, with a link to each post. Every image rated above general is spoilered. Danbooru allows
   only 2 tags per search, so she picks the most specific ones, usually the character or series.
 - Given a Danbooru post ID or `danbooru.donmai.us/posts/` link, she reads its tags grouped into
-  character, series, artist, meta, and general. Under Deliberate Tool Mode, a post link in the
-  message is enough to offer her this tool.
+  character, series, artist, meta, and general.
+
+Under Deliberate Tool Mode, a post link in the message offers her the post reader, and asking to
+see art "of" or "from" something (or naming Danbooru) offers her the art search and tag lookup.
+An image generation request also offers the tag lookup, so she can check a character's tags first.
 
 Anyone can also run `/booru search` to get the same gallery without asking her. It suggests tags as
 you type and turns a nickname or typo into the real tag, and the footer shows what it searched for.
@@ -241,7 +244,7 @@ without a user request.
 
 - She first checks the message for tool intent. Built-in triggers cover common requests
   (reminders, web search, memory updates, cross-channel messages, image/video/voice
-  generation, media analysis, thread creation, message actions). Questions about her current
+  generation, Danbooru art search, media analysis, thread creation, message actions). Questions about her current
   model, tools, settings, or why a capability is unavailable expose capability review and
   official documentation access together. Follow-up wording works too, like "do that again
   but angrier" after a voice-message request.

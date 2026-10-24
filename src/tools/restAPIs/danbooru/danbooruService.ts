@@ -260,16 +260,18 @@ export function fetchPosts(
 /**
  * Logs a Danbooru failure at the point a caller turns it into a tool error or reply.
  * Rate limits, the 2-tag limit, a missing post, and cancellation are expected refusals.
+ *
+ * @param scope.expected - Logs every kind as expected, for callers whose only symptom is an empty result
  */
 export async function reportDanbooruFailure(
   failure: DanbooruFailure,
-  scope: { operation: string; serverId?: number | null; userId?: number | null },
+  scope: { operation: string; serverId?: number | null; userId?: number | null; expected?: boolean },
 ): Promise<void> {
   await reportProviderFailure({
     summary: "Danbooru request failed",
     errorType: "DanbooruRequestFailed",
     error: undefined,
-    expected: EXPECTED_FAILURE_KINDS.has(failure.kind),
+    expected: scope.expected === true || EXPECTED_FAILURE_KINDS.has(failure.kind),
     detail: failure.detail,
     serverId: scope.serverId,
     userId: scope.userId,

@@ -144,7 +144,7 @@ async function sendTagCard(context: ToolContext, lookup: TagLookupResult): Promi
 export class DanbooruSearchTagsTool extends BaseTool {
   name = "danbooru_search_tags";
   description =
-    "Look up exact Danbooru tags. Turns names, nicknames, typos, and tag guesses into real tags with post counts. For a character or outfit tag it also returns signature tags, named outfits, and a short summary. Call it before an image tool or danbooru_search_posts whenever you are unsure of a tag or of how a character looks. Put every name in one call. A corrected or partial match may be a different thing than you meant, so check it against alternatives. A not_found query has no exact tag, but plain descriptive words for it still work in image prompts. A low post_count means the image model knows that tag poorly.";
+    "Look up exact Danbooru tags. Turns names, nicknames, typos, and tag guesses into real tags with post counts. For a character or outfit tag it also returns signature tags, named outfits, and a short summary. Call it before an image tool or danbooru_search_posts whenever you are unsure of a tag or of how a character looks. Put every name in one call. A corrected or partial match may be a different thing than you meant, so check it against alternatives. For not_found, use plain descriptive tags instead. A low post_count means the image model knows that tag poorly. To put a character's outfit on someone else, use only the clothing tags from signature_tags, plus the cosplay tag if returned, never the character's own tag.";
   category = "utility" as const;
   requiresFeatureFlag = "danbooru";
   requiresFollowUp = true;
@@ -306,7 +306,7 @@ export class DanbooruGetPostTool extends BaseTool {
 export class DanbooruSearchPostsTool extends BaseTool {
   name = "danbooru_search_posts";
   description =
-    "Post up to 4 existing images from Danbooru into the chat as you. Use it when someone wants to see existing art rather than new art. Danbooru allows only 2 tags per search, so pass the 1 or 2 most specific tags (usually the character or series), checked with danbooru_search_tags if unsure. Results are random picks among well-rated posts.";
+    "Search Danbooru, the anime art imageboard, and post up to 4 images directly to Discord. The go-to tool when someone asks to see anime art or an anime character, rather than new art. Danbooru allows only 2 tags per search, so pass the 1 or 2 most specific tags, checked with danbooru_search_tags if unsure. Results are random picks among well-rated posts.";
   category = "utility" as const;
   requiresFeatureFlag = "danbooru";
   requiresFollowUp = true;
