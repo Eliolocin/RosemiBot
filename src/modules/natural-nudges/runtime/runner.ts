@@ -4,11 +4,7 @@ import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import type { NaturalNudgeCategory, NaturalNudgeInterest } from "@/modules/natural-nudges/db/types";
 import { availableIdleNudgeTools, type IdleNudgeDefinition } from "@/modules/natural-nudges/runtime/idleNudges";
-import {
-  hasActivitySince,
-  resolveEffectiveChannelIds,
-  type NudgeChannel,
-} from "@/modules/natural-nudges/runtime/channels";
+import { resolveEffectiveChannelIds, type NudgeChannel } from "@/modules/natural-nudges/runtime/channels";
 import { type NudgeModelRef, resolvePlannerModel } from "@/modules/natural-nudges/runtime/model";
 import { isWithinWakingHours, serverDayStart } from "@/modules/natural-nudges/runtime/meters";
 import { IDLE_NUDGE_DAILY_CAPS } from "@/modules/natural-nudges/runtime/tuning";
@@ -115,7 +111,6 @@ async function recheckBeforeSend(attempt: IdleNudgeAttempt, target: NudgeChannel
     }
   }
 
-  if (hasActivitySince(target.channel, target.lastMessageId)) return "channel_activity";
   if (!isWithinWakingHours(attempt.awake, now, attempt.serverId)) return "waking_hours_ended";
   if (isChannelProcessingLocked(target.channel.id)) return "channel_busy";
   return null;
@@ -231,22 +226,15 @@ function idleNudgeAgendas(
  * Last message to borrow as the turn's trigger; only a channel read as empty gets the placeholder
  * reminders use, so a failed read never posts a stray one.
  */
-async function resolveAnchorMessage(
-  channel: GuildTextBasedChannel,
-): Promise<{ message: Message; seeded: boolean } | null> {
+async function resolveAnchorMessage(channel: GuildTextBasedChannel): Promise<Message | null> {
   let latest: Message | null;
   try {
     latest = (await channel.messages.fetch({ limit: 1 })).first() ?? null;
   } catch {
     return null;
   }
-  if (latest) return { message: latest, seeded: false };
-  const placeholder = await seedTurnAnchor(channel, "a Natural Nudges idle nudge");
-  return placeholder ? { message: placeholder, seeded: true } : null;
-}
-
-function isNewerThan(messageId: string, recordedMessageId: string | null): boolean {
-  return recordedMessageId === null || BigInt(messageId) > BigInt(recordedMessageId);
+  if (latest) return latest;
+  return seedTurnAnchor(channel, "a Natural Nudges idle nudge");
 }
 
 async function findOpenerAfter(
@@ -314,15 +302,12 @@ export async function runIdleNudgeAttempt(attempt: IdleNudgeAttempt): Promise<At
     return "aborted";
   }
 
-  const resolvedAnchor = await resolveAnchorMessage(target.channel);
-  // Compared by order rather than equality, because the gateway keeps a deleted newest message as `lastMessageId`.
-  if (!resolvedAnchor || (!resolvedAnchor.seeded && isNewerThan(resolvedAnchor.message.id, target.lastMessageId))) {
-    const reason = resolvedAnchor ? "channel_activity" : "anchor_unavailable";
-    sample(attempt, { outcome: "aborted", phase: "c", reason, plannerModel, ...usage });
+  const anchor = await resolveAnchorMessage(target.channel);
+  if (!anchor) {
+    sample(attempt, { outcome: "aborted", phase: "c", reason: "anchor_unavailable", plannerModel, ...usage });
     return "aborted";
   }
 
-  const anchor = resolvedAnchor.message;
   const idleNudgeTools = availableIdleNudgeTools(attempt.idleNudge, attempt.availableTools);
   const personaId = attempt.persona.persona_id as number;
   let outcome: AttemptResult | null = null;

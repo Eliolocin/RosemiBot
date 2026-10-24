@@ -83,8 +83,9 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   After an abort the idle nudge stays due and waits a fresh lull, so it cannot retry every cycle. The
   one exception is a Play Scene's later turns, which turn 0 queues itself (below).
 - **Re-check right before sending.** `recheckBeforeSend` reads settings, caps, the persona, the
-  persona channel whitelist, and the channel's last message fresh. Any message after the lull was
-  measured cancels the nudge.
+  persona channel whitelist, and Ping User target eligibility fresh. The lull admits planning; new
+  messages during planning do not cancel the attempt. Generation reads the current conversation,
+  while the channel processing lock and admission gate still prevent overlapping turns.
 - **Caps follow the frequency level.** `IDLE_NUDGE_DAILY_CAPS` and `ACTIVE_NUDGE_DAILY_CAPS` in
   `runtime/tuning.ts` map each level to its daily ceiling, so the panel estimate, the idle nudge
   re-check, and the Active Nudge check read one source. Idle nudge category tickets are fixed there too
@@ -116,11 +117,10 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   in a Ping User nudge (below). Nudge turns also skip the reunion note and presence write, and the
   "continue your last message" directive. Deliberate Tool Mode admits the idle nudge's tools from
   `naturalNudge.toolNames`, because no human message carries their trigger words.
-- **The anchor is compared by order.** A deleted newest message stays in the gateway's
-  `lastMessageId`, so the runner aborts only when the fetched anchor is newer than the recorded ID.
-  The placeholder is sent only when the history read succeeds and comes back empty, and it is deleted
-  again before the turn starts, so the turn borrows a message object whose blank line is already gone
-  from the channel.
+- **The anchor uses current history.** The runner borrows the newest surviving message, including
+  messages posted during planning. The placeholder is sent only when the history read succeeds and
+  comes back empty, and it is deleted again before the turn starts, so the turn borrows a message
+  object whose blank line is already gone from the channel.
 - **Private channels plan alone.** A private channel is offered to the planner by itself, so its
   history never shapes a nudge in another channel.
 - **Agendas belong to one persona.** `natural_nudge_agendas` rows key by `(message_disc_id,

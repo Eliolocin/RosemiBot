@@ -15,8 +15,6 @@ const TRANSCRIPT_MESSAGE_MAX_CHARS = 300;
 
 export interface NudgeChannel {
   channel: GuildTextBasedChannel;
-  /** Newest message ID when the lull was measured; any later message aborts the nudge. */
-  lastMessageId: string | null;
   quietSinceMs: number | null;
 }
 
@@ -54,16 +52,10 @@ export async function resolveAllowedChannels(client: Client, channelIds: readonl
     const lastMessageId = channel.lastMessageId ?? null;
     channels.push({
       channel,
-      lastMessageId,
       quietSinceMs: lastMessageId ? SnowflakeUtil.timestampFrom(lastMessageId) : null,
     });
   }
   return channels;
-}
-
-/** Whether any message landed in the channel after the one recorded when the lull was measured. */
-export function hasActivitySince(channel: GuildTextBasedChannel, recordedLastMessageId: string | null): boolean {
-  return (channel.lastMessageId ?? null) !== recordedLastMessageId;
 }
 
 export async function fetchRecentMessages(channel: GuildTextBasedChannel, limit: number): Promise<Message[]> {

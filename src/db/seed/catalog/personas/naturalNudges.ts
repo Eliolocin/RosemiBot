@@ -11,9 +11,9 @@ export interface PresetNaturalNudgeDefaults {
  */
 export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNaturalNudgeDefaults>> = {
   4: {
-    talkativeness: 3,
+    talkativeness: 2,
     interests: [
-      { label: "cute things", description: "Cute characters and merch such as Chiikawa, plushies, and hamsters." },
+      { label: "plushies", description: "Plush toys, cute character plushies such as Chiikawa, and hamsters." },
       { label: "cosplay", description: "Making or wearing costumes, wigs, fabric crafting, and cosplay conventions." },
       {
         label: "character design",
@@ -23,20 +23,22 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
     ],
   },
   716: {
-    talkativeness: 3,
+    talkativeness: 2,
     interests: [
       {
         label: "competitive gaming",
         description: "Playing ranked or competitive games such as League, Valorant, and fighting games.",
       },
-      { label: "gacha games", description: "Gacha pulls, banners, pity, and rare drops." },
+      { label: "League of Legends", description: "League of Legends champions, builds, matches, and ranked play." },
     ],
   },
   1770: {
-    talkativeness: 1,
+    talkativeness: 2,
     interests: [
-      { label: "noise rock", description: "Noise rock, shoegaze, and similar loud or abrasive music." },
-      { label: "city pop", description: "Japanese city pop and nostalgic 80s pop music." },
+      {
+        label: "music",
+        description: "Music discussions and recommendations, especially noise rock, shoegaze, and city pop.",
+      },
       { label: "cats", description: "Cats: pets, photos, and cat behavior." },
       { label: "documentaries", description: "Documentaries and deep dives into real-world subjects." },
     ],
@@ -45,8 +47,8 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
     talkativeness: 1,
     interests: [
       {
-        label: "mecha anime",
-        description: "Fiction about giant piloted robots, such as Gundam, Code Geass, and Evangelion.",
+        label: "anime",
+        description: "Anime series and recommendations, especially mecha such as Gundam, Code Geass, and Evangelion.",
       },
       {
         label: "mobile suit engineering",
@@ -55,11 +57,15 @@ export const PRESET_NATURAL_NUDGE_DEFAULTS: Readonly<Record<number, PresetNatura
     ],
   },
   50: {
-    talkativeness: 2,
+    talkativeness: 1,
     interests: [
-      { label: "horror fiction", description: "Horror and gothic stories, such as Poe, in books or audiobooks." },
-      { label: "mystery stories", description: "Mystery and detective fiction." },
+      { label: "horror", description: "Horror stories, films, and gothic fiction, including Poe." },
+      {
+        label: "books",
+        description: "Books and reading, especially mysteries, detective fiction, and dark literary stories.",
+      },
       { label: "audiobooks", description: "Listening to audiobooks, braille editions, and narration." },
+      { label: "tea", description: "Tea varieties, brewing, and sharing a quiet cup of tea." },
     ],
   },
   1337: {

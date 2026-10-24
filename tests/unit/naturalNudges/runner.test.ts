@@ -27,7 +27,7 @@ let samples: Array<Record<string, unknown>> = [];
 let configSpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadServerConfig">>;
 let historySpy: ReturnType<typeof spyOn<typeof naturalNudgeRepository, "loadFireHistory">>;
 
-let onChatCall: (() => void) | null = null;
+let onChatCall: (() => void | Promise<void>) | null = null;
 
 beforeEach(() => {
   chatInputs = [];
@@ -79,7 +79,7 @@ beforeEach(() => {
     spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(false),
     spyOn(tomoriChatModule, "tomoriChat").mockImplementation(async (input) => {
       chatInputs.push(input);
-      onChatCall?.();
+      await onChatCall?.();
       return "run";
     }),
   );
@@ -127,7 +127,7 @@ function attemptWithHistory(latest: () => Promise<Message[]>): {
     idleNudge: BUILTIN_IDLE_NUDGES.find((candidate) => candidate.category === "start_topic") as IdleNudgeDefinition,
     plannerModel: { llmId: 1, slot: "nudge-planner" },
     availableTools: new Set(),
-    plannerChannels: [{ channel, lastMessageId: RECORDED_ID, quietSinceMs: 0, transcript: "" }],
+    plannerChannels: [{ channel, quietSinceMs: 0, transcript: "" }],
     target: null,
     partners: [],
   };
@@ -175,18 +175,52 @@ describe("idle nudge anchor", () => {
     expect(deleted).toEqual([PLACEHOLDER_ID]);
   });
 
-  it("aborts without posting when a newer message arrived or the history read fails", async () => {
-    for (const latest of [
-      async () => [messageWithId(NEWER_ID)],
-      async () => {
-        throw new Error("Discord unavailable");
-      },
-    ]) {
-      const { attempt, sent } = attemptWithHistory(latest);
-      expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
-      expect(sent).toEqual([]);
-    }
+  it.each([
+    RECORDED_ID,
+    NEWER_ID,
+  ])("uses the latest message after planning even when the gateway reports %s", async (gatewayMessageId) => {
+    const latest = messageWithId(NEWER_ID);
+    const { attempt, sent } = attemptWithHistory(async () => [latest]);
+    attempt.plannerChannels[0].channel.lastMessageId = gatewayMessageId;
+    const recordFire = spyOn(naturalNudgeRepository, "recordIdleNudgeFire").mockResolvedValue(true);
+    spies.push(recordFire);
+    onChatCall = async () => {
+      await chatInputs.at(-1)?.onGenerationResult?.({
+        status: "completed",
+        streamResults: [],
+        personaResponses: [
+          { text: "A new topic.", personaName: attempt.persona.persona_nickname, personaId: PERSONA_ID },
+        ],
+        firstDeliveredMessageId: PLACEHOLDER_ID,
+      });
+    };
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("fired");
+    expect(chatInputs.map((input) => input.message)).toEqual([latest]);
+    expect(chatInputs[0].borrowsTriggerMessage).toBe(true);
+    expect(recordFire.mock.calls[0][0].openerMessageDiscId).toBe(PLACEHOLDER_ID);
+    expect(sent).toEqual([]);
+  });
+
+  it("still aborts when another bot reply is processing after planning", async () => {
+    const { attempt, sent } = attemptWithHistory(async () => [messageWithId(NEWER_ID)]);
+    spies.push(spyOn(tomoriChatModule, "isChannelProcessingLocked").mockReturnValue(true));
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "channel_busy", phase: "c" });
     expect(chatInputs).toEqual([]);
+    expect(sent).toEqual([]);
+  });
+
+  it("aborts without posting when the history read fails", async () => {
+    const { attempt, sent } = attemptWithHistory(async () => {
+      throw new Error("Discord unavailable");
+    });
+
+    expect(await runIdleNudgeAttempt(attempt)).toBe("aborted");
+    expect(samples.at(-1)).toMatchObject({ reason: "anchor_unavailable", phase: "c" });
+    expect(chatInputs).toEqual([]);
+    expect(sent).toEqual([]);
   });
 });
 
