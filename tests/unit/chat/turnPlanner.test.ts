@@ -3,6 +3,7 @@ import type { Client, Message } from "discord.js";
 import { PrivacyLevel, savedProviderConfigSchema, userSavedProviderConfigSchema } from "@/types/db/schema";
 import { DatabaseUnavailableError } from "@/types/errors";
 import * as credentials from "@/utils/provider/credentialResolver";
+import * as textModels from "@/utils/provider/textModelSelection";
 import * as embeds from "@/utils/discord/embedHelper";
 import * as guards from "@/utils/chat/admissionGuards";
 import * as userCache from "@/utils/cache/userCache";
@@ -25,9 +26,22 @@ const resolve = mock(async () => {
 });
 const scoped = createScopedModuleMocker(mock, {
   "@/utils/provider/credentialResolver": credentials,
+  "@/utils/provider/textModelSelection": textModels,
   "@/utils/discord/embedHelper": embeds,
 });
-scoped.module("@/utils/provider/credentialResolver", () => ({ ...credentials, resolveCapabilityCredentials: resolve }));
+scoped.module("@/utils/provider/credentialResolver", () => ({
+  ...credentials,
+  resolveCapabilityCredentials: resolve,
+  resolvePersonalCapabilityCredentials: async () => {
+    const next = resolutions[0];
+    return next instanceof Error || next?.source === "personal" ? resolve() : null;
+  },
+}));
+scoped.module("@/utils/provider/textModelSelection", () => ({
+  ...textModels,
+  resolveServerTextModel: async (state: Parameters<typeof textModels.resolveServerTextModel>[0]) =>
+    state.persona_llm ?? state.llm,
+}));
 scoped.module("@/utils/discord/embedHelper", () => ({ ...embeds, sendStandardEmbed: send }));
 stubLogMembers({ info: () => undefined, warn: () => undefined });
 const { planChatTurns, resolveTextCredentialPolicy } = await import("@/utils/chat/turnPlanner");
