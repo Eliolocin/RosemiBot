@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { seedModelsFromCatalog } from "@/db/seed/catalog/modelSeed";
+import { llmModelRepo } from "@/utils/db/repositories";
 import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import { nudgeStudioOperations } from "@/modules/natural-nudges/discord/studioOperations";
 import { NATURAL_NUDGE_FAILURE_STOP_THRESHOLD } from "@/modules/natural-nudges/runtime/tuning";
@@ -597,6 +599,35 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Natural Nudges persistence: regression", (
     expect(await hasScope()).toBe(false);
     expect((await naturalNudgeRepository.loadServerConfig(refs.serverId)).disabled_builtin_idle_nudges).toContain(key);
     await save({ enabled: true, scope: null });
+  });
+
+  it("clears a checker pinned to a retired model during seeding", async () => {
+    const [llm] = await testSql`
+      INSERT INTO llms (llm_provider, llm_codename, is_deprecated)
+      VALUES ('openrouter', '_rt_nudge_retired_checker', true) RETURNING llm_id
+    `;
+    const decisionModelId = await llmModelRepo.upsertDecisionModel({
+      provider: "openrouter",
+      codename: "_rt_nudge_retired_decision",
+      inputTokenLimit: 8192,
+    });
+    await testSql`UPDATE decision_models SET is_deprecated = true WHERE decision_model_id = ${decisionModelId}`;
+    try {
+      for (const pin of [
+        { checker_llm_id: llm.llm_id, checker_decision_model_id: null },
+        { checker_llm_id: null, checker_decision_model_id: decisionModelId },
+      ]) {
+        expect(await naturalNudgeRepository.saveServerConfig(refs.serverId, pin)).toBe(true);
+        await seedModelsFromCatalog(testSql);
+        expect(await naturalNudgeRepository.loadServerConfig(refs.serverId)).toMatchObject({
+          checker_llm_id: null,
+          checker_decision_model_id: null,
+        });
+      }
+    } finally {
+      await testSql`DELETE FROM llms WHERE llm_id = ${llm.llm_id}`;
+      await testSql`DELETE FROM decision_models WHERE decision_model_id = ${decisionModelId}`;
+    }
   });
 
   it("records an Active Nudge fire that counts toward caps but never as a pending idle nudge", async () => {

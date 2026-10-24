@@ -94,6 +94,7 @@ const registeredSecretNames = new Set<string>();
 
 let secretsLoaded = false;
 
+/** @public Release-only `src/init/secrets.ts` registers the supporter billing secrets through this. */
 export function registerSecretEnvKeys(names: readonly string[]): void {
   if (secretsLoaded) {
     throw new Error("Secret names must be registered before getAppSecrets() loads application secrets.");

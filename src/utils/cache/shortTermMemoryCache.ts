@@ -86,7 +86,6 @@ interface CacheStats {
 }
 
 const CRUDE_CONVERSATION_TTL_HOURS = 12;
-export const STM_MAX_CATEGORIES = 5;
 const SUMMARY_TTL_HOURS = 24;
 const MAX_SUMMARY_LENGTH = 1500;
 export const MAX_MESSAGES_PER_CHANNEL = 10;

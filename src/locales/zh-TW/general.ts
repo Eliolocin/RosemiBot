@@ -182,5 +182,7 @@ export default {
     triggered_footer_one_time: `生成一直失敗，所以直接顯示排程的內容。這個單次排程已完成並移除。`,
     triggered_footer_recurring_retained: `生成一直失敗，所以直接顯示排程的內容。下一次仍會依照原本的週期執行。可用 \`/scheduled-task edit\` 或 \`/scheduled-task remove\` 管理。`,
     triggered_footer_recurring_removed: `生成一直失敗，而且無法保留下一次的排程。這個重複排程已移除，請在問題解決後重新建立。`,
+    removed_after_failures_title: `已移除排程項目`,
+    removed_after_failures_description: `排程項目 \`{reminder_id}\` 已連續失敗 {failed_occurrences} 次且無法在其頻道中傳送，因此已遭移除。請在修正頻道權限或 AI 供應商問題後重新建立。\n**原始內容：**`,
   },
 };

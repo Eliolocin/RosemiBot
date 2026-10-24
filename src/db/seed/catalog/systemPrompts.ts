@@ -2,7 +2,7 @@ import type { CatalogSection, SystemPromptInput } from "./types";
 
 export const systemPromptSections: CatalogSection<SystemPromptInput>[] = [
   {
-    comment: "System Prompt Presets (English only, with Japanese descriptions)",
+    comment: "System Prompt Presets (English prompt text, localized names and descriptions)",
     rows: [
       {
         name: "Bredrumb's Prompt",
@@ -14,6 +14,14 @@ export const systemPromptSections: CatalogSection<SystemPromptInput>[] = [
           "zh-TW": "更詳細的指示，讓角色扮演更到位。",
           vi: "Hướng dẫn dài hơn để nhập vai tốt hơn.",
           "zh-CN": "更详细的指示，让角色扮演更到位。",
+        },
+        names: {
+          ja: "Bredrumbのプロンプト",
+          "pt-BR": "Prompt do Bredrumb",
+          "es-419": "Prompt de Bredrumb",
+          "zh-TW": "Bredrumb 的提示詞",
+          vi: "Prompt của Bredrumb",
+          "zh-CN": "Bredrumb 的提示词",
         },
         promptText: `{bot} only knows what {bot} would know. {bot} experiences the world through their senses, their history, their blind spots.
 

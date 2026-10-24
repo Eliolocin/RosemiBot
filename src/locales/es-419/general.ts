@@ -181,5 +181,7 @@ export default {
     triggered_footer_one_time: `La generación falló continuamente, por lo que el contenido programado se muestra sin cambios. Esta programación única está completa y ha sido eliminada.`,
     triggered_footer_recurring_retained: `La generación falló continuamente, por lo que el contenido programado se muestra sin cambios. La siguiente ocurrencia se mantiene en su ritmo original. Usa \`/scheduled-task edit\` o \`/scheduled-task remove\` para gestionarlo.`,
     triggered_footer_recurring_removed: `La generación falló continuamente y la siguiente ocurrencia no pudo preservarse. Esta programación recurrente ha sido eliminada; créala de nuevo una vez que se solucione el problema.`,
+    removed_after_failures_title: `Elemento programado eliminado`,
+    removed_after_failures_description: `El elemento programado \`{reminder_id}\` falló {failed_occurrences} veces seguidas y no se pudo publicar en su canal, por lo que ha sido eliminado. Créalo de nuevo una vez que se solucionen los permisos del canal o el proveedor de IA.\n**Contenido original:**`,
   },
 };

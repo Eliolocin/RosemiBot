@@ -77,7 +77,7 @@ Quản trị viên máy chủ có thể cung cấp tài liệu để bot tham kh
 Yêu cầu model embedding, được cấu hình bằng `/config` > Models > Switch Models. Xem [Nhà cung cấp và model](/vi/features/setup-administration/providers-and-models/). Trang Tài liệu trong `/memories` cung cấp phạm vi theo persona và toàn máy chủ, số lượng tài liệu và đoạn dữ liệu trực tiếp, tải lên, duyệt tài liệu và xóa:
 
 - Tải lên tệp văn bản, PDF hoặc Markdown làm tri thức máy chủ. Phạm vi cho phép chọn gắn liền với chỉ persona này (mặc định) hay toàn máy chủ để mọi persona tham khảo.
-- `/learn history`: trích xuất lịch sử kênh thành tri thức có thể tìm kiếm.
+- `/learn history`: trích xuất lịch sử kênh thành tri thức có thể tìm kiếm. Tùy chọn `learner` chọn ai sẽ học: một persona (để trống để dùng persona chính), **Tự động** (mỗi persona đã nói nhận một bản riêng) hoặc **Toàn máy chủ** (mọi persona dùng chung).
 - Duyệt qua các tài liệu đã lưu theo từng đoạn. Quản trị viên máy chủ có thể chỉnh sửa từng đoạn riêng lẻ, thay đổi các kênh mà tài liệu bị giới hạn, hoặc xóa một đoạn duy nhất mà không cần xóa toàn bộ tài liệu.
 - Xóa các tài liệu đã lưu hoặc từng đoạn riêng lẻ trực tiếp từ bảng điều khiển.
 
@@ -87,7 +87,7 @@ Khi nhập lịch sử kênh bằng `/learn history`, tùy chọn `prompt` sẽ 
 
 - Hội thoại trích xuất các dữ kiện độc lập từ cuộc trò chuyện thông thường. Chế độ này phân giải các đại từ và sử dụng mốc thời gian tuyệt đối khi ngày tháng hoặc thời gian được đề cập hoặc có thể suy luận được.
 - Nhập vai tìm kiếm các phân cảnh, bối cảnh cốt truyện, mối quan hệ và sự kiện đáng nhớ mà không cố gắng lưu giữ từng chi tiết nhỏ.
-- Đúng vai nhân vật trích xuất bộ nhớ từ góc nhìn của persona đã chọn, sử dụng prompt, thuộc tính, bộ nhớ hiện có và tài liệu liên quan của persona đó làm ngữ cảnh.
+- Đúng vai nhân vật cần một persona trong `learner`. Chế độ này trích xuất bộ nhớ từ góc nhìn của persona đó, sử dụng prompt, thuộc tính, bộ nhớ hiện có và tài liệu liên quan của persona đó làm ngữ cảnh.
 
 Prompt sẽ được hiển thị trước khi nhập để bạn có thể điều chỉnh cho phù hợp với kênh hoặc phân cảnh.
 
@@ -129,7 +129,7 @@ Phạm vi sẽ thu hẹp thông tin trước tiên: bộ nhớ máy chủ chỉ 
 - Bộ nhớ cá nhân sử dụng thẻ `#channel` thay thế, chỉ kích hoạt bộ nhớ trong kênh đó.
 - Giới hạn kênh có thể kết hợp với thẻ từ khóa. Đối với bộ nhớ máy chủ, thẻ bắt đầu bằng `#` là một từ khóa thông thường.
 - Các bộ nhớ máy chủ và tài liệu từng dùng thẻ `#channel` cũ đã được tự động chuyển đổi sang giới hạn kênh. Nếu một thẻ cũ chỉ đến kênh không còn tồn tại, mục đó sẽ vẫn hoạt động trong mọi kênh và `/memories` sẽ thông báo điều này; hãy chỉnh sửa và chọn lại kênh để giới hạn lại.
-- Nếu bạn sử dụng cơ sở tri thức tài liệu (RAG), tài liệu và lịch sử đã trích xuất cũng có thể được giới hạn vào các kênh theo cách tương tự. Tùy chọn `channels` trong `/learn history` nhận tên kênh hoặc đề cập.
+- Nếu bạn sử dụng cơ sở tri thức tài liệu (RAG), tài liệu và lịch sử đã trích xuất cũng có thể được giới hạn vào các kênh theo cách tương tự. Với `/learn history`, hãy chọn kênh trong cửa sổ mở ra trước khi bắt đầu trích xuất.
 
 Trong `/help`, chọn `Bộ nhớ`, rồi chọn `Gắn thẻ bộ nhớ`, để xem bản tóm tắt tương tự trong Discord.
 

@@ -153,6 +153,11 @@ export default {
       interest_select_placeholder: "Selecione ou adicione um interesse...",
       interest_add_option: "+ Adicionar Interesse",
       interests_remove_button: "Remover Interesses",
+      interests_generate_button: "Gerar Interesses",
+      generate_no_model_detail:
+        "Nenhum modelo utilizável pode escrever interesses ainda. Escolha um Planejador de Toques Ociosos em Plugins > Natural Nudges.",
+      generate_failed_detail:
+        "Não consegui pensar em novos interesses desta vez. Tente novamente ou adicione um você mesmo.",
       interests_remove_modal_title: "Remover Interesses",
       interests_remove_description: "Desmarque um interesse para removê-lo. Isso não pode ser desfeito.",
       interest_modal_title: "Interesse",

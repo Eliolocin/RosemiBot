@@ -35,7 +35,8 @@ column missing from the SELECT is silently replaced by its default and a check l
 
 - **Descriptions**: model and preset descriptions use the existing `descriptions` JSONB locale map. Do
 not add a column per language; add translations to the seed catalog's `i18n` field and keep English in
-`desc`.
+`desc`. System prompt presets also carry `display_names` (seed field `names`) for the picker label; the
+English `name` stays the stored identity and the fallback.
 
 ## Verify
 

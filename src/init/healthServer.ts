@@ -3,11 +3,11 @@ import { log } from "@/utils/misc/logger";
 import { healthTracker } from "@/utils/misc/healthTracker";
 import { eventLoopMonitor } from "@/utils/misc/eventLoopMonitor";
 
-export interface HealthServerRouteContext {
+interface HealthServerRouteContext {
   requestUrl: URL;
 }
 
-export type HealthServerRouteHandler = (
+type HealthServerRouteHandler = (
   req: IncomingMessage,
   res: ServerResponse,
   context: HealthServerRouteContext,

@@ -491,7 +491,7 @@ describe("panel prose runtime formatting", () => {
 
       const catalogs: SetupSettingsCatalogs = {
         personas: [{ id: 7, name: maxPersonaName, description: "A steady, watchful companion." }],
-        prompts: [{ name: maxPromptName, description: "The standard reply style." }],
+        prompts: [{ name: maxPromptName, displayName: maxPromptName, description: "The standard reply style." }],
         promptTexts: new Map([[maxPromptName, "You are Tomori."]]),
       };
 

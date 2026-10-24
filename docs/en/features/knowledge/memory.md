@@ -124,7 +124,9 @@ and chunk counts, uploads, document browsing, and removal:
 
 - Upload text, PDF, or Markdown files as server knowledge. The scope picks whether it is
   tied to just this persona (the default) or server-wide for every persona to reference.
-- `/learn history`: extract channel history into searchable knowledge.
+- `/learn history`: extract channel history into searchable knowledge. The `learner` option picks
+  who learns it: one persona (leave it blank for the main persona), **Automatic** (each persona that
+  spoke gets its own copy), or **Global** (every persona shares it).
 - Browse stored documents chunk by chunk. Server admins can edit individual chunks, change
   which channels a document is limited to, or delete a single chunk without removing the whole
   document.
@@ -137,7 +139,7 @@ memories:
 
 - **Conversation** extracts standalone facts from normal chat. It resolves pronouns and uses absolute timestamps when dates or times are mentioned or can be inferred.
 - **Roleplay** looks for scenes, lore, relationships, and memorable events without trying to preserve every small beat.
-- **In-Character** extracts memories from the selected persona's point of view, using that persona's prompt, attributes, existing memories, and relevant documents as context.
+- **In-Character** needs a persona in `learner`. It extracts memories from that persona's point of view, using that persona's prompt, attributes, existing memories, and relevant documents as context.
 
 The prompt is shown before import so you can adjust it for the channel or scene.
 
@@ -194,8 +196,8 @@ a keyword or only in one channel. Turn it on with `/config` > Engine > Memory & 
   automatically. If an old tag named a channel that no longer exists, the item stays active in
   every channel and `/memories` says so; edit it and pick channels to limit it again.
 - If you use the document knowledge base (RAG), documents and extracted histories can be
-  limited to channels the same way. The `channels` option on `/learn history` takes channel
-  names or mentions.
+  limited to channels the same way. With `/learn history`, pick the channels in the window that
+  opens before extraction starts.
 
 In `/help`, choose `Memory`, then `Memory Tagging`, for the same summary in Discord.
 

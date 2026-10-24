@@ -26,8 +26,6 @@ export interface PromptSnapshotDelivery {
   guildId: string;
   user: User;
   locale: string;
-  /** Whether the user asked for tool schemas, which TXT omits even when they were requested. */
-  toolsRequested: boolean;
   /** `/tool prompt snapshot` points users at its own options; `/context` has buttons instead. */
   includeRerunHints: boolean;
   editReply(options: InteractionEditReplyOptions): Promise<unknown>;
@@ -37,7 +35,7 @@ export interface PromptSnapshotDelivery {
  * Sends the snapshot file to the user's DMs, falling back to the private reply when DMs are closed.
  */
 export async function deliverPromptSnapshot(delivery: PromptSnapshotDelivery): Promise<void> {
-  const { inspection, format, locale, toolsRequested } = delivery;
+  const { inspection, format, locale } = delivery;
   const { selectedPersona, providerName, modelName, toolsData } = inspection;
 
   // Both output formats show the request config in the DM, while JSON also
@@ -104,15 +102,12 @@ export async function deliverPromptSnapshot(delivery: PromptSnapshotDelivery): P
     descriptionParts.push(localizer(locale, "commands.tool.prompt.snapshot.dm_txt_headers_note"));
     if (delivery.includeRerunHints) {
       descriptionParts.push(localizer(locale, "commands.tool.prompt.snapshot.dm_hint_try_json"));
-      if (toolsRequested) {
-        descriptionParts.push(localizer(locale, "commands.tool.prompt.snapshot.dm_tools_txt_note"));
-      }
     }
   } else {
     if (delivery.includeRerunHints) {
       descriptionParts.push(localizer(locale, "commands.tool.prompt.snapshot.dm_hint_try_text"));
     }
-    if (toolsRequested) {
+    if (toolsData) {
       descriptionParts.push(localizer(locale, "commands.tool.prompt.snapshot.dm_tools_filtering_note"));
     }
   }

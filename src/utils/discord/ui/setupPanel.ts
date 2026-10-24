@@ -46,7 +46,7 @@ import type { PanelReceipt } from "@/types/discord/panel";
 import type { RawDiscordComponent } from "@/types/discord/rawApiTypes";
 import { ColorCode } from "@/utils/misc/logger";
 import { commandRegistry } from "@/utils/discord/commandRegistry";
-import { localizer, resolveDescription } from "@/utils/text/localizer";
+import { localizer, resolveDescription, resolvePresetDisplayName } from "@/utils/text/localizer";
 import { formatUTCOffset, formatUtcOffsetInput, parseUtcOffsetInput } from "@/utils/text/timezoneHelper";
 import { buildLegalDocUrl } from "@/utils/misc/docsUrl";
 import { orderPersonaPresetChoices } from "@/utils/persona/presetOrdering";
@@ -135,7 +135,7 @@ export interface SetupWizardPayloadInput {
 /** Values a Starting Settings editor can offer, derived from the live catalogs on every open. */
 export interface SetupSettingsCatalogs {
   personas: Array<{ id: number; name: string; description: string }>;
-  prompts: Array<{ name: string; description: string }>;
+  prompts: Array<{ name: string; displayName: string; description: string }>;
   /**
    * Preset name to current prompt text, for the final commit only.
    *
@@ -215,6 +215,7 @@ export function toSetupSettingsCatalogs(
     })),
     prompts: promptPresets.map((preset) => ({
       name: preset.system_prompt_preset_name,
+      displayName: resolvePresetDisplayName(preset, locale),
       description: resolveDescription(preset.descriptions, locale) ?? "",
     })),
     promptTexts: new Map(promptPresets.map((preset) => [preset.system_prompt_preset_name, preset.preset_prompt_text])),
@@ -297,7 +298,7 @@ function resolveSettingsSummary(
   const promptName =
     systemPrompt.kind === "built-in"
       ? localizer(locale, "commands.setup.wizard.settings_built_in_prompt_summary")
-      : (catalogs?.prompts.find((prompt) => prompt.name === systemPrompt.presetName)?.name ??
+      : (catalogs?.prompts.find((prompt) => prompt.name === systemPrompt.presetName)?.displayName ??
         localizer(locale, unresolvedPromptKey));
 
   return [
@@ -1260,7 +1261,7 @@ export function buildSetupSettingsModal(
               default: storedPrompt?.kind === "built-in",
             },
             ...catalogs.prompts.map((prompt) => ({
-              label: safeSelectOptionText(prompt.name, 100),
+              label: safeSelectOptionText(prompt.displayName, 100),
               value: safeSelectOptionText(prompt.name, 100),
               description: safeSelectOptionText(prompt.description, 100),
               default: storedPrompt?.kind === "preset" && storedPrompt.presetName === prompt.name,

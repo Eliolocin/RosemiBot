@@ -52,13 +52,12 @@ export const setupDraftUserByokAccessSchema = z
   .strict();
 export type SetupDraftUserByokAccess = z.infer<typeof setupDraftUserByokAccessSchema>;
 
-export const setupDraftOptionAccessSchema = z
+const setupDraftOptionAccessSchema = z
   .object({
     mode: z.literal("option"),
     value: z.string().min(1).max(40),
   })
   .strict();
-export type SetupDraftOptionAccess = z.infer<typeof setupDraftOptionAccessSchema>;
 
 export const setupDraftProviderAccessSchema = z.discriminatedUnion("mode", [
   setupDraftCatalogAccessSchema,

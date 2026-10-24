@@ -793,6 +793,7 @@ CREATE TABLE IF NOT EXISTS system_prompt_presets (
   system_prompt_preset_name TEXT NOT NULL UNIQUE,
   system_prompt_preset_desc TEXT NOT NULL,
   descriptions JSONB,
+  display_names JSONB,
   preset_prompt_text TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -801,6 +802,7 @@ CREATE TABLE IF NOT EXISTS system_prompt_presets (
 -- Removed updated_at trigger for system_prompt_presets table (static metadata, rarely changes)
 DROP TRIGGER IF EXISTS update_system_prompt_presets_timestamp ON system_prompt_presets;
 SELECT add_column_if_not_exists('system_prompt_presets', 'descriptions', 'JSONB');
+SELECT add_column_if_not_exists('system_prompt_presets', 'display_names', 'JSONB');
 
 CREATE TABLE IF NOT EXISTS server_emojis (
   server_emoji_id SERIAL PRIMARY KEY,

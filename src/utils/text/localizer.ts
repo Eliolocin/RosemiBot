@@ -181,6 +181,14 @@ export function resolveDescription(
   }
   return null;
 }
+/** Picker label for a system prompt preset; the English `name` doubles as the stored identity and the fallback. */
+export function resolvePresetDisplayName(
+  preset: { system_prompt_preset_name: string; display_names?: Record<string, string> | null },
+  locale: string,
+): string {
+  return resolveDescription(preset.display_names, locale) ?? preset.system_prompt_preset_name;
+}
+
 const DEFAULT_BASE_TRIGGER_WORDS = ["tomori", "tomo"];
 
 /** Exact and alias matches win; a base language matches only when it is unambiguous. */

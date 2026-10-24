@@ -12,7 +12,7 @@ import { personaRepository, userRepository } from "@/utils/db/repositories";
 import { clearTomoriStateCache } from "@/utils/cache/tomoriStateCache";
 import * as whitelistCache from "@/utils/cache/channelWhitelistCache";
 import * as spotlightCache from "@/utils/cache/personalSpotlightCache";
-import { handlePersonaAutocomplete } from "@/utils/discord/autocomplete/personaAutocomplete";
+import { handlePersonaAutocomplete, respondWithPersonaChoices } from "@/utils/discord/autocomplete/personaAutocomplete";
 
 type AutocompleteChoice = { name: string; value: string };
 
@@ -163,5 +163,40 @@ describe("handlePersonaAutocomplete", () => {
     const choices = await runAutocomplete(createMockInteraction("", "guild_filter"));
 
     expect(choices.map((choice) => choice.name)).toEqual(["Allowed"]);
+  });
+});
+
+describe("respondWithPersonaChoices", () => {
+  const leadingChoices = [
+    { name: "Automatic (each persona that spoke learns it)", value: "automatic" },
+    { name: "Global (all personas share it)", value: "global" },
+  ];
+
+  async function runWorkspaceAutocomplete(focusedValue: string, guildId: string): Promise<AutocompleteChoice[]> {
+    const interaction = createMockInteraction(focusedValue, guildId);
+    await respondWithPersonaChoices(
+      interaction as unknown as AutocompleteInteraction,
+      guildId,
+      undefined,
+      leadingChoices,
+    );
+    return interaction.getRespondChoices();
+  }
+
+  it("lists leading choices ahead of personas and keeps them inside the 25-choice limit", async () => {
+    stubPersonaLoad(Array.from({ length: 30 }, (_, i) => createPersona(i + 1, `Persona ${i + 1}`, i !== 0)));
+
+    const choices = await runWorkspaceAutocomplete("", "guild_leading");
+
+    expect(choices).toHaveLength(25);
+    expect(choices.slice(0, 2).map((choice) => choice.value)).toEqual(["automatic", "global"]);
+  });
+
+  it("drops a leading choice whose name does not contain the typed text", async () => {
+    stubPersonaLoad([createPersona(1, "Glory", false)]);
+
+    const choices = await runWorkspaceAutocomplete("glo", "guild_leading_filter");
+
+    expect(choices.map((choice) => choice.value)).toEqual(["global", "1"]);
   });
 });
