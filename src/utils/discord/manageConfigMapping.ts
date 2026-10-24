@@ -19,6 +19,7 @@ type CapabilitiesManageCapabilityColumn = Extract<
   | "manage_message_enabled"
   | "thread_creation_enabled"
   | "imagegen_enabled"
+  | "danbooru_enabled"
   | "videogen_enabled"
   | "voice_message_enabled"
   | "user_blocking_enabled"
@@ -150,6 +151,15 @@ const CAPABILITIES_MANAGE_PERMISSION_DEFINITIONS: readonly CapabilitiesManagePer
     labelKey: "commands.capabilities.manage.imagegen_option",
     descKey: "commands.capabilities.manage.imagegen_desc",
     getState: (c) => c.imagegen_enabled,
+  },
+  {
+    value: "danbooru",
+    page: "available-tools",
+    table: "capabilities",
+    dbColumn: "danbooru_enabled",
+    labelKey: "commands.capabilities.manage.danbooru_option",
+    descKey: "commands.capabilities.manage.danbooru_desc",
+    getState: (c) => c.danbooru_enabled,
   },
   {
     value: "videogen",

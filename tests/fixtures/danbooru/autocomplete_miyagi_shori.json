@@ -1,0 +1,56 @@
+[
+  {
+    "type": "tag-autocorrect",
+    "label": "miyagi shiori",
+    "value": "miyagi_shiori",
+    "category": 4,
+    "post_count": 1693,
+    "antecedent": "miyagi_shori",
+    "tag": {
+      "id": 2021878,
+      "name": "miyagi_shiori",
+      "post_count": 1693,
+      "category": 4,
+      "created_at": "2023-11-08T21:13:38.014-05:00",
+      "updated_at": "2023-11-08T21:14:05.760-05:00",
+      "is_deprecated": false,
+      "words": ["miyagi", "shiori"]
+    }
+  },
+  {
+    "type": "tag-autocorrect",
+    "label": "miyaji saori",
+    "value": "miyaji_saori",
+    "category": 4,
+    "post_count": 5,
+    "antecedent": "miyagi_shori",
+    "tag": {
+      "id": 1283306,
+      "name": "miyaji_saori",
+      "post_count": 5,
+      "category": 4,
+      "created_at": "2014-07-26T13:06:02.950-04:00",
+      "updated_at": "2019-08-30T13:26:14.869-04:00",
+      "is_deprecated": false,
+      "words": ["miyaji", "saori"]
+    }
+  },
+  {
+    "type": "tag-autocorrect",
+    "label": "minagi shiori",
+    "value": "minagi_shiori",
+    "category": 4,
+    "post_count": 1,
+    "antecedent": "miyagi_shori",
+    "tag": {
+      "id": 2430529,
+      "name": "minagi_shiori",
+      "post_count": 1,
+      "category": 4,
+      "created_at": "2025-08-08T13:21:14.503-04:00",
+      "updated_at": "2025-08-08T13:21:14.503-04:00",
+      "is_deprecated": false,
+      "words": ["minagi", "shiori"]
+    }
+  }
+]

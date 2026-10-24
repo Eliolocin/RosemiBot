@@ -901,6 +901,7 @@ const serverCapabilitiesConfigSchema = z.object({
   manage_message_enabled: z.boolean().default(true),
   thread_creation_enabled: z.boolean().default(true),
   imagegen_enabled: z.boolean().default(true),
+  danbooru_enabled: z.boolean().default(true),
   videogen_enabled: z.boolean().default(false),
   voice_message_enabled: z.boolean().default(true),
   user_blocking_enabled: z.boolean().default(true),

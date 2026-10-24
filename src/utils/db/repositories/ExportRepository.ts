@@ -61,6 +61,7 @@ interface WorkspaceConfigProjectionRow {
   emoji_usage_enabled: boolean;
   sticker_usage_enabled: boolean;
   imagegen_enabled: boolean;
+  danbooru_enabled: boolean;
   manage_message_enabled: boolean;
   videogen_enabled: boolean;
   voice_message_enabled: boolean;
@@ -344,6 +345,7 @@ export class ExportRepository {
           COALESCE(scac.emoji_usage_enabled, true)                  AS emoji_usage_enabled,
           COALESCE(scac.sticker_usage_enabled, true)                AS sticker_usage_enabled,
           COALESCE(scac.imagegen_enabled, true)                     AS imagegen_enabled,
+          COALESCE(scac.danbooru_enabled, true)                     AS danbooru_enabled,
           COALESCE(snec.tool_notice_hidden_keys, ARRAY[]::TEXT[])   AS tool_notice_hidden_keys,
           snec.tool_notice_verbosity                                AS tool_notice_verbosity,
           COALESCE(scc.self_debug_enabled, false)                   AS self_debug_enabled,
@@ -533,6 +535,7 @@ export class ExportRepository {
             emoji_usage_enabled: configData.emoji_usage_enabled,
             sticker_usage_enabled: configData.sticker_usage_enabled,
             imagegen_enabled: configData.imagegen_enabled,
+            danbooru_enabled: configData.danbooru_enabled,
             tool_notice_hidden_keys: configData.tool_notice_hidden_keys ?? [],
             tool_notice_verbosity: configData.tool_notice_verbosity ?? undefined,
             self_debug_enabled: configData.self_debug_enabled,
@@ -753,6 +756,7 @@ export class ExportRepository {
           COALESCE(scac.emoji_usage_enabled, true) AS emoji_usage_enabled,
           COALESCE(scac.sticker_usage_enabled, true) AS sticker_usage_enabled,
           COALESCE(scac.imagegen_enabled, true) AS imagegen_enabled,
+          COALESCE(scac.danbooru_enabled, true) AS danbooru_enabled,
           COALESCE(scac.manage_message_enabled, true) AS manage_message_enabled,
           COALESCE(scac.videogen_enabled, false) AS videogen_enabled,
           COALESCE(scac.voice_message_enabled, true) AS voice_message_enabled,
@@ -882,6 +886,7 @@ export class ExportRepository {
           emoji_usage_enabled: configData.emoji_usage_enabled,
           sticker_usage_enabled: configData.sticker_usage_enabled,
           imagegen_enabled: configData.imagegen_enabled,
+          danbooru_enabled: configData.danbooru_enabled,
           manage_message_enabled: configData.manage_message_enabled,
           videogen_enabled: configData.videogen_enabled,
           voice_message_enabled: configData.voice_message_enabled,

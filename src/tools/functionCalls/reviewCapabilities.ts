@@ -55,6 +55,7 @@ function buildToolAssemblyState(context: ToolContext): ToolStateForContext {
       user_blocking_enabled: config.user_blocking_enabled ?? true,
       user_info_updates_enabled: config.user_info_updates_enabled ?? true,
       thread_creation_enabled: config.thread_creation_enabled,
+      danbooru_enabled: config.danbooru_enabled,
     },
   };
 }
@@ -275,6 +276,7 @@ export class ReviewCapabilitiesTool extends BaseTool {
       `- **Voice messages**: ${builtInNames.has("generate_voice_message") ? "available" : "unavailable"}`,
       `- **Message management**: ${builtInNames.has("manage_message") ? "available" : "unavailable"}`,
       `- **Thread creation**: ${builtInNames.has("create_thread") ? "available" : "unavailable"}`,
+      `- **Danbooru tag lookup**: ${builtInNames.has("danbooru_search_tags") ? "available" : "unavailable"}`,
       "",
       "Current runtime state and assembled conversation context take precedence over general documentation.",
       "",
@@ -312,6 +314,7 @@ export class ReviewCapabilitiesTool extends BaseTool {
       ["self teaching", config.self_teaching_enabled],
       ["message management", config.manage_message_enabled],
       ["thread creation", config.thread_creation_enabled],
+      ["Danbooru search", config.danbooru_enabled],
     ].filter((entry): entry is [string, false] => entry[1] === false);
 
     const content = [
@@ -334,6 +337,7 @@ export class ReviewCapabilitiesTool extends BaseTool {
       `- Self teaching: ${config.self_teaching_enabled ? "enabled" : "disabled"}`,
       `- Message management: ${config.manage_message_enabled ? "enabled" : "disabled"}`,
       `- Thread creation: ${config.thread_creation_enabled ? "enabled" : "disabled"}`,
+      `- Danbooru search: ${config.danbooru_enabled ? "enabled" : "disabled"}`,
       "",
       "## Disabled Reasons",
       "",

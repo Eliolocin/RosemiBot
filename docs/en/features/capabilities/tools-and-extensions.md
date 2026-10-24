@@ -54,6 +54,7 @@ optional API key.
 | Process YouTube video | `{youtube_tool}` | model with video support | Analyze a specific YouTube link on demand. |
 | Analyze image | `{image_analysis_tool}` | configured `vision_llm` | Delegate image understanding to a separate vision model. |
 | Generate image / anime image | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + capable provider | Generate or edit images (see [Media Generation](/features/capabilities/media-generation/)). |
+| Danbooru tag lookup | - | `danbooru_enabled` | Turn character names, nicknames, and tag guesses into exact Danbooru tags (see [Danbooru Tag Lookup](#danbooru-tag-lookup)). |
 | Generate voice message | `{voice_message_tool}` | ElevenLabs key + persona voice + `voice_message_enabled` | Send a spoken Discord voice reply. |
 
 :::note[For prompt authors]
@@ -96,6 +97,24 @@ MCP replacements, and the current Deliberate Tool Mode allowlist. They do not by
 predict Discord permission checks performed when a tool executes. Unknown capability names
 evaluate as false and are logged; malformed blocks are omitted. Raw chat messages, model
 output, and tool results are never treated as conditional templates.
+
+## Danbooru Tag Lookup
+<!-- anchor: danbooru-tag-lookup -->
+
+Anime image models such as NovelAI read Danbooru tags, so a guessed tag (`half-up braid` for
+`half up braid`) or an unknown character outfit weakens the image. With **Danbooru Search** on
+(`/config` > Plugins > Available Tools, on by default), she can look tags up before drawing:
+
+- Names, nicknames, and typos resolve to the real tag (`ryza` becomes `reisalin stout`), with how
+  many posts use it. A corrected or partial match can be a different thing, so she checks it.
+- For a character or one of their outfits, she also gets the tags that most often appear with
+  them, the character's named outfits and cosplay tag, and a short wiki summary. These tags come
+  only from general and sensitive posts, in every channel.
+
+Each lookup posts a **Danbooru Tag Lookup** card listing what was found, with the character's
+tags in a block you can paste into a manual `/generate image` prompt. The card stays visible at
+every notice verbosity, and later replies can reuse its tags without searching again. Hide it
+under `/config` > Behavior > Notices like any other notice.
 
 ## Web Search & URL Reading
 <!-- anchor: web-search--url-reading -->

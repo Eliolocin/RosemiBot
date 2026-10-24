@@ -226,6 +226,7 @@ const serverCapabilitiesConfigExportSchema = z.object({
   emoji_usage_enabled: z.boolean().default(true),
   sticker_usage_enabled: z.boolean().default(true),
   imagegen_enabled: z.boolean().default(true),
+  danbooru_enabled: z.boolean().optional(),
   manage_message_enabled: z.boolean().optional(),
   videogen_enabled: z.boolean().optional(),
   voice_message_enabled: z.boolean().optional(),

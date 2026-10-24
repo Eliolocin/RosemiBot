@@ -76,6 +76,9 @@ export default {
       unblock_success_title: `✅ {persona_name} が {user_name} のブロックを解除しました`,
       unblock_success_description: `{user_name} に対する {persona_name} の有効な {block_type} を解除しました。`,
     },
+    danbooru: {
+      tags_title: `🏷️  Danbooruタグ検索`,
+    },
     user_info_update: {
       success_title: `✅ {target_user} のプロフィールを更新しました`,
       success_title_fields: `✅ {target_user} の{fields}を更新しました`,

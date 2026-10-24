@@ -1949,7 +1949,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         -- 4. server_capabilities_configs
         scaps.emoji_usage_enabled, scaps.sticker_usage_enabled, scaps.web_search_enabled,
         scaps.manage_message_enabled, scaps.thread_creation_enabled, scaps.imagegen_enabled,
-        scaps.videogen_enabled, scaps.voice_message_enabled, scaps.user_blocking_enabled,
+        scaps.danbooru_enabled, scaps.videogen_enabled, scaps.voice_message_enabled, scaps.user_blocking_enabled,
         scaps.time_awareness_enabled,
         scaps.tool_use_enabled,
         scaps.short_term_memory_enabled, scaps.user_info_updates_enabled,
@@ -2061,7 +2061,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         -- 4. server_capabilities_configs
         scaps.emoji_usage_enabled, scaps.sticker_usage_enabled, scaps.web_search_enabled,
         scaps.manage_message_enabled, scaps.thread_creation_enabled, scaps.imagegen_enabled,
-        scaps.videogen_enabled, scaps.voice_message_enabled, scaps.user_blocking_enabled,
+        scaps.danbooru_enabled, scaps.videogen_enabled, scaps.voice_message_enabled, scaps.user_blocking_enabled,
         scaps.time_awareness_enabled,
         scaps.tool_use_enabled,
         scaps.short_term_memory_enabled, scaps.user_info_updates_enabled,

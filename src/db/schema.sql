@@ -2953,6 +2953,7 @@ CREATE TABLE IF NOT EXISTS server_capabilities_configs (
   manage_message_enabled BOOLEAN NOT NULL DEFAULT true,
   thread_creation_enabled BOOLEAN NOT NULL DEFAULT true,
   imagegen_enabled       BOOLEAN NOT NULL DEFAULT true,
+  danbooru_enabled       BOOLEAN NOT NULL DEFAULT true,
   videogen_enabled       BOOLEAN NOT NULL DEFAULT false,
   voice_message_enabled  BOOLEAN NOT NULL DEFAULT true,
   user_blocking_enabled  BOOLEAN NOT NULL DEFAULT true,
@@ -2965,6 +2966,7 @@ CREATE TABLE IF NOT EXISTS server_capabilities_configs (
 );
 
 SELECT add_column_if_not_exists('server_capabilities_configs', 'response_drafting_enabled', 'BOOLEAN NOT NULL', 'false');
+SELECT add_column_if_not_exists('server_capabilities_configs', 'danbooru_enabled', 'BOOLEAN NOT NULL', 'true');
 
 DROP TRIGGER IF EXISTS update_server_capabilities_configs_timestamp ON server_capabilities_configs;
 CREATE TRIGGER update_server_capabilities_configs_timestamp

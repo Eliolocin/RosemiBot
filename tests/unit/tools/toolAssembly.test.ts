@@ -1,5 +1,7 @@
 import { describe, expect, it, mock } from "bun:test";
 import { assembleToolsForContext } from "@/tools/assembly";
+import { getAvailableToolsForContext } from "@/tools/availability";
+import { DanbooruSearchTagsTool } from "@/tools/functionCalls/danbooruTools";
 import { buildGenerateImageToolVariant, GenerateImageTool } from "@/tools/functionCalls/generateImageTool";
 import type { ImageToolCapabilities } from "@/tools/functionCalls/generateImageToolCapabilities";
 import { buildVoiceMessageToolVariant, GenerateVoiceMessageTool } from "@/tools/functionCalls/generateVoiceMessageTool";
@@ -59,6 +61,7 @@ function createAssemblyState(overrides: Partial<ToolAssemblyState> = {}): ToolAs
       user_blocking_enabled: true,
       user_info_updates_enabled: true,
       thread_creation_enabled: true,
+      danbooru_enabled: true,
     },
     ...overrides,
   };
@@ -258,5 +261,22 @@ describe("tool schema assembly", () => {
 
     expect(tool).toBeDefined();
     expect(getPropertyNames(tool as Tool)).toContain("voice_instructions");
+  });
+});
+
+describe("Danbooru Search toggle", () => {
+  const danbooruTools = (): Tool[] => [new DanbooruSearchTagsTool()];
+
+  it("withholds every Danbooru tool from the assembled list when the toggle is off", () => {
+    const names = (enabled: boolean) => {
+      const state = createAssemblyState();
+      return getAvailableToolsForContext(danbooruTools(), "google", {
+        ...state,
+        config: { ...state.config, danbooru_enabled: enabled },
+      }).map((tool) => tool.name);
+    };
+
+    expect(names(true)).toEqual(danbooruTools().map((tool) => tool.name));
+    expect(names(false)).toEqual([]);
   });
 });

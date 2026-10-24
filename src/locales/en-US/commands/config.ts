@@ -1389,6 +1389,8 @@ Exaggeration: **{exaggeration}**`,
         notice_task_update_description: `Show notices when tasks or reminders are created, edited, or deleted.`,
         notice_user_info_update_label: `Profile Updates`,
         notice_user_info_update_description: `Show notices when a user's stored profile is updated.`,
+        notice_danbooru_tags_label: `Danbooru Tag Lookups`,
+        notice_danbooru_tags_description: `Show the tags found when a character or tag is looked up on Danbooru.`,
       },
     },
     humanizer: {

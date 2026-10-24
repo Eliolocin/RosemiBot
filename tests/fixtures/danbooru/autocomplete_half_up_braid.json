@@ -1,0 +1,36 @@
+[
+  {
+    "type": "tag-word",
+    "label": "half up braid",
+    "value": "half_up_braid",
+    "category": 0,
+    "post_count": 38311,
+    "tag": {
+      "id": 2124420,
+      "name": "half_up_braid",
+      "post_count": 38311,
+      "category": 0,
+      "created_at": "2024-04-27T03:46:37.321-04:00",
+      "updated_at": "2024-04-27T03:46:37.321-04:00",
+      "is_deprecated": false,
+      "words": ["half", "up", "braid"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "half up half down braid",
+    "value": "half_up_half_down_braid",
+    "category": 0,
+    "post_count": 3513,
+    "tag": {
+      "id": 2124422,
+      "name": "half_up_half_down_braid",
+      "post_count": 3513,
+      "category": 0,
+      "created_at": "2024-04-27T03:53:59.188-04:00",
+      "updated_at": "2024-04-27T03:53:59.188-04:00",
+      "is_deprecated": false,
+      "words": ["half", "up", "half", "down", "braid"]
+    }
+  }
+]

@@ -76,6 +76,9 @@ export default {
       unblock_success_title: `✅ {persona_name} đã bỏ chặn {user_name}`,
       unblock_success_description: `Đã gỡ bỏ {block_type} đang hoạt động cho {user_name} khỏi {persona_name}.`,
     },
+    danbooru: {
+      tags_title: `🏷️  Tra cứu thẻ Danbooru`,
+    },
     user_info_update: {
       success_title: `✅ Đã cập nhật hồ sơ của {target_user}`,
       success_title_fields: `✅ Đã cập nhật {fields} của {target_user}`,

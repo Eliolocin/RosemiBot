@@ -1,0 +1,87 @@
+[
+  {
+    "type": "tag-word",
+    "label": "matte! sailor fuku kishi",
+    "value": "matte!_sailor_fuku_kishi",
+    "category": 3,
+    "post_count": 9,
+    "tag": {
+      "id": 2624238,
+      "name": "matte!_sailor_fuku_kishi",
+      "post_count": 9,
+      "category": 3,
+      "created_at": "2026-05-10T09:10:02.795-04:00",
+      "updated_at": "2026-05-10T09:10:02.795-04:00",
+      "is_deprecated": false,
+      "words": ["matte", "sailor", "fuku", "kishi"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "sailor fuku kishi",
+    "value": "sailor_fuku_kishi",
+    "category": 4,
+    "post_count": 5,
+    "tag": {
+      "id": 2624237,
+      "name": "sailor_fuku_kishi",
+      "post_count": 5,
+      "category": 4,
+      "created_at": "2026-05-10T09:10:02.790-04:00",
+      "updated_at": "2026-05-10T09:10:02.790-04:00",
+      "is_deprecated": false,
+      "words": ["sailor", "fuku", "kishi"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "sailor fuku shinryou tsumaka",
+    "value": "sailor_fuku_shinryou_tsumaka",
+    "category": 3,
+    "post_count": 1,
+    "tag": {
+      "id": 1252632,
+      "name": "sailor_fuku_shinryou_tsumaka",
+      "post_count": 1,
+      "category": 3,
+      "created_at": "2013-11-01T23:15:35.382-04:00",
+      "updated_at": "2019-08-29T19:27:57.666-04:00",
+      "is_deprecated": false,
+      "words": ["sailor", "fuku", "shinryou", "tsumaka"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "sailor fuku wo nugasanaide",
+    "value": "sailor_fuku_wo_nugasanaide",
+    "category": 0,
+    "post_count": 1,
+    "tag": {
+      "id": 1466667,
+      "name": "sailor_fuku_wo_nugasanaide",
+      "post_count": 1,
+      "category": 0,
+      "created_at": "2018-03-29T07:07:59.329-04:00",
+      "updated_at": "2019-08-28T17:05:45.127-04:00",
+      "is_deprecated": false,
+      "words": ["sailor", "fuku", "wo", "nugasanaide"]
+    }
+  },
+  {
+    "type": "tag-word",
+    "label": "taguchi (matte! sailor fuku kishi)",
+    "value": "taguchi_(matte!_sailor_fuku_kishi)",
+    "category": 4,
+    "post_count": 1,
+    "tag": {
+      "id": 2636331,
+      "name": "taguchi_(matte!_sailor_fuku_kishi)",
+      "post_count": 1,
+      "category": 4,
+      "created_at": "2026-05-24T12:34:23.706-04:00",
+      "updated_at": "2026-05-24T12:34:23.706-04:00",
+      "is_deprecated": false,
+      "words": ["taguchi", "matte", "sailor", "fuku", "kishi"]
+    }
+  }
+]

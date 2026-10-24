@@ -76,6 +76,9 @@ export default {
       unblock_success_title: `✅ {persona_name} desbloqueou {user_name}`,
       unblock_success_description: `Removeu o {block_type} ativo para {user_name} de {persona_name}.`,
     },
+    danbooru: {
+      tags_title: `🏷️  Busca de tags no Danbooru`,
+    },
     user_info_update: {
       success_title: `✅ Perfil de {target_user} atualizado`,
       success_title_fields: `✅ Perfil de {target_user} atualizado: {fields}`,

@@ -277,6 +277,7 @@ function estimateToolSchemaTokens(): number {
         user_blocking_enabled: true,
         user_info_updates_enabled: true,
         thread_creation_enabled: true,
+        danbooru_enabled: true,
       },
     };
 

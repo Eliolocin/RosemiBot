@@ -133,11 +133,18 @@ export function formatTargetEmbedForContext(
   }
 
   // Titles of action-record notices carry the target and the action itself, so
-  // the body alone would not say who was changed.
-  const titledTypes = ["memory_learning", "reminder_set", "user_info_update", "user_moderation"];
+  // the body alone would not say who was changed; a tag lookup's title names where its tags came from.
+  const titledTypes = ["memory_learning", "reminder_set", "user_info_update", "user_moderation", "danbooru_tags"];
   const titleLine = titledTypes.includes(embedType ?? "") && source.title ? source.title : "";
   const embedBody = [titleLine, cleanedDescription].filter((part) => part.length > 0).join("\n");
-  const inlineSystemTypes = ["memory_learning", "reward", "punish", "user_info_update", "user_moderation"];
+  const inlineSystemTypes = [
+    "memory_learning",
+    "reward",
+    "punish",
+    "user_info_update",
+    "user_moderation",
+    "danbooru_tags",
+  ];
   return inlineSystemTypes.includes(embedType ?? "")
     ? `[System: ${embedBody}]`
     : formatSystemProducedEmbedHint(embedBody);

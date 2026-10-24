@@ -285,6 +285,7 @@ export interface ToolAssemblyState {
     // the capability toggle with no effect and no compile error.
     user_info_updates_enabled: boolean;
     thread_creation_enabled: boolean;
+    danbooru_enabled: boolean;
   };
 }
 

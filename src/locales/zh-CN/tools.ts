@@ -76,6 +76,9 @@ export default {
       unblock_success_title: `✅ {persona_name} 解除了对 {user_name} 的屏蔽`,
       unblock_success_description: `已移除 {persona_name} 对 {user_name} 生效的{block_type}。`,
     },
+    danbooru: {
+      tags_title: `🏷️  Danbooru 标签查询`,
+    },
     user_info_update: {
       success_title: `✅ 已更新 {target_user} 的资料`,
       success_title_fields: `✅ 已更新 {target_user} 的{fields}`,

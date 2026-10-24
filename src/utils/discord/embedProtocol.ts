@@ -14,7 +14,8 @@ export type TargetEmbedType =
   | "reward"
   | "punish"
   | "user_info_update"
-  | "user_moderation";
+  | "user_moderation"
+  | "danbooru_tags";
 
 export type ProtocolKind = TargetEmbedType | "diagnostic" | "reply_context";
 type ProtocolEntry = { key: string; kind: ProtocolKind; match?: "template" | "prefix" };
@@ -39,6 +40,7 @@ export const PROTOCOL_KEYS: ProtocolEntry[] = [
     kind: "user_moderation" as const,
     match: "template" as const,
   })),
+  { key: "tools.danbooru.tags_title", kind: "danbooru_tags" },
   { key: "commands.refresh.title", kind: "reset" },
   { key: "commands.impersonate.system_title", kind: "system_injection" },
   { key: "commands.generate.scene.success_title", kind: "scene_directive" },
@@ -97,6 +99,7 @@ const targetKinds = new Set<ProtocolKind>([
   "punish",
   "user_info_update",
   "user_moderation",
+  "danbooru_tags",
 ]);
 const knownKinds = new Set<ProtocolKind>([...targetKinds, "diagnostic", "reply_context"]);
 

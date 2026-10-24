@@ -73,6 +73,7 @@ export type ServerCapabilitiesConfigsRow = {
   manage_message_enabled: boolean;
   thread_creation_enabled: boolean;
   imagegen_enabled: boolean;
+  danbooru_enabled: boolean;
   videogen_enabled: boolean;
   voice_message_enabled: boolean;
   user_blocking_enabled: boolean;
@@ -1020,7 +1021,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         SELECT emoji_usage_enabled, sticker_usage_enabled, web_search_enabled,
                manage_message_enabled, thread_creation_enabled, imagegen_enabled,
                videogen_enabled, voice_message_enabled, user_blocking_enabled, time_awareness_enabled,
-               tool_use_enabled, response_drafting_enabled
+               tool_use_enabled, response_drafting_enabled, danbooru_enabled
         FROM server_capabilities_configs
         WHERE server_id = ${serverId}
       `;
@@ -1095,12 +1096,13 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         server_id, emoji_usage_enabled, sticker_usage_enabled, web_search_enabled,
         manage_message_enabled, thread_creation_enabled, imagegen_enabled,
         videogen_enabled, voice_message_enabled, user_blocking_enabled, time_awareness_enabled,
-        tool_use_enabled, response_drafting_enabled
+        tool_use_enabled, response_drafting_enabled, danbooru_enabled
       ) VALUES (
         ${serverId}, ${row.emoji_usage_enabled}, ${row.sticker_usage_enabled},
         ${row.web_search_enabled}, ${row.manage_message_enabled}, ${row.thread_creation_enabled},
         ${row.imagegen_enabled}, ${row.videogen_enabled}, ${row.voice_message_enabled},
-        ${row.user_blocking_enabled}, ${row.time_awareness_enabled}, ${row.tool_use_enabled}, ${row.response_drafting_enabled}
+        ${row.user_blocking_enabled}, ${row.time_awareness_enabled}, ${row.tool_use_enabled}, ${row.response_drafting_enabled},
+        ${row.danbooru_enabled}
       )
       ON CONFLICT (server_id) DO UPDATE SET
         emoji_usage_enabled    = EXCLUDED.emoji_usage_enabled,
@@ -1115,6 +1117,7 @@ export class ConfigRepository implements IRepository<ConfigExportShape> {
         time_awareness_enabled = EXCLUDED.time_awareness_enabled,
         tool_use_enabled       = EXCLUDED.tool_use_enabled,
         response_drafting_enabled = EXCLUDED.response_drafting_enabled,
+        danbooru_enabled       = EXCLUDED.danbooru_enabled,
         updated_at             = NOW()
     `;
   }
