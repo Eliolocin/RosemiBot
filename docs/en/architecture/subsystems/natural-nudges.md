@@ -83,7 +83,10 @@ retry-after-abort time, and a 15-minute cache of heat and waking hours. A restar
   After an abort the idle nudge stays due and waits a fresh lull, so it cannot retry every cycle. The
   one exception is a Play Scene's later turns, which turn 0 queues itself (below).
 - **Re-check right before sending.** `recheckBeforeSend` reads settings, caps, the persona, the
-  persona channel whitelist, and Ping User target eligibility fresh. The lull admits planning; new
+  persona channel whitelist, and Ping User target eligibility fresh. It also re-resolves the planned
+  idle nudge from fresh server and persona rows and re-admits its prerequisite tools, aborting as
+  `idle_nudge_unavailable`, `idle_nudge_changed`, or `tools_unavailable` when the entry was removed,
+  switched off, edited, or lost a tool during planning. The lull admits planning; new
   messages during planning do not cancel the attempt. Generation reads the current conversation,
   while the channel processing lock and admission gate still prevent overlapping turns.
 - **Caps follow the frequency level.** `IDLE_NUDGE_DAILY_CAPS` and `ACTIVE_NUDGE_DAILY_CAPS` in
@@ -298,8 +301,9 @@ messageCreate (activeNudge.ts, not awaited)
 
 ## Idle Nudges as data
 
-Built-in idle nudges (`BUILTIN_IDLE_NUDGES` in `runtime/idleNudges.ts`) and custom idle nudges share one shape:
-category, planner brief, agenda hint, prerequisites, and recommended tools. Prerequisites come from a
+Built-in idle nudges (`BUILTIN_IDLE_NUDGES` in `runtime/idleNudges.ts`), server custom idle nudges, and
+persona-authored idle nudges share one shape: category, planner brief, agenda hint, prerequisites, and
+recommended tools. Prerequisites come from a
 fixed registry: `hanging_conversation`, the three target facts (`relationship_user`, `recent_memory`,
 `presence_activity`), `two_personas`, and `tool:<name>`, where tool availability is what the persona's
 turn would be offered. Each category implies one prerequisite (`CATEGORY_IMPLIED_PREREQUISITES`): Ping
@@ -321,6 +325,18 @@ reads as open to everyone. Readers filter out deleted IDs instead. Deleting or i
 nudges drops their scopes (import assigns new IDs), the workspace export omits scopes because persona IDs
 do not port, and a server reset clears them.
 
+A persona-authored idle nudge has an owner instead of a scope. Its runtime key is
+`persona:<personaId>:<localId>` (`personaAuthoredIdleNudgeKey`), where `<personaId>` is the local
+persona instance and `<localId>` is unique only inside that persona's list, so two servers can hold
+the same local ID. `listPersonaRunnableIdleNudges` builds the Phase A pool for the drawn persona: enabled
+built-ins, scope-allowed server customs, then that persona's locally enabled entries. Owner entries
+never pass through `isInPersonaScope` and never read `server_natural_nudge_persona_scopes`, so a
+missing scope row cannot widen them. Like scope, ownership binds only the Play Scene lead; any other
+nudging persona may partner. The entries then meet the same prerequisites, raffles, rest windows, and
+caps as every other idle nudge, which is why authoring more of them never raises how often a persona
+speaks. Fire rows store the key, and telemetry masks it to `persona` so authored IDs never become
+metric dimensions.
+
 `/nudge-studio` (`discord/studio*.ts`) marks an enabled idle nudge as blocked through
 `findIdleNudgeBlocker`, which judges only facts that hold for days: whether a nudging persona in scope
 exists, whether one of them holds every tool the idle nudge needs, and whether a Play Scene has a second
@@ -329,10 +345,27 @@ one blocked.
 
 ## Pointer personas
 
-`persona_natural_nudge_configs` holds a persona's talkativeness and interests. A missing row reads
-as the live preset defaults (`persona_presets.natural_nudge_*`) for an unforked pointer and as the
-column defaults otherwise. `materializeIfPointer` copies the preset values into a row, and
-re-pointing a persona at a preset deletes the row so it reads the preset again.
+`persona_natural_nudge_configs` holds a persona's talkativeness, interests, authored idle nudges
+(`authored_idle_nudges`), and local availability (`disabled_idle_nudge_ids`). A missing row reads as the
+live preset defaults (`persona_presets.natural_nudge_*`, including `natural_nudge_idle_nudges`) for an
+unforked pointer and as the column defaults otherwise. `materializeIfPointer` copies the preset values
+into a row, and re-pointing a persona at a preset deletes the row so it reads the preset again.
+
+The authored list has three states on a pointer's row: `NULL` reads the live preset list, an array is
+the persona's own list, and an empty array means it deliberately owns none. Content and availability
+are separate columns. The first content write (`addPersonaIdleNudge`, `updatePersonaIdleNudge`,
+`removePersonaIdleNudge`) snapshots the whole effective list into the row, so later preset edits stop
+reaching that persona; per-entry overlays would let a preset edit change half an entry.
+`setPersonaIdleNudgeAvailability` writes only the disabled IDs, so a toggle never snapshots.
+`restorePersonaIdleNudgeList` sets the list back to `NULL` and prunes disabled IDs that no longer
+exist in the preset, leaving interests and talkativeness alone. A full resync still deletes the row.
+
+Cards carry the effective list as `natural_nudge_idle_nudges` but never availability or server custom
+nudges. Import validates the list before any write, restores it through `replacePersonaIdleNudges`
+(which clears local availability, so imports start enabled), and re-links to the official pointer only
+when the card's list is absent or equals the preset's. Seeding therefore gives every language row of a lineage the
+same list, or a card exported from one language would not match another's preset. The workspace
+export carries server custom nudges only, because persona-owned content belongs to the persona.
 
 ## Source pointers
 
@@ -348,6 +381,11 @@ re-pointing a persona at a preset deletes the row so it reads the preset again.
   partner count, idle nudge category weights and daily caps, Active Nudge trip range, daily cap, window,
   delay, and detours). Schema and Discord limits stay with their owners.
 - `src/modules/natural-nudges/db/repositories.ts`: every Natural Nudges query.
+- `src/modules/natural-nudges/db/types.ts`: schemas and limits shared by storage, cards, seeding, and the
+  runtime, including the authored idle nudge shape and the prerequisite and tool registries.
+- `src/modules/natural-nudges/runtime/idleNudges.ts`: built-ins, owner normalization, and the
+  selection pool.
+- `src/modules/natural-nudges/discord/panel.ts`: the persona `Nudges` page, including its `Idle Nudges` section.
 - `src/modules/natural-nudges/discord/studioPanel.ts`: the `/nudge-studio` panel and its modal builders.
 - `src/modules/natural-nudges/discord/studioRoutes.ts`: `/nudge-studio` routing, authorization, and checklist writes.
 - Related: [Database Schema](/architecture/subsystems/database-schema/),

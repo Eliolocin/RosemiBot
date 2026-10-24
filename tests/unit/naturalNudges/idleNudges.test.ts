@@ -16,10 +16,15 @@ import {
   type IdleNudgeSelectionSources,
 } from "@/modules/natural-nudges/runtime/idleNudges";
 import {
+  CATEGORY_IMPLIED_PREREQUISITES,
+  personaAuthoredIdleNudgesSchema,
   personaAuthoredIdleNudgeSchema,
+  prerequisiteTool,
   type PersonaAuthoredIdleNudge,
   type PersonaNaturalNudgeConfig,
 } from "@/modules/natural-nudges/db/types";
+import { personaSections } from "@/db/seed/catalog/personas";
+import { PRESET_NATURAL_NUDGE_DEFAULTS } from "@/db/seed/catalog/personas/naturalNudges";
 import { getTool } from "@/tools/toolRegistry";
 import { initializeTools } from "@/tools/toolInitializer";
 import { createCustomIdleNudge } from "../../helpers/fixtures";
@@ -362,5 +367,41 @@ describe("tool names", () => {
     await initializeTools();
     const missing = NUDGE_TOOL_NAMES.filter((name) => name !== "image" && !getTool(name));
     expect(missing).toEqual([]);
+  });
+});
+
+describe("official persona nudge defaults", () => {
+  const offeredLineages = [...new Set(personaSections.flatMap((section) => section.rows).map((row) => row.lineageId))];
+
+  it("gives every offered persona lineage valid authored defaults", () => {
+    const missing = offeredLineages.filter((lineage) => {
+      const defaults = PRESET_NATURAL_NUDGE_DEFAULTS[lineage]?.idleNudges ?? [];
+      return defaults.length === 0 || !personaAuthoredIdleNudgesSchema.safeParse(defaults).success;
+    });
+    expect(missing).toEqual([]);
+  });
+
+  it("stores each definition the way the editor saves it, so opening and saving changes nothing", () => {
+    const unnormalized = offeredLineages.flatMap((lineage) =>
+      PRESET_NATURAL_NUDGE_DEFAULTS[lineage].idleNudges.filter((nudge) => {
+        const requiredTools = new Set<string>(nudge.prerequisites.flatMap((id) => prerequisiteTool(id) ?? []));
+        return (
+          nudge.prerequisites.includes(CATEGORY_IMPLIED_PREREQUISITES[nudge.category] ?? "") ||
+          nudge.recommended_tools.some((tool) => requiredTools.has(tool))
+        );
+      }),
+    );
+    expect(unnormalized).toEqual([]);
+  });
+
+  it("surfaces seeded defaults through owner normalization with persona-scoped keys", () => {
+    for (const lineage of offeredLineages) {
+      const idleNudges = PRESET_NATURAL_NUDGE_DEFAULTS[lineage].idleNudges;
+      const entries = listPersonaIdleNudges(OWNER_ID, personaConfig(OWNER_ID, { idle_nudges: idleNudges }));
+      expect(entries.map((entry) => entry.definition.key)).toEqual(
+        idleNudges.map((nudge) => `persona:${OWNER_ID}:${nudge.id}`),
+      );
+      expect(entries.every((entry) => entry.enabled)).toBe(true);
+    }
   });
 });
