@@ -183,5 +183,7 @@ Lặp lại: {repeat_text}`,
     triggered_footer_one_time: `Việc tạo nội dung liên tục thất bại, nên nội dung đã lên lịch được hiển thị nguyên văn. Lịch trình một lần này đã hoàn tất và được xóa.`,
     triggered_footer_recurring_retained: `Việc tạo nội dung liên tục thất bại, nên nội dung đã lên lịch được hiển thị nguyên văn. Lần tiếp theo vẫn giữ nguyên chu kỳ gốc. Dùng \`/scheduled-task edit\` hoặc \`/scheduled-task remove\` để quản lý.`,
     triggered_footer_recurring_removed: `Việc tạo nội dung liên tục thất bại và không thể giữ lại lần chạy tiếp theo. Lịch trình định kỳ này đã được xóa; hãy tạo lại sau khi sự cố được khắc phục.`,
+    removed_after_failures_title: `Mục đã lên lịch đã bị xóa`,
+    removed_after_failures_description: `Mục đã lên lịch \`{reminder_id}\` đã thất bại {failed_occurrences} lần liên tiếp và không thể gửi vào kênh, vì vậy mục này đã bị xóa. Hãy tạo lại sau khi khắc phục quyền của kênh hoặc nhà cung cấp AI.\n**Nội dung gốc:**`,
   },
 };

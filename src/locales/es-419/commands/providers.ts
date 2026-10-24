@@ -143,7 +143,7 @@ export default {
       video: `provider/video-model-v2`,
       speech: `provider/speech-model-v2`,
       transcription: `provider/transcription-model-v2`,
-      decision: `typesafe/jev-1.13`,
+      decision: `perplexity/pplx-decider-flash-v1.2`,
     },
     decision_input_limit_description: `Límite de tokens de entrada requerido para este modelo. Usa su límite documentado, al menos 512.`,
     decision_action_label: `Acción de registro`,

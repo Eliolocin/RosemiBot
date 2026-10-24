@@ -4496,6 +4496,7 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
       {
         provider: "openrouter",
         codename: "upstage/solar-decide-flash",
+        isDeprecated: true,
         inputTokenLimit: 524288,
         inputPricePerMillion: 0.05,
         outputPricePerMillion: 0,
@@ -4531,15 +4532,17 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
       {
         provider: "openrouter",
         codename: "perplexity/pplx-decider-flash-v1.2",
+        isDefault: true,
         seesImages: true,
         inputTokenLimit: 262144,
         inputPricePerMillion: 0.01,
         outputPricePerMillion: 0,
-        desc: "Fast, low-cost 4B Decision model for text/image classification, routing, and moderation",
+        desc: "Default fast, low-cost 4B Decision model for text/image classification, routing, and moderation",
       },
       {
         provider: "openrouter",
         codename: "perplexity/pplx-decider-v1.2",
+        isDeprecated: true,
         seesImages: true,
         inputTokenLimit: 262144,
         inputPricePerMillion: 0.02,
@@ -4549,6 +4552,7 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
       {
         provider: "openrouter",
         codename: "respan/span-02",
+        isDeprecated: true,
         seesImages: true,
         inputTokenLimit: 131072,
         inputPricePerMillion: 0.01,
@@ -4558,16 +4562,16 @@ export const decisionSections: ModelSection<DecisionInput>[] = [
       {
         provider: "openrouter",
         codename: "typesafe/jev-1.14",
-        isDefault: true,
         seesImages: true,
         inputTokenLimit: 262144,
         inputPricePerMillion: 0.042,
         outputPricePerMillion: 0,
-        desc: "Default Jev Decision model for structured text/image classification, routing, and tool-call checks",
+        desc: "Higher-accuracy Jev Decision model for structured text/image classification, routing, and tool-call checks",
       },
       {
         provider: "openrouter",
         codename: "scaledown/classify-1",
+        isDeprecated: true,
         seesImages: true,
         inputTokenLimit: 1000000,
         inputPricePerMillion: 0.04,
