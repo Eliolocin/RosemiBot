@@ -106,6 +106,12 @@ export interface PersonalConfigOperations {
     userDiscId: string;
     enabled: boolean;
   }): Promise<{ status: "success"; enabled: boolean } | { status: "no-changes" } | { status: "write-failed" }>;
+  setNaturalNudgeOptOut(input: {
+    userId: number;
+    userDiscId: string;
+    current: boolean;
+    optedOut: boolean;
+  }): Promise<{ status: "success"; optedOut: boolean } | { status: "no-changes" | "write-failed" }>;
   setCapabilityModel(input: {
     userId: number;
     userDiscId: string;
@@ -336,6 +342,13 @@ export const personalConfigOperations: PersonalConfigOperations = {
     });
     if (!ok) return { status: "write-failed" };
     return { status: "success", enabled };
+  },
+
+  async setNaturalNudgeOptOut({ userId, userDiscId: _userDiscId, current, optedOut }) {
+    if (current === optedOut) return { status: "no-changes" };
+    const updated = await userRepository.update(userId, { natural_nudge_opt_out: optedOut });
+    if (!updated) return { status: "write-failed" };
+    return { status: "success", optedOut };
   },
 
   async setCapabilityModel({ userId, userDiscId: _userDiscId, capability, provider, modelId }) {

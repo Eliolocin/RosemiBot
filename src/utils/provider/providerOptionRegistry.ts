@@ -9,6 +9,7 @@ import type { PanelReceipt } from "@/types/discord/panel";
 import type { ProviderPanelCapability, ProviderPanelEntry } from "@/types/discord/providerPanel";
 import type { SetupDraftRecord } from "@/types/discord/setupWizard";
 import type { GlobalRoutableInteraction } from "@/utils/discord/interactions/routeRegistry";
+import type { ProviderUsageContext } from "@/utils/provider/providerUsage";
 import type { VoiceSourceMode } from "@/utils/speech/voiceSourceCapabilities";
 import { localizer } from "@/utils/text/localizer";
 
@@ -20,6 +21,8 @@ export type ProviderOptionCapability =
   | "video"
   | "decision"
   | "reviewer"
+  | "nudge-planner"
+  | "nudge-checker"
   | "speech-design"
   | "speech-clone";
 
@@ -109,6 +112,13 @@ export interface ProviderOptionSpeechSelectionInput {
   replacedModelId?: number;
 }
 
+export interface ProviderOptionServerCredentials {
+  apiKey: string;
+  usageContext?: ProviderUsageContext;
+  /** The saved provider row whose settings the call mirrors; absent means the persona's own settings. */
+  savedProvider?: string;
+}
+
 export interface ProviderOptionDefinition {
   value: string;
   catalogProvider: string;
@@ -129,6 +139,12 @@ export interface ProviderOptionDefinition {
       capability: ProviderPanelCapability;
       modelCodename: string;
     }): Promise<boolean>;
+    /** Pays for a server-pinned structured call in a slot this option owns; throws `ProviderRequestDeniedError` to refuse. */
+    resolveServerCredentials?(input: {
+      scope: ProviderOptionScope;
+      capability: ProviderOptionCapability;
+      modelId: number;
+    }): Promise<ProviderOptionServerCredentials | null>;
   };
   panel?: {
     entryComponents?(context: ProviderOptionEntryContext): readonly ComponentInContainerData[];

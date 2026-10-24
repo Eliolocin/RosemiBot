@@ -46,6 +46,7 @@ import { cleanupPendingGoogleVoices } from "@/utils/speech/googleVoiceLifecycle"
 import { decryptApiKey } from "@/utils/security/crypto";
 import { llmProviderRepo } from "@/utils/db/repositories/LlmProviderRepository";
 import { userNamingRepository } from "@/utils/db/repositories/UserNamingRepository";
+import { naturalNudgeRepository } from "@/modules/natural-nudges/db/repositories";
 import { type MemoryValidationResult, getMemoryLimits } from "@/utils/misc/memoryLimits";
 import { getUnconfiguredLlm } from "@/utils/provider/unconfiguredLlm";
 import { log } from "@/utils/misc/logger";
@@ -1243,6 +1244,7 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
         // the official preset sprite set live again. Server-owned sprite IMAGES
         // are cleaned up by the caller (the shared preset images are immutable).
         await tx`DELETE FROM persona_sprites WHERE persona_id = ${params.personaId}`;
+        await naturalNudgeRepository.clearPersonaConfig(tx, params.personaId);
 
         return updatedRow;
       });
@@ -2225,6 +2227,10 @@ class PersonaRepository implements IRepository<PersonaExportShape> {
     // shared image URL (no byte duplication). The persona stops resolving sprites
     // live once materialized, so this freezes its current default sprite set.
     await this.copyPresetSpritesWithClient(client, personaId, pointerLineageId, pointerLanguage);
+    await naturalNudgeRepository.copyPresetDefaults(client, personaId, {
+      talkativeness: preset.natural_nudge_talkativeness,
+      interests: preset.natural_nudge_interests,
+    });
     // Freeze the alter avatar by reference too: a pointer alter live-resolves the
     // shared preset avatar, so once it materializes it must keep that exact
     // reference (still the immutable presets/ URL: no byte duplication, and the

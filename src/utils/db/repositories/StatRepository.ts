@@ -1380,6 +1380,84 @@ class StatRepository implements IRepository<null> {
   }
 
   /**
+   * Daily `message_sent` totals for one server since `from`, keyed by UTC bucket date. Natural
+   * Nudges heat weighs each day by its age.
+   */
+  async getServerDailyMessageCounts(args: { serverId: number; from: Date }): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    try {
+      const rows = await sql<{ bucket: Date | string; total: number | string }[]>`
+        SELECT bucket::text AS bucket, SUM(count) AS total
+        FROM stat_counters
+        WHERE metric = 'message_sent'
+          AND server_id = ${args.serverId}
+          AND bucket >= ${windowFloor(args.from)}::date
+        GROUP BY bucket
+      `;
+      for (const row of rows) counts.set(String(row.bucket), Number(row.total));
+    } catch (error) {
+      log.error(`StatRepository.getServerDailyMessageCounts: failed for server ${args.serverId}`, error);
+    }
+    return counts;
+  }
+
+  /** `message_sent` totals per persona lineage in one server since `from`. */
+  async getServerPersonaMessageCounts(args: { serverId: number; from: Date }): Promise<Map<number, number>> {
+    const counts = new Map<number, number>();
+    try {
+      const rows = await sql<{ persona_lineage_id: number | string; total: number | string }[]>`
+        SELECT persona_lineage_id, SUM(count) AS total
+        FROM stat_counters
+        WHERE metric = 'message_sent'
+          AND server_id = ${args.serverId}
+          AND bucket >= ${windowFloor(args.from)}::date
+        GROUP BY persona_lineage_id
+      `;
+      for (const row of rows) counts.set(Number(row.persona_lineage_id), Number(row.total));
+    } catch (error) {
+      log.error(`StatRepository.getServerPersonaMessageCounts: failed for server ${args.serverId}`, error);
+    }
+    return counts;
+  }
+
+  /** UTC hour-of-day totals of completed turns in one server since `from`, indexed 0-23. */
+  async getServerActiveHourHistogram(args: { serverId: number; from: Date }): Promise<number[]> {
+    const histogram = Array.from({ length: 24 }, () => 0);
+    try {
+      const rows = await sql<{ metric_key: string; total: number | string }[]>`
+        SELECT metric_key, SUM(count) AS total
+        FROM stat_counters
+        WHERE metric = 'active_hour'
+          AND server_id = ${args.serverId}
+          AND bucket >= ${windowFloor(args.from)}::date
+        GROUP BY metric_key
+      `;
+      for (const row of rows) {
+        const hour = Number.parseInt(row.metric_key, 10);
+        if (Number.isInteger(hour) && hour >= 0 && hour < 24) histogram[hour] = Number(row.total);
+      }
+    } catch (error) {
+      log.error(`StatRepository.getServerActiveHourHistogram: failed for server ${args.serverId}`, error);
+    }
+    return histogram;
+  }
+
+  /** Most recent write of a metric anywhere in one server, or null when it was never recorded. */
+  async getServerMetricLastAt(args: { serverId: number; metric: StatMetric }): Promise<Date | null> {
+    try {
+      const [row] = await sql<{ last_at: Date | null }[]>`
+        SELECT MAX(last_at) AS last_at
+        FROM stat_counters
+        WHERE metric = ${args.metric} AND server_id = ${args.serverId}
+      `;
+      return row?.last_at ? new Date(row.last_at) : null;
+    } catch (error) {
+      log.error(`StatRepository.getServerMetricLastAt: failed for server ${args.serverId}`, error);
+      return null;
+    }
+  }
+
+  /**
    * Per-persona personal-memory counts for one user (personal_memories grouped by
    * lineage), highest first. personal_memories is not daily-bucketed (it has no
    * created-date stat grain here), so this is intentionally all-time only; it

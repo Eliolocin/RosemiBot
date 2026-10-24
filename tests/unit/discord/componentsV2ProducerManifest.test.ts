@@ -31,6 +31,11 @@ export const COMPONENTS_V2_PRODUCER_MANIFEST: readonly ProducerManifestEntry[] =
     coverage: { kind: "suite", suites: ["tests/unit/discord/expressionsPanel.test.ts"] },
   },
   {
+    modulePath: "src/modules/natural-nudges/discord/studioPanel.ts",
+    builderName: "buildNudgeStudioPayload",
+    coverage: { kind: "suite", suites: ["tests/unit/discord/nudgeStudioPanel.test.ts"] },
+  },
+  {
     modulePath: "src/utils/discord/ui/configPanel.ts",
     builderName: "buildConfigPanelPayload",
     coverage: {

@@ -156,6 +156,7 @@ export default {
     field_blacklisted_members_with_count: `{current} thành viên`,
     field_personal_dtm: `DTM cá nhân`,
     field_crossserver_stm: `STM liên máy chủ`,
+    field_ping_users: "Persona tag bạn",
     field_nai_char_ref: `Tham chiếu nhân vật NAI`,
     custom_endpoint_capability_label: `{capability}`,
     field_vision_model: `Model thị giác`,

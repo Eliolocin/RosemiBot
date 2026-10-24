@@ -778,7 +778,9 @@ async function executeToolCall(
     channel: params.context.channel as ToolContext["channel"],
     client: params.context.client,
     message: params.context.message,
-    userId: params.context.userDiscId,
+    // A Ping User's tools act for the member it addresses, so a reminder or memory defaults to them.
+    userId:
+      params.context.turn.lockedTurn.admission.incoming.naturalNudge?.targetUserDiscId ?? params.context.userDiscId,
     internalUserId: params.context.personalRoutingUserId ?? undefined,
     guildId: params.context.guild?.id,
     tomoriState: params.tomoriState,
@@ -1426,6 +1428,7 @@ function buildResult(
     usageEntries: context.responseReview?.usage,
     personaResponses: buildPersonaResponses(context, composeResponseText(context, responseText, detailsText)),
     toolResponseDelivered: toolResponseDelivered || undefined,
+    firstDeliveredMessageId: streamResults.find((result) => result.firstMessageId)?.firstMessageId,
     thoughtLog,
     thoughtLogOwner: thoughtLog ? resolveThoughtLogOwner(context) : undefined,
   };

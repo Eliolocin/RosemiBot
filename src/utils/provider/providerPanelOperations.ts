@@ -1278,8 +1278,12 @@ async function activateSavedProviderModel(
   provider: string,
   modelId: number,
 ): Promise<boolean> {
-  if (input.capability === "decision") return true;
   const personal = input.scopeKind === "personal";
+  if (input.capability === "decision") {
+    // Removing the edited registration clears any slot still pointing at it, so the replacement takes the slot first.
+    if (personal || !input.editingModelId || input.state.config.decision_model_id !== input.editingModelId) return true;
+    return await configRepository.updateModelConfig(input.state.server_id, { decision_model_id: modelId });
+  }
   const ownerId = personal ? input.ownerId : input.state.server_id;
   const existing = personal
     ? await llmProviderRepo.loadUserSavedProviderConfig(ownerId, provider)

@@ -583,6 +583,7 @@ export class InteractWithRecentMessageTool extends BaseTool {
           identity,
           {
             threadId: replyDeliveryContext.threadId,
+            mentionableUserIds: context.streamContext?.mentionableUserIds,
           },
         );
         sentMessage = delivery.result;
@@ -602,11 +603,12 @@ export class InteractWithRecentMessageTool extends BaseTool {
           context.streamContext.replyNoticeState.sent = true;
         }
       } else {
+        const mentionableUserIds = context.streamContext?.mentionableUserIds;
         sentMessage = await targetMessage.reply({
           content: sanitizedReplyContent,
-          allowedMentions: {
-            repliedUser: false,
-          },
+          allowedMentions: mentionableUserIds
+            ? { users: [...mentionableUserIds], parse: [], repliedUser: false }
+            : { repliedUser: false },
         });
       }
 

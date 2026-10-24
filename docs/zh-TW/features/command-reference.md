@@ -11,7 +11,7 @@ sidebar:
 
 TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使用的同一批指令建構器與繁體中文說明產生的（尚未翻譯的說明會以英文顯示）。
 
-頂層指令群組：**41**。可執行的斜線指令：**88**。
+頂層指令群組：**42**。可執行的斜線指令：**89**。
 
 ## `/comment`
 
@@ -207,6 +207,14 @@ TomoriBot 目前註冊的每一個斜線指令，都是從 Discord 註冊時使�
 | `/nsfw jailbreaks` | 管理這個伺服器上我提示詞的選用越獄行為。 |
 | `/nsfw persona default` | 套用 NSFW 的預設人格設定 |
 | `/nsfw persona import` | 從 PNG、JSON 或 CHARX 檔匯入人格，包含 NSFW 人格 |
+
+## `/nudge-studio`
+
+選擇我在此伺服器中使用的閒置搭話，或自行撰寫。
+
+| 指令 | 摘要 |
+|---|---|
+| `/nudge-studio` | 選擇我在此伺服器中使用的閒置搭話，或自行撰寫。 |
 
 ## `/nuke`
 

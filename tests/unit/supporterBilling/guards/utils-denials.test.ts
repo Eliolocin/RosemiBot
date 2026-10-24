@@ -333,6 +333,7 @@ describe("supporter denial rendering guards", () => {
       isPersonaJob: false,
       isManuallyTriggered: true,
       isUserImpersonation: false,
+      borrowsTriggerMessage: false,
       userRow: createUserRow({ user_id: 42, user_disc_id: "user-42" }),
       channel: { id: "fixture-channel" } as unknown as Message["channel"],
       locale: "en-US",

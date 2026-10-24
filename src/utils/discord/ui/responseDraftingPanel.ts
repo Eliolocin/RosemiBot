@@ -17,10 +17,10 @@ import {
   checkerFingerprint,
   effectiveReviewerPrompt,
   type ResponseDraftingView,
-  type DraftModelGroup,
 } from "@/utils/discord/interactions/responseDraftingOperations";
 import { buildCheckboxGroupComponent, buildConfigModalFieldId } from "@/utils/discord/ui/configModals";
 import { buildConfigModelSelectModal } from "@/utils/discord/ui/configModelModals";
+import type { StructuredOutputModelGroup } from "@/utils/discord/interactions/configModelOperations";
 import type { RawModalPayload } from "@/utils/discord/ui/configModals";
 import { DISCORD_SELECT_OPTION_LABEL_MAX, DISCORD_SELECT_OPTIONS_MAX } from "@/utils/discord/ui/componentsV2Limits";
 import { safeSelectOptionText } from "@/utils/discord/ui/modals";
@@ -87,7 +87,7 @@ export function buildDraftModelModal(
   state: TomoriState,
   locale: string,
   nonce: string,
-  group: DraftModelGroup,
+  group: StructuredOutputModelGroup,
   start: number,
 ): RawModalPayload {
   const payload = buildConfigModelSelectModal(

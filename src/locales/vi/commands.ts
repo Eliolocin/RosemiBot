@@ -26,6 +26,7 @@ import optionalKey from "./commands/optional-key";
 import server from "./commands/server";
 import personal from "./commands/personal";
 import scheduledTask from "./commands/scheduled-task";
+import nudgeStudio from "./commands/nudge-studio";
 import memory from "./commands/memory";
 import teach from "./commands/teach";
 import forget from "./commands/forget";
@@ -94,6 +95,7 @@ export default {
     ...server,
     ...personal,
     ...scheduledTask,
+    ...nudgeStudio,
     ...memory,
     ...teach,
     ...forget,

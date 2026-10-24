@@ -121,6 +121,8 @@ export interface StreamContext {
     handle: string;
     userId: string;
   }>;
+  /** When set, delivered text may ping only these users: no roles, no everyone, nobody else. */
+  mentionableUserIds?: readonly string[];
 
   /** The attempt's `{bot}: {text}` prefill: stripped when the model echoes it, never shown. */
   outputPrefill?: string;

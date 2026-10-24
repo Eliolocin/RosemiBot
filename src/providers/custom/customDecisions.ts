@@ -1,6 +1,7 @@
 import type { ProviderDecisionRequest, DecisionResult } from "@/types/provider/featureInterfaces";
 import {
   encodeNamedDecisionQuestions,
+  encodeOrderedDecisionQuestions,
   executeDecisionTransport,
   parseNamedDecisionAnswers,
   parseOrderedDecisionAnswers,
@@ -23,15 +24,7 @@ export async function callCustomDecisions(
     url: url.toString(),
     body: systemOne
       ? { model: request.model, state: request.evidence, questions: encodeNamedDecisionQuestions(request) }
-      : {
-          model: request.model,
-          input: request.evidence,
-          questions: request.questions.map((question) => ({
-            type: "predicate",
-            name: question.id,
-            instructions: question.instructions,
-          })),
-        },
+      : { model: request.model, input: request.evidence, questions: encodeOrderedDecisionQuestions(request) },
     fetch: fetchImpl,
     parseAnswers: (payload) =>
       systemOne ? parseNamedDecisionAnswers(payload, request) : parseOrderedDecisionAnswers(payload, request),

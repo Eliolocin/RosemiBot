@@ -198,6 +198,11 @@ export default {
       crossserver_stm_on:
         "サーバー間短期記憶がオンになっているため、 サーバーを越えて最近の会話の記憶を引き継ぐことができます。",
       crossserver_stm_footer: `\`/personal memories\` は常にサーバー間で持続しますが、短期記憶は持続しません`,
+      ping_user_section_title:
+        "[ペルソナからのメンション](https://docs.tomoribot.app/ja/features/chatting-personality/natural-nudges/#ping-user)",
+      ping_user_on:
+        "チャンネルが静かになったとき、過去14日以内にこのサーバーで私と会話したことがある場合、ペルソナがあなたにメンションして会話を始めることがあります。",
+      ping_user_off: "ペルソナがあなたにメンションして会話を始めることはありません。",
       models_title: `個人のモデルルーティング`,
       models_description:
         "個人設定のモデルはサーバーを越えて引き継がれます。 「サーバーデフォルト」に設定された機能は、 現在のサーバーのモデルを使用します。",
@@ -465,6 +470,10 @@ export default {
       crossserver_enabled_detail: `サーバー間での短期記憶の共有が有効になりました。`,
       crossserver_disabled_heading: `サーバー間短期記憶を無効にしました`,
       crossserver_disabled_detail: `サーバー間での短期記憶の共有が無効になりました。`,
+      ping_user_enabled_heading: "ペルソナからのメンションを有効化しました",
+      ping_user_enabled_detail: "ペルソナが会話を始めるためにあなたにメンションできるようになりました。",
+      ping_user_disabled_heading: "ペルソナからのメンションを無効化しました",
+      ping_user_disabled_detail: "ペルソナが会話を始めるためにあなたにメンションすることはなくなります。",
       no_changes_heading: `変更はありません`,
       no_changes_detail: `設定は変更されませんでした。`,
       write_failed_heading: `操作に失敗しました`,

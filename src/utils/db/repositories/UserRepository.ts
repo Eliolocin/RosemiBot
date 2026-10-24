@@ -29,6 +29,7 @@ const USER_PERSONALIZATION_FIELD_NAMES = [
   "personal_dtm",
   "personal_deliberate_tool_mode",
   "personal_server_fallback_enabled",
+  "natural_nudge_opt_out",
   "timezone_offset",
   "prefix_override",
   "suffix_override",
@@ -133,7 +134,8 @@ class UserRepository implements IRepository<UserExportShape> {
             upc.nai_char_ref_url,
             upc.impersonation_prompt,
             COALESCE(upc.personal_dtm, 'follow') AS personal_dtm,
-            COALESCE(upc.personal_server_fallback_enabled, true) AS personal_server_fallback_enabled
+            COALESCE(upc.personal_server_fallback_enabled, true) AS personal_server_fallback_enabled,
+            COALESCE(upc.natural_nudge_opt_out, false) AS natural_nudge_opt_out
           FROM users u
           LEFT JOIN user_personalization_configs upc ON upc.user_id = u.user_id
           WHERE u.user_disc_id = ${userDiscId}
@@ -190,7 +192,8 @@ class UserRepository implements IRepository<UserExportShape> {
               upc.nai_char_ref_url,
               upc.impersonation_prompt,
               COALESCE(upc.personal_dtm, 'follow') AS personal_dtm,
-              COALESCE(upc.personal_server_fallback_enabled, true) AS personal_server_fallback_enabled
+              COALESCE(upc.personal_server_fallback_enabled, true) AS personal_server_fallback_enabled,
+              COALESCE(upc.natural_nudge_opt_out, false) AS natural_nudge_opt_out
             FROM users u
             LEFT JOIN user_personalization_configs upc ON upc.user_id = u.user_id
             WHERE regexp_replace(lower(trim(upc.user_nickname)), '[[:space:]]+', ' ', 'g') = ${nickname}
@@ -248,6 +251,7 @@ class UserRepository implements IRepository<UserExportShape> {
                 upc.impersonation_prompt,
                 COALESCE(upc.personal_dtm, 'follow') AS personal_dtm,
                 COALESCE(upc.personal_server_fallback_enabled, true) AS personal_server_fallback_enabled,
+                COALESCE(upc.natural_nudge_opt_out, false) AS natural_nudge_opt_out,
                 EXISTS (
                   SELECT 1
                   FROM stat_counters sc
@@ -1416,6 +1420,9 @@ class UserRepository implements IRepository<UserExportShape> {
         break;
       case "personal_server_fallback_enabled":
         patch.personal_server_fallback_enabled = rawValue as boolean;
+        break;
+      case "natural_nudge_opt_out":
+        patch.natural_nudge_opt_out = rawValue as boolean;
         break;
       case "timezone_offset":
         patch.timezone_offset = rawValue as number | null;

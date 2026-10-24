@@ -57,7 +57,7 @@ El estado de actividad requiere la intención `Guild Presences` de Discord y res
 La activación automática permite a TomoriBot unirse a conversaciones sin ser mencionado directamente:
 
 - `/config` > `Canales` > Auto-Trigger (o `/server autotrigger channels`): elige canales donde responda de forma autónoma.
-- `/config` > `Canales` > Activación automática (o `/server autotrigger threshold`): establece cuántos mensajes deben acumularse antes de que ella intervenga.
+- `/config` > `Canales` > Activación automática (o `/server autotrigger threshold`): establece cuántos mensajes deben acumularse antes de que ella se una a la conversación.
 - `/config` > `Comportamiento` > Comportamiento del disparador: configura disparadores aleatorios basados en temporizador para un canal.
 
 Utilice la activación automática en canales casuales dedicados donde desee que el bot participe de forma natural.

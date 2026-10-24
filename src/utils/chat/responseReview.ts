@@ -9,14 +9,13 @@ import type { ResponseReviewItem } from "@/constants/responseReview";
 import { observeStopRequest } from "@/utils/discord/stream/stopRequests";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { ErrorContext, TomoriState } from "@/types/db/schema";
+import type { ErrorContext } from "@/types/db/schema";
 import { ContextItemTag, type StructuredContextItem } from "@/types/misc/context";
-import type { StructuredOutputResult, SupportsStructuredOutput } from "@/types/provider/featureInterfaces";
+import type { SupportsStructuredOutput } from "@/types/provider/featureInterfaces";
 import type { LLMProvider, ProviderConfig } from "@/types/provider/interfaces";
 import type { PendingResponseLimit, PendingStreamResponse } from "@/types/stream/pendingResponse";
 import type { ChatTurnContext, ToolHistoryEntry } from "@/utils/chat/types";
 import { getChannelTurnAbortSignal, runUnderWatchdog, touchChannelLock } from "@/utils/chat/channelQueue";
-import { llmModelRepo, llmProviderRepo } from "@/utils/db/repositories";
 import { MAX_PENDING_RESPONSE_BYTES, MAX_PENDING_RESPONSE_SEGMENTS } from "@/utils/discord/stream/constants";
 import { StreamOrchestrator } from "@/utils/discord/streamOrchestrator";
 import { containsCredential, log, sanitizeCredentialPayload } from "@/utils/misc/logger";
@@ -24,19 +23,17 @@ import { resolveCustomTextEndpointTarget } from "@/utils/provider/customEndpoint
 import { resolveChatMaxOutputTokens } from "@/utils/provider/maxOutputTokens";
 import { resolveModelLimits } from "@/utils/provider/modelLimits";
 import { normalizeProviderName } from "@/utils/provider/providerInfoRegistry";
-import { resolveStructuredOutputCapability } from "@/utils/provider/providerCapabilityResolver";
-import { withSavedProviderConfig } from "@/utils/provider/savedProviderConfig";
-import { decryptApiKey } from "@/utils/security/crypto";
+import {
+  formatStructuredRetryNote,
+  resolveServerStructuredModel,
+  type ResolvedServerStructuredModel,
+} from "@/utils/provider/serverStructuredOutput";
 import { localizer } from "@/utils/text/localizer";
 import { charsToTokensText, type TokenUsage } from "@/utils/text/tokenEstimate";
 import { redactToolParametersForStorage } from "@/utils/tools/toolParameterRedaction";
 import { checkResponseRules, type RuleCheckState } from "@/utils/chat/responseRuleCheck";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { ColorCode } from "@/utils/misc/logger";
-import { isSupporterBillingEnabled } from "@/modules/supporter-billing/config";
-import { resolveEnvironment } from "@/types/config";
-import { resolveSupporterCapabilityCredentials } from "@/modules/supporter-billing/runtime/managedProvider";
-import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 
 export const MAX_RESPONSE_REVISIONS = 1;
 // Every revision is reviewed again, after the original candidate's review.
@@ -88,17 +85,6 @@ function acceptReviewResult<T extends z.ZodType>(schema: T) {
     const status = (value as { status?: unknown }).status;
     return status === "pass" || status === "unavailable" ? { status } : value;
   }, schema);
-}
-
-type MalformedReply = NonNullable<Extract<StructuredOutputResult<unknown>, { success: false }>["malformed"]>;
-
-function formatRetryNote(malformed: MalformedReply): string {
-  const ask = "Answer again with only the JSON object, without code fences or other text.";
-  if (malformed.reason === "empty")
-    return `Your previous answer was empty, most likely because reasoning used up the output limit. ${ask}`;
-  if (malformed.reason === "unparsable") return `Your previous answer was not one valid JSON object. ${ask}`;
-  const issues = (malformed.issues ?? []).map((issue) => `- ${issue}`).join("\n");
-  return `Your previous answer did not match the schema:\n${issues}\n${ask}`;
 }
 
 export interface TurnUsageEntry {
@@ -499,11 +485,7 @@ async function resolveReviewer(
   author: LLMProvider,
   config: ProviderConfig,
   failureContext: ErrorContext,
-): Promise<
-  | { capability: SupportsStructuredOutput; state: TomoriState; apiKey: string; usageContext?: ProviderUsageContext }
-  | { errorLogged: true }
-  | null
-> {
+): Promise<ResolvedServerStructuredModel | { errorLogged: true } | null> {
   const review = context.responseReview;
   if (!review) return null;
   if (review.reviewerId === null) {
@@ -519,50 +501,7 @@ async function resolveReviewer(
       usageContext: context.usageContext,
     };
   }
-  const model = await llmModelRepo.loadById(review.reviewerId);
-  if (!model?.llm_id || model.is_deprecated || !model.supports_structoutput) return null;
-  const available = await llmModelRepo.loadAvailableModelsForProvider(model.llm_provider, false, {
-    kind: "server",
-    ownerId: context.currentPersona.server_id,
-  });
-  if (!available?.some((entry) => entry.llm_id === model.llm_id)) return null;
-  const subscription =
-    model.llm_provider === "openrouter" && context.currentPersona.config.subscription_capabilities.includes("reviewer");
-  if (subscription && !isSupporterBillingEnabled(resolveEnvironment())) return null;
-  const saved = await llmProviderRepo.loadSavedProviderConfig(
-    context.currentPersona.server_id,
-    subscription ? "supporter" : model.llm_provider,
-  );
-  const capability = await resolveStructuredOutputCapability(model.llm_provider);
-  if (!capability) return null;
-  const state = saved
-    ? withSavedProviderConfig({ ...context.currentPersona, llm: model }, saved)
-    : { ...context.currentPersona, llm: model, config: { ...context.currentPersona.config } };
-  // A pinned model must resolve its own endpoint rather than the author's mirrored endpoint.
-  state.config = { ...state.config, custom_endpoint_url: null, custom_num_ctx: null };
-  if (subscription) {
-    const credentials = await resolveSupporterCapabilityCredentials({
-      scope: { kind: "server", serverId: context.currentPersona.server_id },
-      capability: "text",
-      modelId: model.llm_id,
-    });
-    return {
-      capability,
-      state,
-      apiKey: credentials.apiKey,
-      usageContext: getSupporterUsageContext(credentials.funding),
-    };
-  }
-  if (!saved?.api_key) return null;
-  try {
-    return {
-      capability,
-      state,
-      apiKey: await decryptApiKey(saved.api_key, saved.key_version ?? 1, failureContext),
-    };
-  } catch {
-    return { errorLogged: true };
-  }
+  return resolveServerStructuredModel(context.currentPersona, review.reviewerId, failureContext, "reviewer");
 }
 
 export function responseReviewCancelled(context: ChatTurnContext): boolean {
@@ -825,7 +764,7 @@ async function reviewCandidate(
       result = await ask(
         `${userPrompt}
 
-${section("format_retry", formatRetryNote(result.malformed))}`,
+${section("format_retry", formatStructuredRetryNote(result.malformed))}`,
         "none",
       );
       touchChannelLock(context.channel.id);

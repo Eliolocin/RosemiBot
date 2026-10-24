@@ -57,7 +57,7 @@ Trạng thái hoạt động yêu cầu mục đích `Guild Presences` của Dis
 Tính năng tự động kích hoạt cho phép TomoriBot tham gia các cuộc trò chuyện mà không được đề cập trực tiếp:
 
 - `/config` > `Kênh` > Tự động kích hoạt (hoặc `/server autotrigger channels`): chọn các kênh mà cô ấy phản hồi một cách tự động.
-- `/config` > `Kênh` > Tự động kích hoạt (hoặc `/server autotrigger threshold`): đặt số lượng tin nhắn phải tích lũy trước khi cô ấy bấm chuông.
+- `/config` > `Kênh` > Tự động kích hoạt (hoặc `/server autotrigger threshold`): đặt số lượng tin nhắn phải tích lũy trước khi cô ấy tham gia trò chuyện.
 - `/config` > `Hành vi` > Hành vi kích hoạt: định cấu hình trình kích hoạt ngẫu nhiên dựa trên bộ đếm thời gian cho một kênh.
 
 Sử dụng tính năng tự động kích hoạt trong các kênh thông thường chuyên dụng mà bạn muốn bot tham gia một cách tự nhiên.

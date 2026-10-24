@@ -64,6 +64,7 @@ Brave Search与你的AI提供商分开，并通过图像、视频和新闻结果
 - **文本**：主要聊天模型。
 - **视觉**：当聊天模型无法读取图像时。
 - **嵌入**：为[文档知识库](/zh-CN/features/knowledge/memory/#document-knowledge-base-rag)提供支持。
+- **判定**：已注册的[判定模型](#decision-models)。[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges)使用它来决定何时加入对话。
 - **标准图像**：标准图像生成（参见[图像生成](/zh-CN/features/capabilities/media-generation/image-generation/)）。
 - **NovelAI图像**：NovelAI图像生成。
 - **视频**：视频生成。
@@ -77,7 +78,7 @@ Brave Search与你的AI提供商分开，并通过图像、视频和新闻结果
 ## 判定模型
 <!-- anchor: decision-models -->
 
-判定模型是 `/providers` 和 `/personal providers` 中的一个独立类别。它们以概率形式回答类型化谓词。注册不会改变活动的聊天模型、建立校准或启用回复审查跳过。这些面板尚不选择判定模型。
+判定模型是 `/providers` 和 `/personal providers` 中的一个独立类别。它们以概率形式回答具类型的问题（是或否，或从多个选项中选择一个）。注册不会改变活动的聊天模型。在 `/config` > `模型` > `切换模型` 中选择服务器的判定模型。除非在 `/config` > `插件` > `Natural Nudges` 中选择了其他检查模型，否则 [Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) 会将其用作主动搭话检查模型，以判断对话是否契合某个人格的兴趣。
 
 OpenRouter 是受支持的原生提供商。保存其密钥，打开其模型下拉菜单，然后选择 `+ 添加判定模型`。从其已验证的判定目录中输入 ID。全局目录包含 `typesafe/jev-1.13`；其他注册归属于其服务器或个人所有者。原生发现提供记录在案的输入限制和价格。聊天目录无法建立判定支持。
 

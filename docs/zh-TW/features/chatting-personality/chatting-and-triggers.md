@@ -57,7 +57,7 @@ TomoriBot被召喚時會回應。本頁介紹了她的觸發方式、如何透�
 自動觸發讓TomoriBot加入對話而無需直接提及：
 
 - `/config` > `頻道` > 自動觸發（或`/server autotrigger channels`）：選擇她自主回應的通道。
-- `/config` > `頻道` > 自動觸發（或`/server autotrigger threshold`）：設定她插話前必須累積多少個訊息。
+- `/config` > `頻道` > 自動觸發（或`/server autotrigger threshold`）：設定她在加入對話前必須累積多少則訊息。
 - `/config` > `行為` > 觸發行為：為通道配置基於定時器的隨機觸發。
 
 在你希望機器人自然參與的專用休閒頻道中使用自動觸發。

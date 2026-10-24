@@ -64,6 +64,7 @@ Brave SearchはAIプロバイダーとは別のもので、画像、ビデオ、
 - **テキスト**: メインのチャットモデル。
 - **ビジョン**: チャットモデルが画像を読み取ることができない場合に画像を読み取ります。
 - **埋め込み**: [ドキュメントナレッジベース](/ja/features/knowledge/memory/#document-knowledge-base-rag) を強化します。
+- **判定**: 登録済みの [判定モデル](#decision-models)。[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) が会話に参加するタイミングを決定するために使用します。
 - **標準イメージ**: 標準イメージの生成 ([イメージ生成](/ja/features/capabilities/media-generation/image-generation/) を参照)。
 - **NovelAIイメージ**: NovelAIイメージの生成。
 - **ビデオ**: ビデオの生成。
@@ -77,7 +78,7 @@ Brave SearchはAIプロバイダーとは別のもので、画像、ビデオ、
 ## 判定モデル
 <!-- anchor: decision-models -->
 
-判定モデルは、`/providers` および `/personal providers` における独立したカテゴリです。型付きの述語に対して確率で回答します。登録を行っても、アクティブなチャットモデルの変更、調整の確立、または応答レビューのスキップの有効化は行われません。これらのパネルでは、まだ判定モデルの選択は行われません。
+判定モデルは、`/providers` および `/personal providers` における独立したカテゴリです。型付きの質問（はい/いいえ、または複数の選択肢から1つ）に対して確率で回答します。登録を行ってもアクティブなチャットモデルは変更されません。サーバーの判定モデルは `/config` > `モデル` > `モデルの切り替え` で選択します。`/config` > `プラグイン` > `Natural Nudges` で別のチェッカーが選択されていない限り、[Natural Nudges](/features/chatting-personality/natural-nudges/#active-nudges) はこれをアクティブナッジチェッカーとして使用し、会話がペルソナの興味・関心に合致するかどうかを判定します。
 
 OpenRouterはサポートされているネイティブプロバイダーです。キーを保存し、モデルのドロップダウンを開いて `+ 判定モデルを追加` を選択します。検証済みの判定カタログからIDを入力します。グローバルカタログには `typesafe/jev-1.13` が含まれます。追加の登録は、そのサーバーまたは個人の所有者に属します。ネイティブの検出により、ドキュメントに記載された入力制限と価格が提供されます。チャットカタログでは判定サポートを確立できません。
 

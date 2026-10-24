@@ -412,6 +412,11 @@ function makeDependencies(
       user.personal_server_fallback_enabled = input.enabled;
       return { status: "success", enabled: input.enabled };
     },
+    setNaturalNudgeOptOut: async (input) => {
+      calls.push(`setNaturalNudgeOptOut:${input.current}:${input.optedOut}`);
+      user.natural_nudge_opt_out = input.optedOut;
+      return { status: "success", optedOut: input.optedOut };
+    },
     setImpersonationPrompt: async (input) => {
       calls.push(`setImpersonationPrompt:${input.prompt}`);
       user.impersonation_prompt = input.prompt;
@@ -768,6 +773,7 @@ describe("personalConfigPanelCatalog", () => {
     ["personal-config:v2:privacy-level-open:en-US", { action: "privacy-level-open", locale: "en-US" }],
     ["personal-config:v2:crossserver-toggle:en-US", { action: "crossserver-toggle", locale: "en-US" }],
     ["personal-config:v2:crossserver-set:en-US:on", { action: "crossserver-set", locale: "en-US", enabled: true }],
+    ["personal-config:v2:ping-user-set:en-US:off", { action: "ping-user-set", locale: "en-US", enabled: false }],
     ["personal-config:v2:quick-toggle-open:en-US", { action: "quick-toggle-open", locale: "en-US" }],
     ["personal-config:v2:parameters-provider-select:en-US", { action: "parameters-provider-select", locale: "en-US" }],
     ["personal-config:v2:fallbacks-provider-select:en-US", { action: "fallbacks-provider-select", locale: "en-US" }],
@@ -1037,7 +1043,7 @@ describe("personalConfigPanelCatalog", () => {
     // The codec table's mapped type requires one key per member of the action union, so its keys
     // are the declared actions without reading the union's source text.
     const declared = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS);
-    expect(declared.length).toBe(66);
+    expect(declared.length).toBe(67);
     expect(declared.filter((action) => !pinned.has(action))).toEqual([]);
   });
 
@@ -1157,6 +1163,7 @@ describe("personalConfigPanelCatalog", () => {
       case "tool-mode-set":
         return [{ action, locale, mode }];
       case "crossserver-set":
+      case "ping-user-set":
         return [{ action, locale, enabled: !isWorstCase }];
       case "server-fallback-set":
         return [{ action, locale, enabled: !isWorstCase }];
@@ -1200,7 +1207,7 @@ describe("personalConfigPanelCatalog", () => {
 
   it("round-trips every action in the codec table", () => {
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(66);
+    expect(actions.length).toBe(67);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, false);
@@ -1236,7 +1243,7 @@ describe("personalConfigPanelCatalog", () => {
     // - page: "response-modes" (14 chars) is the longest PersonalConfigPage.
     // - mode: "follow" (6 chars) is the longest deliberate trigger/tool mode.
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(66);
+    expect(actions.length).toBe(67);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, true);
@@ -1259,15 +1266,15 @@ describe("personalConfigPanelCatalog", () => {
       handlerSources.flatMap((source) => [...source.matchAll(/route\.action === "([a-z0-9-]+)"/g)].map((m) => m[1])),
     );
 
-    expect(tableActions.size).toBe(66);
-    expect(handlerActions.size).toBe(66);
+    expect(tableActions.size).toBe(67);
+    expect(handlerActions.size).toBe(67);
     expect([...tableActions].filter((a) => !handlerActions.has(a))).toEqual([]);
     expect([...handlerActions].filter((a) => !tableActions.has(a))).toEqual([]);
   });
 
   it("fails closed when dropping or appending a segment for every action in the table", () => {
     const actions = Object.keys(PERSONAL_CONFIG_ROUTE_CODECS) as PersonalConfigAction[];
-    expect(actions.length).toBe(66);
+    expect(actions.length).toBe(67);
 
     for (const action of actions) {
       const routes = buildRoutesForAction(action, false);
@@ -1520,6 +1527,17 @@ describe("personalConfigRoutes interaction handling and telemetry", () => {
 
     expect(calls).toContain("toggleCrossServerStm");
     expect(telemetry).toContain("personal-config.personal.crossserver-stm.set");
+  });
+
+  it("turning Ping User nudges off stores the opt-out", async () => {
+    const calls: string[] = [];
+    const { dependencies, telemetry } = makeDependencies(calls);
+    const route = createPersonalConfigInteractionRoute(dependencies);
+    const customId = buildPersonalConfigRouteId({ action: "ping-user-set", locale: "en-US", enabled: false });
+
+    await route.execute({} as Client, makePersonalInteraction({ customId }), requireRoute(customId));
+    expect(calls).toContain("setNaturalNudgeOptOut:false:true");
+    expect(telemetry).toContain("personal-config.personal.ping-user.set");
   });
 
   it("handles outdated panel version in router", async () => {

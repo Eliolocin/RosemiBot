@@ -85,7 +85,7 @@ TomoriBot永远不会从一个字段推断另一个字段。空白字段将被�
 使用`/personal config`定制附加功能：
 
 - **外观** (`个人资料` > `外观`)：保存每当[图像生成](/zh-CN/features/capabilities/media-generation/image-generation/#tag-customization)引用你时使用的booru风格外观标签。提交一个空框以清除它们。
-- **隐私控制** (`隐私` > `隐私控制`)：选择你的可见性级别（`无`、`部分`或`完全`），或切换跨服务器短期记忆共享。
+- **隐私控制** (`隐私` > `隐私控制`)：选择你的可见性级别（`无`、`部分`或`完全`）、切换跨服务器短期记忆共享，或关闭[来自人格的提及](/features/chatting-personality/natural-nudges/#ping-user)以使人格绝不主动 @提及 你发起对话。
 - **响应模式** (`高级` > `回复模式`)：切换你的个人覆盖[故意触发模式](/zh-CN/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode)。
 - **模拟**（`高级` > `扮演`）：设置当有人为你调用`/impersonate user`时使用的可重复使用的提示。
 

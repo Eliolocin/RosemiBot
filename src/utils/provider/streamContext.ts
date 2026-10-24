@@ -95,6 +95,7 @@ export function buildStreamContext(params: BuildStreamContextParams): StreamCont
     prefixStrippingName: params.prefixStrippingName,
 
     forcedMentions: streamingContext?.forcedMentions,
+    mentionableUserIds: streamingContext?.mentionableUserIds,
     impersonatedSpeakerLabel: streamingContext?.impersonatedSpeakerLabel,
 
     // NAI GLM-4.6 prompt continuation: trailing fragment from a previous truncated stream.

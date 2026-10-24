@@ -131,7 +131,9 @@ Use `/personal config` to customize additional features:
   [image generation](/features/capabilities/media-generation/image-generation/#tag-customization)
   references you. Submit an empty box to clear them.
 - **Privacy Controls** (`Privacy` > `Privacy Controls`): choose your visibility level
-  (`None`, `Partial`, or `Full`), or toggle cross-server short-term memory sharing.
+  (`None`, `Partial`, or `Full`), toggle cross-server short-term memory sharing, or turn off
+  [Pings from Personas](/features/chatting-personality/natural-nudges/#ping-user) so personas never
+  ping you to start a conversation.
 - **Response Modes** (`Advanced` > `Response Modes`): toggle your personal override for
   [Deliberate Trigger Mode](/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Impersonation** (`Advanced` > `Impersonation`): set a reusable prompt used when someone

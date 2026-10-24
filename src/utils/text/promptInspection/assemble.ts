@@ -36,6 +36,12 @@ import { checkTargetEmbed, checkTargetEmbedTitle, processLinkEmbed } from "@/uti
 import { sliceMessagesAtResetMarker } from "@/utils/discord/embedDetection";
 import { isMinimalTitleKind } from "@/utils/discord/embedProtocol";
 import { resolveMinimalNoticeBodies } from "@/utils/discord/minimalNoticeBodies";
+import {
+  AGENDA_NOTICE_AUTHOR_ID,
+  agendaNoticeId,
+  formatAgendaNotice,
+  loadPersonaAgendas,
+} from "@/modules/natural-nudges/runtime/agendas";
 import { normalizeMessageFetchLimit } from "@/utils/discord/messageFetchLimit";
 import { normalizeRenderModifierName } from "@/utils/discord/renderModifierParser";
 import { resolveWebhookPersonaAuthor } from "@/utils/discord/webhookPersonaAuthor";
@@ -515,6 +521,10 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
   const userListSet = new Set<string>();
   const syntheticUsers = new Map<string, { displayName: string; type: "persona" | "webhook" }>();
   const minimalNoticeBodies = await resolveMinimalNoticeBodies(messagesArray);
+  const agendasByMessageId = await loadPersonaAgendas(
+    answeringState.persona_id,
+    messagesArray.map((message) => message.id),
+  );
 
   for (const message of messagesArray) {
     // Skip fully-private and server-blacklisted users (same gates as real context building)
@@ -662,6 +672,20 @@ export async function assemblePromptInspection(request: PromptInspectionRequest)
     const combinedContent = [baseContent, ...embedTextSegments].filter((s) => s.length > 0).join("\n");
     const messageContent = combinedContent.length > 0 ? combinedContent : null;
     const mediaSourceMessageIds = hasLocalMedia ? [message.id] : undefined;
+
+    const agenda = agendasByMessageId.get(message.id);
+    if (agenda) {
+      simplifiedMessages.push({
+        id: agendaNoticeId(message.id),
+        authorId: AGENDA_NOTICE_AUTHOR_ID,
+        authorName: "System",
+        authorType: "user",
+        personaName: null,
+        content: formatAgendaNotice(answeringState.persona_nickname, agenda),
+        imageAttachments: [],
+        videoAttachments: [],
+      });
+    }
 
     // Merge consecutive same-author messages, mirroring the real context path
     // (buildSimplifiedHistory): collapse only when both sides are pure text if

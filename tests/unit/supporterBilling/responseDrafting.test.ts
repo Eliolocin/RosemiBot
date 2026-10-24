@@ -1,6 +1,6 @@
 import { afterEach, expect, it, spyOn } from "bun:test";
 import * as configModelOperations from "@/utils/discord/interactions/configModelOperations";
-import { loadDraftingModelGroups } from "@/utils/discord/interactions/responseDraftingOperations";
+import { loadStructuredOutputModelGroups } from "@/utils/discord/interactions/configModelOperations";
 import { createPersona } from "../../helpers/fixtures";
 
 const restores: Array<() => void> = [];
@@ -16,7 +16,7 @@ it("keeps subscription reviewer choices while requiring structured output", asyn
     () => providers.mockRestore(),
     () => choices.mockRestore(),
   );
-  const groups = await loadDraftingModelGroups(1, "en-US");
+  const groups = await loadStructuredOutputModelGroups(1, "en-US");
   expect(groups).toEqual([{ provider: "supporter", models }]);
   const filter = choices.mock.calls[0]?.[4];
   expect(filter?.({ ...createPersona().llm, supports_structoutput: true })).toBe(true);

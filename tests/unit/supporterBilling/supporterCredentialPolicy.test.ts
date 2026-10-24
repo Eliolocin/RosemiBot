@@ -75,6 +75,7 @@ function makeBaseParams(dependencies: Partial<TextCredentialPolicyDependencies>)
     isPersonaJob: false,
     isManuallyTriggered: true,
     isUserImpersonation: false,
+    borrowsTriggerMessage: false,
     userRow: makeUserRow(),
     message,
     serverDiscId: "guild_1",

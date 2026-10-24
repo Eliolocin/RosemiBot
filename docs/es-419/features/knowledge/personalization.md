@@ -85,7 +85,7 @@ Un servidor puede requerir que los miembros proporcionen sus propias claves API 
 Utilice `/personal config` para personalizar funciones adicionales:
 
 - **Apariencia** (`Perfil` > `Apariencia`): guarde las etiquetas de apariencia de estilo booru que se utilizan cada vez que una [generación de imagen](/es-419/features/capabilities/media-generation/image-generation/#tag-customization) hace referencia a usted. Envíe un cuadro vacío para borrarlos.
-- **Controles de privacidad** (`Privacidad` > `Controles de privacidad`): elija su nivel de visibilidad (`Ninguno`, `Parcial` o `Completo`) o alterne el uso compartido de memoria a corto plazo entre servidores.
+- **Controles de privacidad** (`Privacidad` > `Controles de privacidad`): elige tu nivel de visibilidad (`Ninguno`, `Parcial` o `Completo`), activa o desactiva la memoria a corto plazo compartida entre servidores, o desactiva las [Menciones de personas](/features/chatting-personality/natural-nudges/#ping-user) para que las personas nunca te mencionen para iniciar una conversación.
 - **Modos de respuesta** (`Avanzado` > `Modos de Respuesta`): alterna tu anulación personal para [Modo de activación deliberada](/es-419/features/chatting-personality/chatting-and-triggers/#deliberate-trigger-mode).
 - **Suplantación** (`Avanzado` > `Imitación`): establece un mensaje reutilizable que se utilizará cuando alguien invoque `/impersonate user` por usted.
 

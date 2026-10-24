@@ -1655,6 +1655,9 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
         await tx`UPDATE server_chat_configs SET
           response_reviewer_llm_id = CASE WHEN response_reviewer_llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${modelProvider}) THEN NULL ELSE response_reviewer_llm_id END
           WHERE server_id = ${serverId}`;
+        await tx`UPDATE server_natural_nudge_configs SET llm_id = NULL
+          WHERE server_id = ${serverId}
+            AND llm_id IN (SELECT llm_id FROM llms WHERE llm_provider = ${normalizedProvider})`;
         await tx`UPDATE server_model_configs SET decision_model_id = NULL
           WHERE server_id = ${serverId}
             AND decision_model_id IN (SELECT decision_model_id FROM decision_models WHERE provider = ${modelProvider})`;
@@ -2884,8 +2887,10 @@ class LlmProviderRepository implements IRepository<LlmProviderExportShape> {
               WHERE user_id = ${userId} AND server_id IS NULL AND llm_id = ${llmId}
             `;
         if (result.count === 0) return false;
-        if (serverId !== null)
+        if (serverId !== null) {
           await tx`UPDATE server_chat_configs SET response_reviewer_llm_id = NULL WHERE server_id = ${serverId} AND response_reviewer_llm_id = ${llmId}`;
+          await tx`UPDATE server_natural_nudge_configs SET llm_id = NULL WHERE server_id = ${serverId} AND llm_id = ${llmId}`;
+        }
         return true;
       });
       if (deleted && serverId !== null) this.invalidateWorkspace(serverId);

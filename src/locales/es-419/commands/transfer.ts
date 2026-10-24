@@ -54,6 +54,9 @@ export default {
     section_speech_description: "Ajustes de voz y habla.",
     section_access_label: "Acceso",
     section_access_description: "Ajustes de acceso y permisos del servidor.",
+    section_nudges_label: "Natural Nudges",
+    section_nudges_description:
+      "Ajustes de Natural Nudges e intervenciones espontáneas personalizadas, sin canales permitidos.",
     section_profile_label: "Perfil",
     section_profile_description: "Ajustes de perfil personal.",
     section_privacy_label: "Privacidad",

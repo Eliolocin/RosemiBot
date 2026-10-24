@@ -40,6 +40,7 @@ import donate from "./commands/donate";
 import nsfw from "./commands/nsfw";
 import optionalKey from "./commands/optional-key";
 import scheduledTask from "./commands/scheduled-task";
+import nudgeStudio from "./commands/nudge-studio";
 import memory from "./commands/memory";
 import teach from "./commands/teach";
 import forget from "./commands/forget";
@@ -100,6 +101,7 @@ export default {
     ...nsfw,
     ...optionalKey,
     ...scheduledTask,
+    ...nudgeStudio,
     ...memory,
     ...teach,
     ...forget,

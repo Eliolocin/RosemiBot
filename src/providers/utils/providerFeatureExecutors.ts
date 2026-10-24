@@ -1,6 +1,7 @@
 import { withProviderUsageContext } from "@/utils/provider/providerUsage";
 import type {
   DecisionInput,
+  DecisionModelOption,
   DecisionModelReference,
   DecisionResult,
   DecisionApiStyle,
@@ -56,7 +57,7 @@ export interface DecisionExecutionRequest extends DecisionInput {
   supporterFunding?: SupporterFundingContext;
 }
 
-export async function loadDecisionModelsForScope(scope: OpenRouterModelScope) {
+export async function loadDecisionModelsForScope(scope: OpenRouterModelScope): Promise<DecisionModelOption[]> {
   const funding = await resolveSupporterFunding({
     scope:
       scope.kind === "server"

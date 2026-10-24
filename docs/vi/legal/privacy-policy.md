@@ -27,11 +27,13 @@ Chúng tôi dùng dữ liệu đã lưu để cung cấp tính năng bạn chọ
 
 ### 2.1) Tài khoản và tùy chọn
 
-Chúng tôi lưu ID người dùng Discord, lựa chọn quyền riêng tư cùng thông tin hồ sơ và tùy chọn mà bạn chọn lưu. Chúng tôi cũng giữ tổng mức sử dụng để bạn xem thống kê của mình, Máy chủ và các persona của Máy chủ.
+Chúng tôi lưu ID người dùng Discord, lựa chọn quyền riêng tư cùng thông tin hồ sơ và tùy chọn mà bạn chọn lưu. Chúng tôi cũng giữ tổng mức sử dụng để bạn xem thống kê của mình, Máy chủ và các persona của Máy chủ. Các tùy chọn đã lưu của bạn bao gồm việc persona có được phép tag bạn để bắt đầu cuộc trò chuyện hay không (Persona tag bạn).
 
 ### 2.2) Bộ nhớ và cài đặt Máy chủ
 
 Chúng tôi giữ bộ nhớ cá nhân và máy chủ, tùy chỉnh persona, lời nhắc và cài đặt Máy chủ để cung cấp các tính năng bạn cấu hình.
+
+Khi một persona tự mình bắt đầu cuộc trò chuyện (Natural Nudges), chúng tôi ghi lại persona nào đã nói, kênh, liệu có ai trả lời hay không và thành viên được tag. Chúng tôi cũng lưu mục tiêu riêng của persona cho cuộc trò chuyện đó, mục tiêu này có thể đề cập đến thành viên đó.
 
 Bộ nhớ ngắn hạn tùy chọn lưu bản tóm tắt cuộc trò chuyện. Các bộ nhớ khác được giữ đến khi xóa và có thể mô tả người không viết chúng.
 
@@ -61,7 +63,7 @@ TomoriBot tạm đọc tin nhắn gần đây, nội dung đa phương tiện li
 
 ## 4) Bên nhận dữ liệu
 
-- **Nhà cung cấp AI:** nhà cung cấp đã chọn nhận prompt, ngữ cảnh trò chuyện liên quan, thông tin persona và nội dung đa phương tiện cần cho văn bản, ảnh, video, giọng nói hoặc tìm tài liệu. Yêu cầu qua gói đăng ký dùng OpenRouter và các nhà cung cấp của model đã chọn. Chúng tôi kiểm tra chi tiêu với OpenRouter để áp dụng hạn mức.
+- **Nhà cung cấp AI:** nhà cung cấp đã chọn nhận prompt, ngữ cảnh trò chuyện liên quan, thông tin persona và nội dung đa phương tiện cần cho văn bản, ảnh, video, giọng nói hoặc tìm tài liệu. Trước khi persona tag ai đó để bắt đầu trò chuyện, model nhận tên hiển thị, hoạt động hiện tại và bộ nhớ gần đây của họ trừ khi họ đã ẩn chúng. Yêu cầu qua gói đăng ký dùng OpenRouter và các nhà cung cấp của model đã chọn. Chúng tôi kiểm tra chi tiêu với OpenRouter để áp dụng hạn mức.
 - **Patreon:** việc liên kết cho phép chúng tôi xác minh tư cách thành viên. Patreon cung cấp cập nhật tài khoản và thành viên; Patreon và các đơn vị thanh toán của họ xử lý thanh toán và thông tin thanh toán.
 - **Nhà cung cấp tìm kiếm:** khi dùng tìm kiếm web, nhà cung cấp nhận truy vấn và ngữ cảnh liên quan.
 - **Matrix:** khi cấu hình cầu nối, tin nhắn được chia sẻ giữa kênh Discord và phòng Matrix đã liên kết.
@@ -76,6 +78,7 @@ Các dịch vụ này có thể xử lý dữ liệu ngoài quốc gia của b�
 | Bản tóm tắt bộ nhớ ngắn hạn | Mặc định 90 ngày sau hoạt động gần nhất |
 | Nhật ký lỗi | 90 ngày |
 | Bản ghi hiệu suất và mã định danh tin nhắn bot | 30 ngày |
+| Bản ghi Natural Nudges | 30 ngày; mục tiêu riêng của persona tối đa 90 ngày |
 | Bản ghi cập nhật thành viên Patreon | Mặc định 30 ngày |
 | Bản ghi đăng nhập Patreon đã hoàn tất hoặc hết hạn | Mặc định đủ điều kiện xóa sau một giờ |
 | Chi tiết sử dụng gói đăng ký | 90 ngày; bản ghi kỳ hiện tại giữ đến khi kỳ kết thúc nếu muộn hơn |
@@ -94,6 +97,7 @@ Gỡ bot vẫn giữ dữ liệu Máy chủ để dùng khi mời lại; hãy ch
 | Việc bạn muốn làm | Nơi thực hiện |
 |---|---|
 | Kiểm soát mức hiển thị tin nhắn và việc dùng bộ nhớ cá nhân | `/personal config` |
+| Chặn persona tag bạn để bắt đầu trò chuyện | `/personal config` > `Quyền riêng tư` > `Persona tag bạn` |
 | Xem hoặc xóa bộ nhớ cá nhân | `/personal memories` |
 | Xem hoặc xóa bộ nhớ và tài liệu Máy chủ | `/memories` |
 | Xuất cài đặt hoặc bộ nhớ cá nhân | `/export personal config`, `/export personal memories` |
@@ -106,7 +110,7 @@ Gỡ bot vẫn giữ dữ liệu Máy chủ để dùng khi mời lại; hãy ch
 
 Bộ nhớ và tài liệu Máy chủ bạn cung cấp vẫn còn, nhưng bỏ liên kết tác giả; hãy nhờ người quản lý xóa bằng `/memories`. Nếu bộ nhớ hoặc tài liệu chung chứa dữ liệu cá nhân về bạn mà bạn không thể yêu cầu xóa, hãy liên hệ trực tiếp theo Mục 9. Không cần người quản lý cho phép để yêu cầu xem xét và xóa.
 
-Cài đặt quyền riêng tư giới hạn mức hiển thị tin nhắn và cá nhân hóa; không xóa bộ nhớ hiện có. Lựa chọn từ chối thu thập được giữ sau khi xóa để việc thu thập không âm thầm bật lại.
+Cài đặt quyền riêng tư giới hạn mức hiển thị tin nhắn và cá nhân hóa; không xóa bộ nhớ hiện có. Lựa chọn từ chối thu thập được giữ sau khi xóa để việc thu thập không âm thầm bật lại. Lựa chọn Persona tag bạn là một cài đặt cá nhân hóa, vì vậy `/personal nuke` sẽ xóa nó; hãy tắt lại Persona tag bạn sau đó nếu bạn vẫn muốn tắt.
 
 Với gói đăng ký, dùng bảng đăng ký để xem hạn mức, tài trợ hoặc ngừng tài trợ một Máy chủ. Hủy gia hạn trên Patreon; ngừng tài trợ hoặc xóa dữ liệu bot không ngừng tính phí.
 

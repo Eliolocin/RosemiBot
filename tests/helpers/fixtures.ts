@@ -12,6 +12,7 @@ import type { AssembledServerConfig, LlmRow, TomoriState, UserRow } from "@/type
 import { PrivacyLevel } from "@/types/db/schema";
 import { customExpressionSchema, type CustomExpressionRow } from "@/types/db/schema";
 import { EmotionKey } from "@/types/misc/emotions";
+import { customIdleNudgeRowSchema, type CustomIdleNudgeRow } from "@/modules/natural-nudges/db/types";
 import { EMPTY_PERSONA_NAMING_CONFIG } from "@/types/personaNaming";
 import { DEFAULT_IMAGE_NEGATIVE_TAGS, DEFAULT_IMAGE_POSITIVE_TAGS } from "@/utils/image/tagDefaults";
 
@@ -218,6 +219,7 @@ export function createUserRow(overrides: UserFixtureOverrides = {}): UserRow {
     personal_dtm: "follow",
     personal_deliberate_tool_mode: "follow",
     personal_server_fallback_enabled: true,
+    natural_nudge_opt_out: false,
     shortterm_cache_crossserver_opt_in: false,
     message_proxy_service: null,
     message_proxy_instance_id: null,
@@ -246,6 +248,21 @@ export function createCustomExpression(overrides: Partial<CustomExpressionRow> =
     created_at: new Date(0),
     updated_at: new Date(0),
     persona_ids: [],
+    ...overrides,
+  });
+}
+
+export function createCustomIdleNudge(overrides: Partial<CustomIdleNudgeRow> = {}): CustomIdleNudgeRow {
+  return customIdleNudgeRowSchema.strict().parse({
+    custom_idle_nudge_id: 1,
+    server_id: 1,
+    category: "start_topic",
+    title: "Mirri's riddle",
+    brief: "Have {persona} pose a riddle.",
+    agenda_hint: null,
+    prerequisites: [],
+    recommended_tools: [],
+    enabled: true,
     ...overrides,
   });
 }

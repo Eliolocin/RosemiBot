@@ -207,6 +207,11 @@ TomoriBot te tratará como un usuario nuevo a partir de tu próximo mensaje.`,
       crossserver_stm_on:
         "Puedo mantener recuerdos de conversaciones contigo entre servidores porque MCP entre servidores está activado.",
       crossserver_stm_footer: `\`/personal memories\` siempre persiste entre servidores, pero MCP no`,
+      ping_user_section_title:
+        "[Menciones de personas](https://docs.tomoribot.app/es-419/features/chatting-personality/natural-nudges/#ping-user)",
+      ping_user_on:
+        "Mis personas pueden iniciar una conversación mencionándote cuando un canal quede en silencio, si hablaste conmigo en este servidor en los últimos 14 días.",
+      ping_user_off: "Mis personas nunca inician una conversación mencionándote.",
       models_title: `Enrutamiento de modelos personales`,
       models_description:
         "Los ajustes personales te siguen entre servidores. Una capacidad establecida en el predeterminado del servidor usará los modelos actuales del servidor.",
@@ -473,6 +478,10 @@ Usa Borrar prompt para eliminarlo.`,
       crossserver_enabled_detail: `El uso compartido de MCP entre servidores está activado.`,
       crossserver_disabled_heading: `MCP entre servidores desactivada`,
       crossserver_disabled_detail: `El uso compartido de MCP entre servidores está desactivado.`,
+      ping_user_enabled_heading: "Menciones de personas activadas",
+      ping_user_enabled_detail: "Mis personas pueden volver a mencionarte para iniciar una conversación.",
+      ping_user_disabled_heading: "Menciones de personas desactivadas",
+      ping_user_disabled_detail: "Mis personas ya no te mencionarán para iniciar una conversación.",
       no_changes_heading: `No se hicieron cambios`,
       no_changes_detail: `No se modificó ninguna configuración.`,
       write_failed_heading: `Operación fallida`,

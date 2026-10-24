@@ -259,6 +259,7 @@ describe("transfer panel Components V2 limits", () => {
         "> • Media",
         "> • Speech",
         "> • Access",
+        "> • Natural Nudges",
         "Excluded or nonportable data",
         "> No excluded data was found.",
       ],

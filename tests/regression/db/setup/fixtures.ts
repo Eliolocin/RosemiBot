@@ -130,7 +130,8 @@ export async function insertFixtures(db: SQL): Promise<FixtureRefs> {
       physical_appearance_tags,
       nai_char_ref_url,
       impersonation_prompt,
-      personal_dtm
+      personal_dtm,
+      natural_nudge_opt_out
     ) VALUES (
       ${userId},
       '_rt_user',
@@ -138,7 +139,8 @@ export async function insertFixtures(db: SQL): Promise<FixtureRefs> {
       ARRAY[]::TEXT[],
       NULL,
       NULL,
-      'follow'
+      'follow',
+      false
     )
     ON CONFLICT (user_id) DO UPDATE
     SET
@@ -148,6 +150,7 @@ export async function insertFixtures(db: SQL): Promise<FixtureRefs> {
       nai_char_ref_url = EXCLUDED.nai_char_ref_url,
       impersonation_prompt = EXCLUDED.impersonation_prompt,
       personal_dtm = EXCLUDED.personal_dtm,
+      natural_nudge_opt_out = EXCLUDED.natural_nudge_opt_out,
       updated_at = NOW()
   `;
 
