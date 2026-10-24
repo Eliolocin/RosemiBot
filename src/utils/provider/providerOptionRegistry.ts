@@ -32,18 +32,19 @@ export interface ProviderOptionScope {
   state?: TomoriState | null;
 }
 
-export interface ProviderOptionAvailability {
+interface ProviderOptionAvailability {
   eligible: boolean;
   reasonKey?: string;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export interface ProviderOptionStoredSelection {
   /** Handed back to this option's own panel callbacks, so the registry stays unaware of its shape. */
   data?: unknown;
   savedAt: Date | null;
 }
 
-export interface ProviderOptionCopy {
+interface ProviderOptionCopy {
   labelKey: string;
   entryDescriptionKeys: { server: string; personal: string; owned?: string };
   addActionLabelKey: string;
@@ -52,6 +53,7 @@ export interface ProviderOptionCopy {
   modelDescriptionKey?: string;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export interface ProviderOptionEntryContext {
   locale: string;
   scope: ProviderOptionScope;
@@ -60,6 +62,7 @@ export interface ProviderOptionEntryContext {
   canManageServer: boolean;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export interface ProviderOptionActionContext {
   locale: string;
   interaction: GlobalRoutableInteraction;
@@ -68,6 +71,7 @@ export interface ProviderOptionActionContext {
   canManageServer: boolean;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export interface ProviderOptionSetupContext {
   locale: string;
   draft: SetupDraftRecord;
@@ -75,17 +79,18 @@ export interface ProviderOptionSetupContext {
   interaction?: GlobalRoutableInteraction | ChatInputCommandInteraction;
 }
 
-export interface ProviderOptionSetupCommitContext extends ProviderOptionSetupContext {
+interface ProviderOptionSetupCommitContext extends ProviderOptionSetupContext {
   serverId: number;
   workspaceKey: string;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export interface ProviderOptionReadiness {
   ready: boolean;
   reasonKey?: string;
 }
 
-export interface ProviderOptionSetup {
+interface ProviderOptionSetup {
   optionLabelKey: string;
   optionDescriptionKey: string;
   summaryKey: string;
@@ -96,6 +101,7 @@ export interface ProviderOptionSetup {
   committed?(context: ProviderOptionSetupCommitContext): Promise<void>;
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` imports this. */
 export type ProviderOptionRemovalStatus = "removed" | "active" | "not-found" | "write-failed";
 
 export interface ProviderOptionSpeechSelectionInput {
@@ -106,6 +112,7 @@ export interface ProviderOptionSpeechSelectionInput {
   replacedModelId?: number;
 }
 
+/** @public Natural Nudges and `providerFeatureExecutors.ts` import this on the subscription launch branch. */
 export interface ProviderOptionServerCredentials {
   apiKey: string;
   usageContext?: ProviderUsageContext;
@@ -149,7 +156,7 @@ export interface ProviderOptionDefinition {
   setup?: ProviderOptionSetup;
 }
 
-export type ProviderOptionFallbackRefOwner = (ref: FallbackModelRef) => string | null;
+type ProviderOptionFallbackRefOwner = (ref: FallbackModelRef) => string | null;
 
 let options: readonly ProviderOptionDefinition[] = [];
 let fallbackRefOwner: ProviderOptionFallbackRefOwner | undefined;
@@ -171,6 +178,7 @@ export function findProviderOption(value: string | null | undefined): ProviderOp
   return options.find((option) => option.value === normalized);
 }
 
+/** @public Release-only `src/modules/supporter-billing/discord/providerOption.ts` registers its fallback owner through this. */
 export function registerProviderOptionFallbackRefOwner(owner: ProviderOptionFallbackRefOwner): () => void {
   const previous = fallbackRefOwner;
   fallbackRefOwner = owner;

@@ -40,7 +40,7 @@ export interface NormalizedOpenRouterVideoOptions {
   aspectRatio: string;
 }
 
-export function getDefaultOpenRouterVideoResolution(model: string): ProviderNativeVideoResolution {
+function getDefaultOpenRouterVideoResolution(model: string): ProviderNativeVideoResolution {
   return model === "x-ai/grok-imagine-video-1.5-lite" ? "480p" : "720p";
 }
 

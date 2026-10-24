@@ -67,7 +67,7 @@ export class PersonaWorkflowUpdateError extends Error {
   }
 }
 
-export interface PersonaWorkflowMessageController {
+interface PersonaWorkflowMessageController {
   readonly anchorMessageId: string;
   readonly deliveryPolicy: "replace-picker";
   replace(payload: PersonaWorkflowComponentsV2Payload): Promise<Message>;

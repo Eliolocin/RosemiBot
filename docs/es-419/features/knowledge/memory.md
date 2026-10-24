@@ -129,7 +129,9 @@ de documentos y fragmentos, subidas, exploración de documentos y eliminación:
 - Sube archivos de texto, PDF o Markdown como conocimiento del servidor. El alcance elige si
   está vinculado solo a esta persona (el predeterminado) o a todo el servidor para que lo
   consulten todas las personas.
-- `/learn history`: extrae el historial de un canal en conocimiento consultable.
+- `/learn history`: extrae el historial de un canal en conocimiento consultable. La opción `learner`
+  elige quién lo aprende: una persona (déjala vacía para la persona principal), **Automático** (cada
+  persona que habló recibe su propia copia) o **Todo el servidor** (todas las personas lo comparten).
 - Explora los documentos guardados fragmento por fragmento. Los administradores del servidor
   pueden editar fragmentos individuales, cambiar a qué canales está limitado un documento, o
   eliminar un solo fragmento sin quitar el documento completo.
@@ -144,7 +146,8 @@ TomoriBot extrae las memorias:
   marcas de tiempo absolutas cuando se mencionan fechas u horas o se pueden inferir.
 - Rol busca escenas, lore, relaciones y eventos memorables sin intentar preservar cada
   detalle pequeño.
-- En personaje extrae memorias desde el punto de vista de la persona seleccionada, usando el
+- En personaje necesita una persona en `learner`. Extrae memorias desde el punto de vista de esa
+  persona, usando el
   prompt, los atributos, las memorias existentes y los documentos relevantes de esa persona como
   contexto.
 

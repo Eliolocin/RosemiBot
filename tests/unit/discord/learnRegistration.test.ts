@@ -9,6 +9,7 @@ type RegistrationPayload = {
   description?: string;
   contexts?: number[];
   default_member_permissions?: string;
+  autocomplete?: boolean;
   options?: RegistrationPayload[];
 };
 
@@ -38,11 +39,12 @@ describe("/learn registration", () => {
     expect(options.length).toBe(6);
     const optionNames = options.map((opt: RegistrationPayload) => opt.name);
     expect(optionNames).toContain("name");
-    expect(optionNames).toContain("scope");
+    expect(optionNames).toContain("learner");
     expect(optionNames).toContain("start_message_id");
     expect(optionNames).toContain("end_message_id");
     expect(optionNames).toContain("prompt");
     expect(optionNames).toContain("limit");
+    expect(options.find((opt) => opt.name === "learner")?.autocomplete).toBe(true);
 
     expect(executionMap.get("learn")?.has("history")).toBe(true);
   }, 30000);

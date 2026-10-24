@@ -25,13 +25,9 @@ export const configureSubcommand = (subcommand: SlashCommandSubcommandBuilder) =
         .setDescription(localizer("en-US", "commands.tool.prompt.snapshot.format_description"))
         .addChoices(
           { name: localizer("en-US", "commands.tool.prompt.snapshot.text_option"), value: "text" },
+          { name: localizer("en-US", "commands.tool.prompt.snapshot.json_tools_option"), value: "json_tools" },
           { name: localizer("en-US", "commands.tool.prompt.snapshot.json_option"), value: "json" },
         ),
-    )
-    .addBooleanOption((option) =>
-      option
-        .setName("fetch_tools")
-        .setDescription(localizer("en-US", "commands.tool.prompt.snapshot.fetch_tools_description")),
     );
 
 export const autocomplete = handleServerPersonaAutocomplete;
@@ -102,8 +98,9 @@ export async function execute(
       return;
     }
 
-    const format = interaction.options.getString("format") === "json" ? "json" : "text";
-    const fetchTools = interaction.options.getBoolean("fetch_tools") ?? false;
+    const formatChoice = interaction.options.getString("format");
+    const includeTools = formatChoice === "json_tools";
+    const format = includeTools || formatChoice === "json" ? "json" : "text";
 
     const inspection = await assemblePromptInspection({
       client,
@@ -114,8 +111,7 @@ export async function execute(
       tomoriState,
       personas,
       selectedPersona,
-      // TXT intentionally omits tools, so users are directed to use JSON for tools.
-      includeTools: fetchTools && format === "json",
+      includeTools,
     });
     if (!inspection) {
       await replyInfoEmbed(interaction, locale, {
@@ -132,7 +128,6 @@ export async function execute(
       guildId: guild.id,
       user: interaction.user,
       locale,
-      toolsRequested: fetchTools,
       includeRerunHints: true,
       editReply: (options) => interaction.editReply(options),
     });

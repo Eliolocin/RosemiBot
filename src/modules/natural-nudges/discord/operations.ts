@@ -59,7 +59,7 @@ interface NaturalNudgesStatus {
 }
 
 /** Decision models one provider offers the server that can answer the checker's `choice` question. */
-export interface CheckerDecisionModelGroup {
+interface CheckerDecisionModelGroup {
   provider: string;
   models: ConfigModelChoice[];
 }

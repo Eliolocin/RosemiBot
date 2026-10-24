@@ -97,7 +97,7 @@ export default {
       model_placeholder: "Planificador de intervenciones espontáneas: predeterminado actual",
       model_same_as_chat: "Planificador de intervenciones espontáneas: predeterminado actual, {model}",
       model_placeholder_selected: "Planificador de intervenciones espontáneas: {model}",
-      model_modal_title: "Elegir planificador de intervenciones espontáneas",
+      model_modal_title: "Elegir planificador de intervenciones",
       model_unavailable: "No disponible",
       model_same_as_chat_option: "Predeterminado actual",
       model_chat_no_structured:

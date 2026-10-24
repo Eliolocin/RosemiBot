@@ -155,7 +155,7 @@ export async function rejectOnMessageTriggerCooldown(params: {
   return true;
 }
 
-export async function setMessageTriggerCooldownForAdmission(params: {
+async function setMessageTriggerCooldownForAdmission(params: {
   serverDiscId: string;
   userDiscId: string;
   channelId: string;
