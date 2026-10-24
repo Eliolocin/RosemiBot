@@ -15,7 +15,7 @@ import {
   isProviderModelError,
 } from "@/utils/provider/providerErrorClassification";
 import { localizer } from "@/utils/text/localizer";
-import { resolveSupporterNudgeKey } from "@/modules/supporter-billing/discord/conversionNudge";
+import { withSupporterNudge, type SupporterNudgeContext } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const PERSONAL_TIP_KEYS = {
   "genai.tips.adjust_parameters": "genai.tips.adjust_parameters_personal",
@@ -56,6 +56,14 @@ export function resolveProviderErrorFooter(args: {
 /** Guild channels carry their guild; a DM channel has none, and test doubles need not implement `isDMBased`. */
 export function isDirectMessageChannel(channel: object): boolean {
   return !("guild" in channel && channel.guild);
+}
+
+function supporterNudgeContext(context: StreamContext): SupporterNudgeContext {
+  return {
+    userDiscId: context.triggererDiscId,
+    serverId: context.tomoriState.server_id,
+    credentialSource: context.textCredentialSource,
+  };
 }
 
 /**
@@ -128,20 +136,11 @@ export class StreamErrorUi {
         ? { titleKey: denialCopy.titleKey, tipKeys: [], color: ColorCode.ERROR }
         : this.resolveProviderErrorPresentation(providerError, provider, context);
 
-      const nudgeKey = denied
-        ? null
-        : await resolveSupporterNudgeKey({
-            event: "provider-error",
-            error: providerError,
-            userDiscId: context.triggererDiscId,
-            serverId: context.tomoriState.server_id,
-            credentialSource: context.textCredentialSource,
-          });
       await sendStandardEmbed(context.channel, locale, {
         titleKey,
         description: providerDescription,
         color,
-        tipKeys: nudgeKey ? [...tipKeys, nudgeKey] : tipKeys,
+        tipKeys: denied ? tipKeys : await withSupporterNudge(tipKeys, supporterNudgeContext(context)),
         restrictedDetail,
         ...sourceFooter,
       }).catch((e) => log.warn("Stream: Failed to send provider error embed to channel", e));
@@ -155,12 +154,15 @@ export class StreamErrorUi {
         reason: providerError.type || "unknown",
       },
       color: ColorCode.ERROR,
-      tipKeys: [
-        "genai.tips.refresh_context",
-        context.textCredentialSource === "personal"
-          ? "genai.tips.switch_model_provider_personal"
-          : "genai.tips.switch_model_provider",
-      ],
+      tipKeys: await withSupporterNudge(
+        [
+          "genai.tips.refresh_context",
+          context.textCredentialSource === "personal"
+            ? "genai.tips.switch_model_provider_personal"
+            : "genai.tips.switch_model_provider",
+        ],
+        supporterNudgeContext(context),
+      ),
       restrictedDetail,
       ...sourceFooter,
     }).catch((e) => log.warn("Stream: Failed to send error embed to channel", e));
@@ -204,7 +206,7 @@ export class StreamErrorUi {
       titleKey: "genai.generic_error_title",
       descriptionKey: "genai.stream.streaming_failed_description",
       color: ColorCode.ERROR,
-      tipKeys: ["genai.tips.refresh_context"],
+      tipKeys: await withSupporterNudge(["genai.tips.refresh_context"], supporterNudgeContext(context)),
       footerKey: TOMORIBOT_ERROR_FOOTER_KEY,
     }).catch((e) => log.warn("Stream: Failed to send generic error embed to channel", e));
   }

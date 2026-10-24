@@ -4,6 +4,10 @@ export default {
     request: {
       title: `Acceso por suscripción`,
       allowance_title: `Cuota insuficiente`,
+      minimum_balance_title: `Requisito de cuota del modelo`,
+      model_unknown: `Este modelo`,
+      minimum_balance: `{model} requiere más cuota restante para iniciar la generación de imágenes o video. Aún puedes usar tu cuota restante con otro modelo. Elige uno en {config}. {fallback}`,
+      minimum_balance_reason: `{model} requiere más cuota restante para iniciar la generación de imágenes o video. Elige otro modelo en {config} para usar tu cuota restante.`,
       scope: {
         personal: `Tu suscripción`,
         server: `La suscripción de este servidor`,

@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import type { Client, ModalBuilder, TextChannel } from "discord.js";
 import type { TomoriState } from "@/types/db/schema";
 import type { ProviderError, StreamContext, StreamProvider } from "@/types/stream/interfaces";
 import { StreamErrorUi } from "@/utils/discord/stream/errorUi";
+import { initializeLocalizer } from "@/utils/text/localizer";
 import { localizedCopy } from "../../helpers/localeCases";
 import { useEnvSandbox } from "../../helpers/env";
 import { supporterIdentityRepository, supporterSponsorshipRepository } from "@/modules/supporter-billing/db";
@@ -107,6 +108,7 @@ const RATE_LIMIT_ERROR: ProviderError = {
 describe("provider error subscription guidance", () => {
   useEnvSandbox(["RUN_ENV", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
   const spies: Array<{ mockRestore(): void }> = [];
+  beforeAll(initializeLocalizer);
   beforeEach(() => {
     process.env.RUN_ENV = "production";
     process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
@@ -134,6 +136,19 @@ describe("provider error subscription guidance", () => {
           ),
         );
       }
+    }
+  });
+
+  it("adds guidance to BYOK failures beyond capacity and quota errors", async () => {
+    const errors: ProviderError[] = [
+      { type: "api_error", code: "401", message: "Invalid key", retryable: false },
+      { type: "model_error", message: "Unknown model", retryable: false },
+      { type: "content_blocked", message: "Blocked", retryable: false },
+      { type: "timeout", message: "Timed out", retryable: true },
+    ];
+    for (const error of errors) {
+      const tips = await renderTips(error, "server", { userDiscId: "123456789012345678" });
+      expect(tips).toContain(localizedCopy("en-US", "commands.subscribe.conversion_nudge"));
     }
   });
 

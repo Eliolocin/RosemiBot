@@ -4,6 +4,10 @@ export default {
     request: {
       title: `Acesso por Assinatura`,
       allowance_title: `Cota insuficiente`,
+      minimum_balance_title: `Requisito de cota do modelo`,
+      model_unknown: `Este modelo`,
+      minimum_balance: `{model} requer mais cota restante para iniciar a geração de imagem ou vídeo. Você ainda pode usar sua cota restante com outro modelo. Escolha um em {config}. {fallback}`,
+      minimum_balance_reason: `{model} requer mais cota restante para iniciar a geração de imagem ou vídeo. Escolha outro modelo em {config} para usar sua cota restante.`,
       scope: {
         personal: `Sua assinatura`,
         server: `A assinatura deste servidor`,

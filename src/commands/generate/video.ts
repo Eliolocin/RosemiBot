@@ -44,6 +44,7 @@ import { isOpenRouterVideoCapabilityError } from "@/providers/openrouter/openrou
 import { ProviderVideoFilteredError } from "@/providers/utils/providerVideoErrors";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { parsePositiveIntegerEnv } from "@/utils/misc/envFlags";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const MODAL_CUSTOM_ID = "generate_video_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -172,6 +173,8 @@ export async function execute(
   }
 
   const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(baseTomoriState, userData.user_id ?? null);
+  const nudgeTips = (credentialSource: "server" | "personal") =>
+    withSupporterNudge([], { userDiscId: interaction.user.id, serverId: tomoriState.server_id, credentialSource });
 
   if (!tomoriState.config.videogen_enabled) {
     await replyInfoEmbed(interaction, locale, {
@@ -210,6 +213,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.personal_provider_required_title",
         descriptionKey: "general.errors.personal_provider_required_description",
+        tipKeys: await nudgeTips("personal"),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -235,6 +239,7 @@ export async function execute(
         await replyInfoEmbed(interaction, locale, {
           titleKey: "general.errors.personal_provider_credentials_error_title",
           descriptionKey: "general.errors.personal_provider_credentials_error_description",
+          tipKeys: await nudgeTips("personal"),
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
         });
@@ -245,6 +250,7 @@ export async function execute(
         await replyInfoEmbed(interaction, locale, {
           titleKey: "commands.generate.video.no_video_model_title",
           descriptionKey: "commands.generate.video.no_video_model_description",
+          tipKeys: await nudgeTips("server"),
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
         });
@@ -254,6 +260,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "commands.generate.video.no_api_key_title",
         descriptionKey: "commands.generate.video.no_api_key_description",
+        tipKeys: await nudgeTips("server"),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -276,6 +283,7 @@ export async function execute(
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.generate.video.no_video_model_title",
       descriptionKey: "commands.generate.video.no_video_model_description",
+      tipKeys: await nudgeTips(videoCreds.source),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -317,6 +325,7 @@ export async function execute(
               : "commands.generate.video.quota_exceeded_description",
         descriptionVars,
         footerKey: "commands.generate.video.quota_exceeded_footer",
+        tipKeys: await nudgeTips("server"),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -549,44 +558,33 @@ export async function execute(
       videoData = result.videoData;
       videoFilename = result.filename ?? videoFilename;
     } else {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.unsupported_provider_description", {
-                provider: executionProvider,
-              }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.error_title",
+        descriptionKey: "commands.generate.video.unsupported_provider_description",
+        descriptionVars: { provider: executionProvider },
+        color: ColorCode.ERROR,
+        tipKeys: await nudgeTips(videoCreds.source),
       });
       return;
     }
 
     if (!videoData) {
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-            .setDescription(localizer(locale, "commands.generate.video.no_data_description"))
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.error_title",
+        descriptionKey: "commands.generate.video.no_data_description",
+        color: ColorCode.ERROR,
+        tipKeys: await nudgeTips(videoCreds.source),
       });
       return;
     }
 
     if (videoData.length > DISCORD_FILE_SIZE_LIMIT) {
-      const sizeMB = (videoData.length / (1024 * 1024)).toFixed(1);
-      await modalSubmitInteraction.editReply({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle(localizedStatusTitle(locale, "commands.generate.video.file_too_large_title", ColorCode.ERROR))
-            .setDescription(
-              localizer(locale, "commands.generate.video.file_too_large_description", { size_mb: sizeMB }),
-            )
-            .setColor(ColorCode.ERROR),
-        ],
+      await replyInfoEmbed(modalSubmitInteraction, locale, {
+        titleKey: "commands.generate.video.file_too_large_title",
+        descriptionKey: "commands.generate.video.file_too_large_description",
+        descriptionVars: { size_mb: (videoData.length / (1024 * 1024)).toFixed(1) },
+        color: ColorCode.ERROR,
+        tipKeys: await nudgeTips(videoCreds.source),
       });
       return;
     }
@@ -650,27 +648,31 @@ export async function execute(
       return;
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorEmbed = new EmbedBuilder()
-      .setTitle(localizedStatusTitle(locale, "commands.generate.video.error_title", ColorCode.ERROR))
-      .setDescription(
-        isOpenRouterVideoCapabilityError(error)
-          ? localizer(
-              locale,
-              error.code === "last_frame_unsupported"
-                ? "commands.generate.video.loop_unsupported_description"
-                : "commands.generate.video.reference_unsupported_description",
-              { model: error.model },
-            )
-          : errorMessage.includes("timed out")
-            ? localizer(locale, "commands.generate.video.timeout_description")
-            : errorMessage.includes("content") || errorMessage.includes("safety") || errorMessage.includes("blocked")
-              ? localizer(locale, "commands.generate.video.blocked_description")
-              : localizer(locale, "commands.generate.video.generic_error_description"),
-      )
-      .setColor(ColorCode.ERROR);
+    const tipKeys = await nudgeTips(videoCreds.source);
+    const description = isOpenRouterVideoCapabilityError(error)
+      ? localizer(
+          locale,
+          error.code === "last_frame_unsupported"
+            ? "commands.generate.video.loop_unsupported_description"
+            : "commands.generate.video.reference_unsupported_description",
+          { model: error.model },
+        )
+      : errorMessage.includes("timed out")
+        ? localizer(locale, "commands.generate.video.timeout_description")
+        : errorMessage.includes("content") || errorMessage.includes("safety") || errorMessage.includes("blocked")
+          ? localizer(locale, "commands.generate.video.blocked_description")
+          : localizer(locale, "commands.generate.video.generic_error_description");
 
     if (modalSubmitInteraction) {
-      await safeReply(modalSubmitInteraction.editReply({ embeds: [errorEmbed] }), "video error embed");
+      await safeReply(
+        replyInfoEmbed(modalSubmitInteraction, locale, {
+          titleKey: "commands.generate.video.error_title",
+          description,
+          color: ColorCode.ERROR,
+          tipKeys,
+        }),
+        "video error embed",
+      );
     } else {
       await safeReply(
         replyInfoEmbed(interaction, locale, {
@@ -678,6 +680,7 @@ export async function execute(
           descriptionKey: "commands.generate.video.generic_error_description",
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
+          tipKeys,
         }),
         "video fallback error embed",
       );

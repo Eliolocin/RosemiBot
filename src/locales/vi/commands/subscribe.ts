@@ -4,6 +4,10 @@ export default {
     request: {
       title: `Quyền truy cập gói đăng ký`,
       allowance_title: `Hạn mức không đủ`,
+      minimum_balance_title: `Yêu cầu hạn mức model`,
+      model_unknown: `Model này`,
+      minimum_balance: `{model} yêu cầu thêm hạn mức còn lại để bắt đầu tạo hình ảnh hoặc video. Bạn vẫn có thể dùng hạn mức còn lại với model khác. Hãy chọn một model trong {config}. {fallback}`,
+      minimum_balance_reason: `{model} yêu cầu thêm hạn mức còn lại để bắt đầu tạo hình ảnh hoặc video. Hãy chọn model khác trong {config} để dùng hạn mức còn lại của bạn.`,
       scope: {
         personal: `Gói đăng ký của bạn`,
         server: `Gói đăng ký của máy chủ này`,

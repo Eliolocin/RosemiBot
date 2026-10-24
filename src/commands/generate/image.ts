@@ -49,6 +49,7 @@ import { executeAutoImageCommand } from "@/utils/image/autoImageCommand";
 import { prepareGeneratedImage } from "@/utils/image/generatedImageMetadata";
 import { buildImageGenerationInputAttachment } from "@/utils/image/imageGenerationInput";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const MODAL_CUSTOM_ID = "generate_image_modal";
 const PROMPT_INPUT_ID = "prompt_input";
@@ -185,6 +186,8 @@ export async function execute(
   }
 
   const { tomoriState } = await applyPersonalProviderSelectionsToTomoriState(baseTomoriState, userData.user_id ?? null);
+  const nudgeTips = (tipKeys: string[], credentialSource: "server" | "personal") =>
+    withSupporterNudge(tipKeys, { userDiscId: interaction.user.id, serverId: tomoriState.server_id, credentialSource });
 
   if (!tomoriState.config.imagegen_enabled) {
     await replyInfoEmbed(interaction, locale, {
@@ -223,6 +226,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.personal_provider_required_title",
         descriptionKey: "general.errors.personal_provider_required_description",
+        tipKeys: await nudgeTips([], "personal"),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -248,6 +252,7 @@ export async function execute(
         await replyInfoEmbed(interaction, locale, {
           titleKey: "general.errors.personal_provider_credentials_error_title",
           descriptionKey: "general.errors.personal_provider_credentials_error_description",
+          tipKeys: await nudgeTips([], "personal"),
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
         });
@@ -268,6 +273,7 @@ export async function execute(
         await replyInfoEmbed(interaction, locale, {
           titleKey: "commands.generate.image.no_diffusion_model_title",
           descriptionKey: "commands.generate.image.no_diffusion_model_description",
+          tipKeys: await nudgeTips([], "server"),
           color: ColorCode.ERROR,
           flags: MessageFlags.Ephemeral,
         });
@@ -277,6 +283,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "commands.generate.image.no_api_key_title",
         descriptionKey: "commands.generate.image.no_api_key_description",
+        tipKeys: await nudgeTips([], "server"),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -300,6 +307,7 @@ export async function execute(
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.generate.image.no_diffusion_model_title",
       descriptionKey: "commands.generate.image.no_diffusion_model_description",
+      tipKeys: await nudgeTips([], imageCreds.source),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -325,6 +333,7 @@ export async function execute(
       titleKey: "commands.generate.image.unsupported_provider_title",
       descriptionKey: "commands.generate.image.unsupported_provider_description",
       descriptionVars: { provider: getProviderDisplayName(executionProvider) },
+      tipKeys: await nudgeTips([], imageCreds.source),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -368,6 +377,7 @@ export async function execute(
         descriptionKey: errorDescriptionKey,
         descriptionVars,
         footerKey: "commands.generate.image.quota_exceeded_footer",
+        tipKeys: await nudgeTips([], imageCreds.source),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -712,9 +722,12 @@ export async function execute(
       errorMessage.includes("quota") ||
       errorMessage.includes("PERMISSION_DENIED")
     ) {
-      const tipKeys = isPersonalImage
-        ? ["genai.tips.top_up_provider_balance", "genai.tips.disable_personal_text_override"]
-        : ["genai.tips.wait_and_retry"];
+      const tipKeys = await nudgeTips(
+        isPersonalImage
+          ? ["genai.tips.top_up_provider_balance", "genai.tips.disable_personal_text_override"]
+          : ["genai.tips.wait_and_retry"],
+        imageCreds.source,
+      );
       await replyInfoEmbed(replyTarget, locale, {
         titleKey: "commands.generate.image.error_billing_title",
         descriptionKey: "commands.generate.image.error_billing_description",
@@ -732,15 +745,18 @@ export async function execute(
         descriptionKey: "commands.generate.image.error_safety_description",
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
-        tipKeys: ["genai.tips.shorten_message"],
+        tipKeys: await nudgeTips(["genai.tips.shorten_message"], imageCreds.source),
         ...recoveryOptions(),
       });
       return;
     }
 
-    const tipKeys = isPersonalImage
-      ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
-      : ["genai.tips.wait_and_retry"];
+    const tipKeys = await nudgeTips(
+      isPersonalImage
+        ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
+        : ["genai.tips.wait_and_retry"],
+      imageCreds.source,
+    );
     await replyInfoEmbed(replyTarget, locale, {
       titleKey: "commands.generate.image.error_generation_failed_title",
       descriptionKey: "commands.generate.image.error_generation_failed_description",

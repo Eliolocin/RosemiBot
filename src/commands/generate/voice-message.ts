@@ -95,6 +95,7 @@ import type { PersonalSpotlightStatus } from "@/utils/db/repositories/UserReposi
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
 import { getProviderRequestFailureCopy } from "@/utils/provider/providerUsage";
 import { buildRestrictedErrorDetail } from "@/utils/discord/stream/errorUi";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const BACKEND_LABEL_KEYS: Record<VoiceBackendKey, string> = {
   elevenlabs: "commands.generate.voice-message.backend_elevenlabs",
@@ -332,6 +333,8 @@ export async function execute(
   }
 
   const mainPersona = allPersonas.find((persona) => !persona.is_alter) ?? allPersonas[0];
+  const nudgeTips = (credentialSource: "server" | "personal" | "supporter") =>
+    withSupporterNudge([], { userDiscId: interaction.user.id, serverId: mainPersona.server_id, credentialSource });
   if (!mainPersona.config.voice_message_enabled) {
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.generate.voice-message.disabled_title",
@@ -504,6 +507,7 @@ export async function execute(
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.generate.voice-message.no_voice_source_title",
       descriptionKey: "commands.generate.voice-message.no_voice_source_description",
+      tipKeys: await nudgeTips("server"),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -532,6 +536,7 @@ export async function execute(
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.generate.voice-message.no_api_key_title",
       descriptionKey: "commands.generate.voice-message.no_api_key_description",
+      tipKeys: await nudgeTips("server"),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -809,6 +814,7 @@ export async function execute(
             descriptionKey: "commands.generate.voice-message.synthesis_failed_description",
             descriptionVars: { error: synthesisResult.details ?? "unknown error" },
             color: ColorCode.ERROR,
+            tipKeys: await nudgeTips(synthesisResult.attempts?.at(-1)?.owner.kind ?? "server"),
             ...(synthesisResult.providerDetail
               ? {
                   restrictedDetail: buildRestrictedErrorDetail(synthesisResult.providerDetail, {

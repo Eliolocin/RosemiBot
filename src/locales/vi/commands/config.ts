@@ -155,6 +155,10 @@ export default {
       interest_select_placeholder: "Chọn hoặc thêm một sở thích...",
       interest_add_option: "+ Thêm sở thích",
       interests_remove_button: "Xóa sở thích",
+      interests_generate_button: "Tạo sở thích",
+      generate_no_model_detail:
+        "Chưa có model khả dụng nào có thể viết sở thích. Hãy chọn Bộ lập kế hoạch nudge khi im lặng trong Tiện ích mở rộng > Natural Nudges.",
+      generate_failed_detail: "Lần này mình không thể nghĩ ra sở thích mới. Hãy thử lại hoặc tự thêm một sở thích.",
       interests_remove_modal_title: "Xóa sở thích",
       interests_remove_description: "Bỏ chọn sở thích để xóa. Thao tác này không thể hoàn tác.",
       interest_modal_title: "Sở thích",

@@ -264,6 +264,11 @@ Usa \`/config\` > Modelos > Cambiar modelos para cambiar a un modelo que admita 
 **Próximos pasos:**
 1. Usa \`/config\` > Modelos > Cambiar modelos para cambiar a un modelo con herramientas, O
 2. Vuelve a generar sin búsqueda web (elige "No" cuando se te pregunte)`,
+      web_search_failed_title: `Generación de persona cancelada`,
+      web_search_failed_description: `Se canceló la generación de persona porque falló la búsqueda web solicitada.
+
+**Qué puedes hacer**
+Inténtalo de nuevo en un momento o elige \`No\` en \`¿Buscar en la web?\` para generar a partir de tu descripción. Si la búsqueda sigue fallando, pide a quien administre el servidor que revise la búsqueda web en \`/config\` y el acceso al proveedor en \`/providers\`.`,
       vision_credentials_unavailable_title: `🔴 Credenciales del modelo de visión no disponibles`,
       vision_credentials_unavailable_description: `Tu modelo de visión (**{vision_model_name}**) funciona en el proveedor **{vision_provider}**, pero no se pudo usar su clave de API guardada para describir la imagen. Reconfigura las credenciales de ese proveedor con \`/providers\`, o revisa \`/config\` > Modelos.`,
       invalid_image_title: `🔴 Imagen inválida`,

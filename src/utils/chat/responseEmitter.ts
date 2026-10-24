@@ -2,6 +2,7 @@ import type { AnyThreadChannel, BaseGuildTextChannel, Client, Message, TextChann
 import { ChannelType } from "discord.js";
 import type { WebhookCreateErrorReason } from "@/utils/discord/webhook/fallback";
 import { getOrCreateWebhook, resolvePersonaWebhookIdentity } from "@/utils/discord/webhookManager";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { TOMORIBOT_ERROR_FOOTER_KEY } from "@/utils/discord/stream/errorUi";
 import { ColorCode, log } from "@/utils/misc/logger";
@@ -231,7 +232,11 @@ async function emitGenerationError(context: ChatTurnContext, error: unknown): Pr
       color: ColorCode.ERROR,
       titleKey: "genai.generic_error_title",
       descriptionKey: "genai.stream.streaming_failed_description",
-      tipKeys: ["genai.tips.refresh_context"],
+      tipKeys: await withSupporterNudge(["genai.tips.refresh_context"], {
+        userDiscId: context.userDiscId,
+        serverId: context.tomoriState.server_id,
+        credentialSource: context.textCredentialSource,
+      }),
       footerKey: TOMORIBOT_ERROR_FOOTER_KEY,
     },
     {

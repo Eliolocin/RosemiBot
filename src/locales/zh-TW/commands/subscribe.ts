@@ -4,6 +4,10 @@ export default {
     request: {
       title: `訂閱存取`,
       allowance_title: `配額不足`,
+      minimum_balance_title: `模型配額要求`,
+      model_unknown: `此模型`,
+      minimum_balance: `{model}需要更多剩餘配額才能開始生成圖像或影片。你仍可使用其他模型消耗剩餘配額。請在{config}中選擇一個。{fallback}`,
+      minimum_balance_reason: `{model}需要更多剩餘配額才能開始生成圖像或影片。請在{config}中選擇其他模型以使用你的剩餘配額。`,
       scope: {
         personal: `你的訂閱`,
         server: `此伺服器的訂閱`,

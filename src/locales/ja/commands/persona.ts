@@ -264,6 +264,11 @@ export default {
 **次のステップ:**
 1. \`/config\` > モデル > モデルの切り替えを使用してツール対応モデルに切り替える、または
 2. ウェブ検索なしで再生成する（質問されたら「いいえ」を選択）`,
+      web_search_failed_title: `ペルソナの生成を中止しました`,
+      web_search_failed_description: `要求されたウェブ検索に失敗したため、ペルソナの生成を中止しました。
+
+**対応方法**
+しばらく待ってから再試行するか、「ウェブを検索しますか？」で「いいえ」を選択して説明文から生成してください。検索が失敗し続ける場合は、サーバー管理者に \`/config\` のウェブ検索設定と \`/providers\` のプロバイダー接続を確認してもらってください。`,
       vision_credentials_unavailable_title: `🔴 ビジョンモデルの認証情報を利用できません`,
       vision_credentials_unavailable_description: `ビジョンモデル（**{vision_model_name}**）はプロバイダー **{vision_provider}** で動作していますが、保存されたAPIキーを画像の説明に使用できませんでした。\`/providers\`でそのプロバイダーの認証情報を再設定するか、\`/config\` > モデルを確認してください。`,
       invalid_image_title: `🔴 無効な画像`,

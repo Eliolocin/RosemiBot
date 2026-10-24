@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, mock } from "bun:test";
 import { resolveSupporterNudgeKey } from "@/modules/supporter-billing/discord/conversionNudge";
 import type { SupporterEntitlementRow, SupporterIdentityRow } from "@/modules/supporter-billing/db";
-import type { ProviderError } from "@/types/stream/interfaces";
 import { useEnvSandbox } from "../../helpers/env";
 
 const now = new Date();
@@ -34,8 +33,6 @@ const entitlement: SupporterEntitlementRow = {
   updated_at: now,
 };
 const context = {
-  event: "provider-error" as const,
-  error: { type: "rate_limit", message: "HTTP 429", retryable: true } satisfies ProviderError,
   userDiscId: identity.discord_user_id,
   serverId: 10,
   credentialSource: "server" as const,
@@ -81,28 +78,6 @@ describe("subscription conversion eligibility", () => {
     expect(deps.identities.loadByDiscordUserId).not.toHaveBeenCalled();
   });
 
-  it("offers guidance only for reliability and classified credit or quota failures", async () => {
-    const errors: Array<[ProviderError, boolean]> = [
-      [{ type: "rate_limit", message: "HTTP 429", retryable: true }, true],
-      [{ type: "provider_overloaded", message: "Overloaded", retryable: true }, true],
-      [{ type: "api_error", code: "503", message: "Unavailable", retryable: true }, true],
-      [{ type: "api_error", code: "402", message: "Insufficient credits", retryable: false }, true],
-      [{ type: "api_error", message: "Exceeded your current quota", retryable: false }, true],
-      [{ type: "api_error", code: "402", message: "Request refused", retryable: false }, false],
-      [{ type: "api_error", code: "401", message: "Invalid key", retryable: false }, false],
-      [{ type: "model_error", message: "Unknown model", retryable: false }, false],
-      [{ type: "content_blocked", message: "Blocked", retryable: false }, false],
-      [{ type: "timeout", message: "Timed out", retryable: true }, false],
-    ];
-    for (const [error, eligible] of errors) {
-      for (const credentialSource of ["server", "personal"] as const) {
-        const deps = dependencies();
-        const result = await resolveSupporterNudgeKey({ ...context, error, credentialSource }, deps);
-        expect(result !== null).toBe(eligible);
-      }
-    }
-  });
-
   it("does not promote subscriptions to active members or already sponsored servers", async () => {
     const memberDeps = dependencies();
     memberDeps.identities.loadByDiscordUserId.mockResolvedValue(identity);
@@ -138,14 +113,12 @@ describe("subscription conversion eligibility", () => {
     expect(await resolveSupporterNudgeKey(context, deps)).toBeNull();
   });
 
-  it("keeps guidance available across repeated failures and completions", async () => {
+  it("keeps guidance available across repeated calls", async () => {
     const deps = dependencies();
-    for (const credentialSource of ["server", "personal"] as const) {
-      for (const event of ["provider-error", "completion", "completion", "provider-error"] as const) {
-        expect(await resolveSupporterNudgeKey({ ...context, event, credentialSource }, deps)).toBe(
-          "commands.subscribe.conversion_nudge",
-        );
-      }
+    for (const credentialSource of ["server", "personal", "server", "personal"] as const) {
+      expect(await resolveSupporterNudgeKey({ ...context, credentialSource }, deps)).toBe(
+        "commands.subscribe.conversion_nudge",
+      );
     }
   });
 });

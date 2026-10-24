@@ -7,6 +7,11 @@ aiGenerated: true
 
 TomoriBot se conecta a provedores externos de IA em vez de hospedar um modelo integrado. Você pode conectar serviços hospedados como Google Gemini, OpenRouter e NovelAI ou apontá-los para endpoints auto-hospedados locais. Você precisa de pelo menos um provedor para começar a conversar.
 
+## Assinatura
+
+Em instâncias hospedadas do TomoriBot com a Assinatura habilitada, use `/subscribe` para vincular sua assinatura do Patreon e conferir sua cota restante. Um membro com permissão de Gerenciar Servidor pode escolher `Patrocinar este servidor` na visão geral ou `+ Patrocinar Servidor Atual` em `Servidores Patrocinados`. O comando `/providers` também oferece a opção de patrocínio.
+Cada servidor tem um patrocinador ativo. A opção `Servidor já patrocinado` fica desabilitada até que esse patrocínio seja removido. Você pode patrocinar vários servidores; eles compartilham sua cota com seu uso pessoal.
+
 ## Chaves de API
 <!-- anchor: api-keys -->
 

@@ -187,5 +187,7 @@ export default {
     triggered_footer_one_time: `生成が繰り返し失敗したため、スケジュールされた内容をそのまま表示しています。この1回限りのスケジュールは完了済みとして削除されました。`,
     triggered_footer_recurring_retained: `生成が繰り返し失敗したため、スケジュールされた内容をそのまま表示しています。次回は元の周期を維持して実行されます。管理するには \`/scheduled-task edit\` または \`/scheduled-task remove\` を使用してください。`,
     triggered_footer_recurring_removed: `生成が繰り返し失敗し、次回の実行も維持できませんでした。この繰り返しスケジュールは削除されました。問題の解決後に作成し直してください。`,
+    removed_after_failures_title: `スケジュール項目を削除しました`,
+    removed_after_failures_description: `スケジュール項目 \`{reminder_id}\` は {failed_occurrences} 回連続で失敗し、チャンネルに投稿できなかったため削除されました。チャンネル権限またはAIプロバイダーが修正されたら、再度作成してください。\n**元の内容：**`,
   },
 };

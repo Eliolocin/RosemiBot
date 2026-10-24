@@ -905,7 +905,6 @@ async function runSetupPostCommitEffects(input: {
   const nudgeKey =
     access.mode === "catalog" || access.mode === "custom-endpoint"
       ? await resolveSupporterNudgeKey({
-          event: "completion",
           userDiscId: input.interaction.user.id,
           serverId: input.serverInternalId,
           credentialSource: "server",

@@ -153,6 +153,11 @@ export default {
       interest_select_placeholder: "Selecione ou adicione um interesse...",
       interest_add_option: "+ Adicionar Interesse",
       interests_remove_button: "Remover Interesses",
+      interests_generate_button: "Gerar interesses",
+      generate_no_model_detail:
+        "Nenhum modelo utilizável pode redigir interesses ainda. Escolha um planejador de cutucadas de inatividade em Plugins > Natural Nudges.",
+      generate_failed_detail:
+        "Não consegui sugerir novos interesses desta vez. Tente novamente ou adicione um você mesmo.",
       interests_remove_modal_title: "Remover Interesses",
       interests_remove_description: "Desmarque um interesse para removê-lo. Isso não pode ser desfeito.",
       interest_modal_title: "Interesse",

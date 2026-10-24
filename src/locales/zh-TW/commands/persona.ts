@@ -264,6 +264,11 @@ export default {
 **接下來可以這樣做：**
 1. 用 \`/config\` > 模型 > 切換模型切換到支援工具的模型，或
 2. 不要網路搜尋，重新生成一次（被問到時選「否」）`,
+      web_search_failed_title: `已中止人格生成`,
+      web_search_failed_description: `因請求的網路搜尋失敗，人格生成已中止。
+
+**你可以做的事**
+請稍後重試，或在「是否搜尋網路？」中選擇「否」直接根據你的描述生成。若搜尋持續失敗，請聯絡伺服器管理員在 \`/config\` 中檢查網路搜尋設定，並在 \`/providers\` 中檢查供應商存取權限。`,
       vision_credentials_unavailable_title: `🔴 視覺模型的憑證不可用`,
       vision_credentials_unavailable_description: `你的視覺模型（**{vision_model_name}**）在供應商 **{vision_provider}** 上執行，但無法用它的 API 金鑰描述圖片。請用 \`/providers\` 重新設定該供應商的憑證，或到 \`/config\` > 模型 檢查一下。`,
       invalid_image_title: `🔴 圖片無效`,

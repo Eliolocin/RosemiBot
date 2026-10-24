@@ -2,6 +2,7 @@ import { PrivacyLevel } from "@/types/db/schema";
 import { ContextItemTag } from "@/types/misc/context";
 import { recordLastReplyUsage } from "@/utils/cache/lastReplyUsageCache";
 import { incrementStmTurnCounter, storeShortTermMemory } from "@/utils/cache/shortTermMemoryCache";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 import { sendStandardEmbed } from "@/utils/discord/embedHelper";
 import { resolveProviderErrorFooter } from "@/utils/discord/stream/errorUi";
 import { hasThoughtLogContent, sendAttributionOnlyEmbed, sendThoughtLogEmbed } from "@/utils/discord/thoughtLog";
@@ -344,12 +345,19 @@ async function maybeScheduleEmptyResponseRetry(context: ChatTurnContext, result:
     }
 
     const isPersonal = context.textCredentialSource === "personal";
-    const tipKeys = [
-      "genai.tips.refresh_context",
-      ...(isPersonal
-        ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
-        : ["genai.tips.switch_model_provider"]),
-    ];
+    const tipKeys = await withSupporterNudge(
+      [
+        "genai.tips.refresh_context",
+        ...(isPersonal
+          ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
+          : ["genai.tips.switch_model_provider"]),
+      ],
+      {
+        userDiscId: context.userDiscId,
+        serverId: context.tomoriState.server_id,
+        credentialSource: context.textCredentialSource,
+      },
+    );
 
     await sendStandardEmbed(
       context.channel as Parameters<typeof sendStandardEmbed>[0],

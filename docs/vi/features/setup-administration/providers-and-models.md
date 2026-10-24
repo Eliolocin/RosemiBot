@@ -7,6 +7,11 @@ aiGenerated: true
 
 TomoriBot kết nối với các nhà cung cấp AI bên ngoài thay vì lưu trữ model tích hợp sẵn. Bạn có thể kết nối các dịch vụ được lưu trữ như Google Gemini, OpenRouter và NovelAI hoặc trỏ cô ấy đến các điểm cuối self-hosting cục bộ. Bạn cần ít nhất một nhà cung cấp để bắt đầu trò chuyện.
 
+## Gói đăng ký
+
+Trên các bản cài đặt TomoriBot được lưu trữ có bật Gói đăng ký, hãy dùng `/subscribe` để liên kết tư cách thành viên Patreon của bạn và xem hạn mức còn lại. Thành viên có quyền Quản lý máy chủ có thể chọn `Tài trợ máy chủ này` trong phần tổng quan hoặc `+ Tài trợ máy chủ hiện tại` trong mục `Máy chủ được tài trợ`. `/providers` cũng cung cấp tùy chọn tài trợ.
+Mỗi máy chủ có một người tài trợ đang hoạt động. Mục `Máy chủ đã được tài trợ` bị vô hiệu hóa cho đến khi khoản tài trợ đó được gỡ bỏ. Bạn có thể tài trợ nhiều máy chủ; các máy chủ này sẽ dùng chung hạn mức với mức dùng cá nhân của bạn.
+
 ## API key
 <!-- anchor: api-keys -->
 

@@ -150,6 +150,10 @@ export default {
       interest_select_placeholder: "興味・関心を選択または追加…",
       interest_add_option: "+ 興味・関心を追加",
       interests_remove_button: "興味・関心を削除",
+      interests_generate_button: "興味・関心を自動生成",
+      generate_no_model_detail:
+        "興味・関心を記述できるモデルがまだありません。「プラグイン」>「Natural Nudges」でアイドルナッジプランナーを選択してください。",
+      generate_failed_detail: "今回は新しい興味・関心を提案できませんでした。再試行するか、ご自身で追加してください。",
       interests_remove_modal_title: "興味・関心を削除",
       interests_remove_description: "削除する興味・関心のチェックを外してください。この操作は取り消せません。",
       interest_modal_title: "興味・関心",

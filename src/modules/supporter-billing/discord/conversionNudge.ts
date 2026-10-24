@@ -6,18 +6,14 @@ import {
   supporterSponsorshipRepository,
 } from "@/modules/supporter-billing/db";
 import { resolveEnvironment } from "@/types/config";
-import type { StreamContext, ProviderError } from "@/types/stream/interfaces";
+import type { StreamContext } from "@/types/stream/interfaces";
 import { log } from "@/utils/misc/logger";
-import {
-  isAccountBalanceExhaustedError,
-  isCreditAffordabilityError,
-} from "@/utils/provider/providerErrorClassification";
 
-type NudgeContext = {
+export interface SupporterNudgeContext {
   userDiscId?: string;
   serverId?: number | null;
   credentialSource: StreamContext["textCredentialSource"];
-} & ({ event: "provider-error"; error: ProviderError } | { event: "completion" });
+}
 
 interface NudgeDependencies {
   identities: Pick<typeof supporterIdentityRepository, "loadByDiscordUserId">;
@@ -26,7 +22,7 @@ interface NudgeDependencies {
 }
 
 export async function resolveSupporterNudgeKey(
-  context: NudgeContext,
+  context: SupporterNudgeContext,
   dependencies: NudgeDependencies = {
     identities: supporterIdentityRepository,
     entitlements: supporterEntitlementRepository,
@@ -40,18 +36,6 @@ export async function resolveSupporterNudgeKey(
   ) {
     return null;
   }
-  if (context.event === "provider-error") {
-    const error = context.error;
-    if (
-      error.type !== "rate_limit" &&
-      error.type !== "provider_overloaded" &&
-      error.code !== "503" &&
-      !isAccountBalanceExhaustedError(error) &&
-      !isCreditAffordabilityError(error)
-    ) {
-      return null;
-    }
-  }
   try {
     if (context.serverId && (await dependencies.sponsorships.loadActiveSponsorshipForServer(context.serverId))) {
       return null;
@@ -64,8 +48,14 @@ export async function resolveSupporterNudgeKey(
     return "commands.subscribe.conversion_nudge";
   } catch {
     log.warn("Subscription conversion eligibility could not be checked", {
-      metadata: { event: context.event, credentialSource: context.credentialSource },
+      metadata: { credentialSource: context.credentialSource },
     });
     return null;
   }
+}
+
+/** Appends the subscription tip to a failure's recovery tips when the user is eligible for it. */
+export async function withSupporterNudge(tipKeys: string[], context: SupporterNudgeContext): Promise<string[]> {
+  const nudgeKey = await resolveSupporterNudgeKey(context);
+  return nudgeKey ? [...tipKeys, nudgeKey] : tipKeys;
 }

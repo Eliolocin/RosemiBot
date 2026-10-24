@@ -547,7 +547,6 @@ async function addCompletionNudge(
 ): Promise<PanelReceipt> {
   if (!eligible) return receipt;
   const nudgeKey = await resolveSupporterNudgeKey({
-    event: "completion",
     userDiscId: interaction.user.id,
     serverId: scope.state?.server_id,
     credentialSource: scope.scopeKind === "personal" ? "personal" : "server",

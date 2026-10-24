@@ -63,6 +63,7 @@ import { getProviderDisplayName, providerSupportsFeature } from "@/utils/provide
 import { getEffectiveLlmModelName } from "@/utils/provider/modelDisplay";
 import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/personalProviderRuntime";
 import { localizedStatusTitle } from "@/utils/discord/ui/statusTitle";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const MODAL_CUSTOM_ID = "preset_generate_modal";
 const CHARACTER_NAME_ID = "character_name";
@@ -360,6 +361,12 @@ export async function execute(
       baseTomoriState,
       userData.user_id ?? null,
     );
+    const nudgeTips = () =>
+      withSupporterNudge([], {
+        userDiscId: interaction.user.id,
+        serverId: tomoriState.server_id,
+        credentialSource: activeConfigs.text ? "personal" : "server",
+      });
 
     const providerName = tomoriState.llm.llm_provider.toLowerCase();
     const effectiveModelName = getEffectiveLlmModelName(tomoriState.llm, tomoriState.config.custom_model_name);
@@ -420,6 +427,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "general.errors.personal_provider_required_title",
         descriptionKey: "general.errors.personal_provider_required_description",
+        tipKeys: await nudgeTips(),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -429,6 +437,7 @@ export async function execute(
       await replyInfoEmbed(interaction, locale, {
         titleKey: "commands.persona.generate.no_api_key_title",
         descriptionKey: "commands.persona.generate.no_api_key_description",
+        tipKeys: await nudgeTips(),
         color: ColorCode.ERROR,
         flags: MessageFlags.Ephemeral,
       });
@@ -557,6 +566,7 @@ export async function execute(
       await replyInfoEmbed(modalSubmitInteraction, locale, {
         ...failure,
         color: ColorCode.ERROR,
+        tipKeys: await nudgeTips(),
         files: [getInputAttachment()],
       });
       return;

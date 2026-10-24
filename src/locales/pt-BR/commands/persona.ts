@@ -264,6 +264,11 @@ Use \`/config\` > Modelos > Mudar Modelos para mudar para um modelo que suporte 
 **Próximos passos:**
 1. Use \`/config\` > Modelos > Mudar Modelos para mudar para um modelo com ferramentas habilitadas, OU
 2. Gere novamente sem a pesquisa na web (escolha "Não" quando perguntado)`,
+      web_search_failed_title: `Geração da persona cancelada`,
+      web_search_failed_description: `A geração da persona foi cancelada porque a busca na web solicitada falhou.
+
+**O que você pode fazer**
+Tente novamente em instantes ou escolha \`Não\` em \`Pesquisar na web?\` para gerar a partir da sua descrição. Se a busca continuar falhando, peça a quem gerencia o servidor para verificar a busca na web em \`/config\` e o acesso ao provedor em \`/providers\`.`,
       vision_credentials_unavailable_title: `🔴 Credenciais do Modelo de Visão Indisponíveis`,
       vision_credentials_unavailable_description: `Seu modelo de visão (**{vision_model_name}**) roda no provedor **{vision_provider}**, mas sua chave de API salva não pôde ser usada para descrever a imagem. Reconfigure as credenciais desse provedor com \`/providers\`, ou verifique \`/config\` > Modelos.`,
       invalid_image_title: `🔴 Imagem Inválida`,

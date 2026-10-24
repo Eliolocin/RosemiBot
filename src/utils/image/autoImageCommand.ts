@@ -24,6 +24,7 @@ import { applyPersonalProviderSelectionsToTomoriState } from "@/utils/provider/p
 import { getCachedWhitelistStatus } from "@/utils/cache/channelWhitelistCache";
 import { getCachedPersonalSpotlightStatus } from "@/utils/cache/personalSpotlightCache";
 import { filterPersonasForTrigger, isPersonaAllowedForTrigger } from "@/utils/persona/personaAccess";
+import { withSupporterNudge } from "@/modules/supporter-billing/discord/conversionNudge";
 
 const MODAL_CUSTOM_ID = "generate_image_auto_modal";
 const PROMPT_INPUT_ID = "generate_image_auto_prompt";
@@ -193,6 +194,7 @@ async function replyQuotaExceeded(
   replyTarget: ChatInputCommandInteraction | import("discord.js").ModalSubmitInteraction,
   locale: string,
   quotaCheck: ImageQuotaCheckResult,
+  tipKeys: string[],
 ): Promise<void> {
   const errorTitleKey = "commands.generate.image.quota_exceeded_title";
   let errorDescriptionKey = "commands.generate.image.quota_exceeded_description";
@@ -224,6 +226,7 @@ async function replyQuotaExceeded(
     descriptionKey: errorDescriptionKey,
     descriptionVars,
     footerKey: "commands.generate.image.quota_exceeded_footer",
+    tipKeys,
     color: ColorCode.ERROR,
     flags: MessageFlags.Ephemeral,
   });
@@ -311,6 +314,12 @@ export async function executeAutoImageCommand(
   const overlay = await applyPersonalProviderSelectionsToTomoriState(baseTomoriState, userData.user_id ?? null);
   const { tomoriState } = overlay;
   activeConfigs = overlay.activeConfigs;
+  const nudgeTips = (tipKeys: string[]) =>
+    withSupporterNudge(tipKeys, {
+      userDiscId: interaction.user.id,
+      serverId: tomoriState.server_id,
+      credentialSource: activeConfigs?.text ? "personal" : "server",
+    });
 
   const personaSummaries = await loadServerPersonaSummaries(tomoriState.server_id);
   const invokingMember = interaction.member as import("discord.js").GuildMember | null;
@@ -407,6 +416,7 @@ export async function executeAutoImageCommand(
     await replyInfoEmbed(interaction, locale, {
       titleKey: "commands.tool.visualize.planner_unavailable_title",
       descriptionKey: "commands.tool.visualize.planner_unavailable_description",
+      tipKeys: await nudgeTips([]),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -426,6 +436,7 @@ export async function executeAutoImageCommand(
       descriptionVars: {
         current_provider: tomoriState.llm.llm_provider,
       },
+      tipKeys: await nudgeTips([]),
       color: ColorCode.ERROR,
       flags: MessageFlags.Ephemeral,
     });
@@ -435,7 +446,7 @@ export async function executeAutoImageCommand(
   // Quota check before showing the modal (avoids wasting user interaction).
   const quotaCheck = await checkImageQuota(tomoriState.server_id, interaction.user.id);
   if (!quotaCheck.allowed) {
-    await replyQuotaExceeded(interaction, locale, quotaCheck);
+    await replyQuotaExceeded(interaction, locale, quotaCheck, await nudgeTips([]));
     return;
   }
 
@@ -517,6 +528,7 @@ export async function executeAutoImageCommand(
         descriptionVars: {
           current_provider: tomoriState.llm.llm_provider,
         },
+        tipKeys: await nudgeTips([]),
         color: ColorCode.ERROR,
       });
       return;
@@ -613,12 +625,12 @@ export async function executeAutoImageCommand(
 
     if (!agentResult.success) {
       const isPersonalText = Boolean(activeConfigs?.text);
-      const tipKeys = [
+      const tipKeys = await nudgeTips([
         "genai.tips.refresh_context",
         ...(isPersonalText
           ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
           : ["genai.tips.switch_model_provider"]),
-      ];
+      ]);
       await replyInfoEmbed(modalSubmitInteraction, locale, {
         titleKey: "commands.tool.visualize.planner_failed_title",
         descriptionKey: "commands.tool.visualize.planner_failed_description",
@@ -663,12 +675,12 @@ export async function executeAutoImageCommand(
 
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const isPersonalText = Boolean(activeConfigs?.text);
-    const tipKeys = [
+    const tipKeys = await nudgeTips([
       "genai.tips.refresh_context",
       ...(isPersonalText
         ? ["genai.tips.disable_personal_text_override", "genai.tips.switch_model_provider_personal"]
         : ["genai.tips.switch_model_provider"]),
-    ];
+    ]);
     await replyInfoEmbed(modalSubmitInteraction, locale, {
       titleKey: "commands.generate.image.error_generation_failed_title",
       descriptionKey: "commands.generate.image.error_generation_failed_description",
