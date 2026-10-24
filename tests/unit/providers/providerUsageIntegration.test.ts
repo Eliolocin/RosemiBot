@@ -208,11 +208,17 @@ describe("provider usage and denial request integration", () => {
     restores.push(() => fetchStub.mockRestore());
     const { context, send } = toolFixture();
     context.tomoriState.config.api_key = Buffer.from("fixture-encrypted-key");
-    const result = await new OpenRouterEngine().search("fixture query", "text", context);
-    expect(result.success).toBe(false);
-    expect(result.error).toBe(localizedCopy(context.locale, "general.errors.api_key_error_description"));
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][0].embeds?.[0].toJSON().description).toBe(result.error);
+    for (const suppressFailureNotices of [false, true]) {
+      context.suppressFailureNotices = suppressFailureNotices;
+      send.mockClear();
+      const result = await new OpenRouterEngine().search("fixture query", "text", context);
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(localizedCopy(context.locale, "general.errors.api_key_error_description"));
+      expect(send).toHaveBeenCalledTimes(suppressFailureNotices ? 0 : 1);
+      if (!suppressFailureNotices) {
+        expect(send.mock.calls[0][0].embeds?.[0].toJSON().description).toBe(result.error);
+      }
+    }
   });
 
   test("renders a denial nested in a credential failure before the credential error result", async () => {

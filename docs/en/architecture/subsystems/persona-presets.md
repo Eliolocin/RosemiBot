@@ -83,7 +83,12 @@ The first local edit to prompt text, attributes, sprites, or naming forks the po
 - **Image captioning**: During `/persona generate`, an uploaded image is paired with the primary model. If the primary model cannot accept images, `analyzeImageWithVisionModel()` requests a description from the configured vision model and passes that text via `appearanceDescription`, keeping raw images out of text-only model requests.
 
 OpenRouter persona generation requests strict JSON output with six attributes and five dialogue
-pairs, including after search tool calls. Anthropic requests omit unsupported array constraints.
+pairs, including after successful search tool calls. A failed search tool result aborts persona
+generation before another model request. Google likewise aborts when its search stage fails.
+The command owns the failure reply and preserves the inputs with a retry hint; background tools
+suppress their public denial notices. Search engines can still fall back within one tool call.
+OpenRouter's initial model request chooses the search tool, so it can incur usage before search fails.
+Anthropic requests omit unsupported array constraints.
 The shared schema used by other providers stays unchanged. Local validation still rejects
 noncompliant output without exporting a card; validation receipts preserve the inputs and show the
 failed requirement without suggesting an API-key problem.

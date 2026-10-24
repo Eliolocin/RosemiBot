@@ -114,6 +114,7 @@ export interface PresetGenerationResult {
   preset?: PresetExportData;
   error?: string;
   errorType?: PresetGenerationErrorType;
+  failureStage?: "web_search";
   cause?: Error;
 }
 

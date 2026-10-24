@@ -13,18 +13,90 @@ import * as usageStatistics from "@/modules/supporter-billing/runtime/usageStati
 import type { SupporterFundingContext } from "@/modules/supporter-billing/runtime/types";
 import { getSupporterUsageContext } from "@/modules/supporter-billing/runtime/types";
 import { OpenRouterEngine } from "@/tools/webSearch/openrouterEngine";
-import { initializeLocalizer } from "@/utils/text/localizer";
+import { hasLocaleKey, initializeLocalizer } from "@/utils/text/localizer";
+import { notifyProviderToolFailure, ProviderRequestDeniedError } from "@/utils/provider/providerUsage";
 import { createLlmRow, createPersona, createUserRow } from "../../helpers/fixtures";
 import { createRouteInteraction } from "../../helpers/routeInteraction";
 import { useEnvSandbox } from "../../helpers/env";
 import { collectTextDisplays } from "../../helpers/panelLimits";
-import { localizedProse } from "../../helpers/localeCases";
+import { collectCaseFailures, localizedProse, RUNTIME_LOCALES } from "../../helpers/localeCases";
 
 useEnvSandbox(["RUN_ENV", "TEST_PRODUCTION", "TOMORI_SUPPORTER_BILLING_ENABLED"]);
 beforeAll(initializeLocalizer);
 const restore: Array<{ mockRestore(): void }> = [];
 afterEach(() => {
   for (const spy of restore.splice(0).reverse()) spy.mockRestore();
+});
+
+test("a failed persona search renders one localized abort with the inputs and no provider detail", async () => {
+  process.env.RUN_ENV = "production";
+  process.env.TEST_PRODUCTION = "true";
+  process.env.TOMORI_SUPPORTER_BILLING_ENABLED = "true";
+  const state = createPersona({
+    llm: createLlmRow({ llm_provider: "openrouter", supports_structoutput: true }),
+    config: { web_search_enabled: true },
+  });
+  let fake = createRouteInteraction({ kind: "modal" });
+  const canary = "fixture-private-provider-detail";
+  restore.push(
+    spyOn(personaRepository, "loadState").mockResolvedValue(state),
+    spyOn(personalProviders, "applyPersonalProviderSelectionsToTomoriState").mockResolvedValue({
+      tomoriState: state,
+      activeConfigs: {},
+    }),
+    spyOn(credentials, "resolveCapabilityCredentials").mockResolvedValue({
+      provider: "openrouter",
+      apiKey: "fixture-api-key",
+      keyVersion: 1,
+      savedConfig: null,
+      source: "server",
+    }),
+    spyOn(interactions, "promptWithRawModal").mockImplementation(async () => ({
+      outcome: "submit",
+      interaction: fake as unknown as ModalSubmitInteraction,
+      values: { character_name: "Juno", character_info: "A fictional explorer.", web_search: "yes" },
+    })),
+    spyOn(rateLimiter, "reservePersonaQuota").mockReturnValue({ allowed: true }),
+    spyOn(modelLimits, "resolveModelLimits").mockResolvedValue({ contextWindow: 8192, maxOutputTokens: 4096 }),
+    spyOn(features, "generatePresetForProvider").mockImplementation(async ({ toolContext }) => {
+      if (!toolContext) throw new Error("Missing persona search context");
+      const denied = new ProviderRequestDeniedError(undefined, () => ({
+        titleKey: "general.errors.api_key_error_title",
+        description: canary,
+      }));
+      await notifyProviderToolFailure(toolContext, denied);
+      return { error: canary, errorType: "CONNECTION", failureStage: "web_search" };
+    }),
+  );
+  const failures = collectCaseFailures();
+  for (const locale of RUNTIME_LOCALES) {
+    fake = createRouteInteraction({ kind: "modal" });
+    const send = spyOn(fake.channel, "send").mockResolvedValue(undefined);
+    restore.push(send);
+    await execute(
+      fake.client as unknown as Client,
+      fake as unknown as ChatInputCommandInteraction,
+      createUserRow(),
+      locale,
+    );
+    failures.check(locale, () => {
+      const copyLocale = hasLocaleKey(locale, "commands.persona.generate.web_search_failed_title") ? locale : "en-US";
+      const receipt = collectTextDisplays(fake.edits.at(-1)).join("\n");
+      expect(receipt).toMatch(localizedProse(copyLocale, "commands.persona.generate.web_search_failed_title"));
+      expect(receipt).toMatch(localizedProse(copyLocale, "commands.persona.generate.web_search_failed_description"));
+      expect(receipt).not.toContain(canary);
+      expect(fake.edits.at(-1)).toMatchObject({ files: [expect.anything()] });
+      expect(
+        fake.edits.filter((payload) =>
+          collectTextDisplays(payload)
+            .join("\n")
+            .match(localizedProse(copyLocale, "commands.persona.generate.web_search_failed_title")),
+        ),
+      ).toHaveLength(1);
+      expect(send).not.toHaveBeenCalled();
+    });
+  }
+  failures.expectNoFailures();
 });
 
 test("persona web search uses the selected subscription's key and records its search usage", async () => {

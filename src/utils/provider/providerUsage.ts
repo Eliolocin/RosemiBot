@@ -133,11 +133,11 @@ export function getProviderRequestFailureCopy(
 }
 
 export async function notifyProviderToolFailure(
-  context: Pick<ToolContext, "channel" | "locale" | "isUserImpersonation">,
+  context: Pick<ToolContext, "channel" | "locale" | "isUserImpersonation" | "suppressFailureNotices">,
   error: ProviderRequestDeniedError,
 ): Promise<string> {
   const copy = getProviderRequestFailureCopy(error, context.locale);
-  if (!context.isUserImpersonation) {
+  if (!context.isUserImpersonation && !context.suppressFailureNotices) {
     // Lazy because the embed helper's import graph reaches provider consumers that import this module.
     const { sendStandardEmbed } = await import("@/utils/discord/embedHelper");
     await sendStandardEmbed(context.channel, context.locale, { ...copy, color: ColorCode.ERROR }).catch((sendError) =>

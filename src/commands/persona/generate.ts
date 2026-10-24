@@ -931,6 +931,7 @@ export async function execute(
         userId: interaction.user.id,
         guildId: interaction.guild?.id,
         suppressProgressNotices: true, // Search runs in background during generation; don't leak tool embeds into chat
+        suppressFailureNotices: true,
       };
     } else if (useWebSearch) {
       log.warn("Preset generation web search skipped: no channel context available.");
@@ -949,6 +950,17 @@ export async function execute(
         onUsage: createProviderUsageRecorder(usageContext, generationTomoriState.llm.llm_codename),
       }),
     );
+
+    if (genResult.failureStage === "web_search") {
+      await editGenerateStatusReply(modalSubmitInteraction, {
+        locale,
+        titleKey: "commands.persona.generate.web_search_failed_title",
+        descriptionKey: "commands.persona.generate.web_search_failed_description",
+        color: ColorCode.ERROR,
+        inputAttachment: getInputAttachment(),
+      });
+      return;
+    }
 
     const deniedGeneration = findProviderRequestDeniedError(genResult.cause, usageContext);
     if (deniedGeneration) {
