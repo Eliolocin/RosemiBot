@@ -252,6 +252,8 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
   afterAll(async () => {
     await dropSupporterBillingTables();
     await cleanupFixtures(testSql);
+    await testSql`DELETE FROM decision_models WHERE provider = 'openrouter'
+      AND codename IN ('test/personal-decision', 'test/personal-decision-edited')`;
   });
 
   it("keeps billing tables absent until production billing startup is enabled, then initializes idempotently", async () => {
@@ -1769,7 +1771,7 @@ describe.skipIf(!DB_TESTS_AVAILABLE)("Supporter billing — gated DB schema", ()
         SELECT funding_scope, server_id, capability, model_codename, cost_usd, provider_request_id
         FROM supporter_usage_statistics
         WHERE supporter_identity_id = ${identity.supporter_identity_id}
-        ORDER BY usage_statistic_id
+        ORDER BY capability DESC, usage_statistic_id
       `;
     for (let attempt = 0; attempt < 50 && (await readRows()).length < 3; attempt++) await Bun.sleep(10);
     expect(await readRows()).toEqual([
