@@ -65,6 +65,8 @@ const STATIC_TOOL_PROMPT_MACROS: Record<string, string> = {
   "{image_analysis_tool}": "analyze_image",
   "{image_generation_tool}": "generate_image",
   "{anime_image_generation_tool}": "generate_image_nai",
+  "{tag_search_tool}": "danbooru_search_tags",
+  "{booru_post_search_tool}": "danbooru_search_posts",
   "{voice_message_tool}": "generate_voice_message",
   "{block_user_tool}": "block_user",
   "{unblock_user_tool}": "unblock_user",

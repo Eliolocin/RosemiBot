@@ -128,7 +128,9 @@ message before, between, or after her text. She doesn't use them in
 The system prompt sits above the persona and shapes overall behavior:
 
 - `/config` > Behavior > General Behavior: set a custom system instruction (up to 16,000 characters).
-- `/config` > Behavior > General Behavior: choose from preset system prompts.
+- `/config` > Behavior > General Behavior: choose from preset system prompts. `Default + Image
+  Generation Expert` adds guidance for accurate anime tags and character outfits to the default
+  prompt (see [Tag Lookup](/features/capabilities/media-generation/image-generation/#tag-lookup)).
 - `/config` > Behavior > General Behavior: reset to default. The confirmation shows the previous
   prompt so you can restore it if cleared accidentally.
 

@@ -54,7 +54,7 @@ optional API key.
 | Process YouTube video | `{youtube_tool}` | model with video support | Analyze a specific YouTube link on demand. |
 | Analyze image | `{image_analysis_tool}` | configured `vision_llm` | Delegate image understanding to a separate vision model. |
 | Generate image / anime image | `{image_generation_tool}` / `{anime_image_generation_tool}` | `imagegen_enabled` + capable provider | Generate or edit images (see [Media Generation](/features/capabilities/media-generation/)). |
-| Danbooru tag lookup | - | `danbooru_enabled` | Turn character names, nicknames, and tag guesses into exact Danbooru tags (see [Danbooru Tag Lookup](#danbooru-tag-lookup)). |
+| Danbooru tag lookup | `{tag_search_tool}` | `danbooru_enabled` | Turn character names, nicknames, and tag guesses into exact Danbooru tags (see [Danbooru Tag Lookup](#danbooru-tag-lookup)). |
 | Generate voice message | `{voice_message_tool}` | ElevenLabs key + persona voice + `voice_message_enabled` | Send a spoken Discord voice reply. |
 
 :::note[For prompt authors]

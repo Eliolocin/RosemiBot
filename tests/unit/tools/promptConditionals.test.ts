@@ -7,6 +7,7 @@ import { join } from "node:path";
 import type { AssembledServerConfig } from "@/types/db/schema";
 import type { ToolStateForContext } from "@/tools/toolRegistry";
 import { DOCUMENT_HINT_TEMPLATE } from "@/utils/text/context/dialogueHistory";
+import { systemPromptSections } from "@/db/seed/catalog/systemPrompts";
 import { DEFAULT_SYSTEM_PROMPT } from "@/utils/text/context/templates";
 import { SPACER_TEMPLATE } from "@/utils/text/context/timeAwareness";
 import { findUnsupportedPresetMacros } from "@/utils/text/stPresetEngine";
@@ -321,6 +322,26 @@ describe("prompt macro resolver condition integration", () => {
     expect(bundled).toContain("warrants it.\n\n");
     expect(guild).toContain("`read_webpage`");
     expect(guild).not.toContain("currently available URL fetch tool");
+  });
+
+  it("renders the image generation preset without the tag-based blocks when only generate_image is available", async () => {
+    const preset = systemPromptSections
+      .flatMap((section) => section.rows)
+      .find((row) => row.name === "Default + Image Generation Expert");
+    const resolver = createToolPromptMacroResolver({
+      provider: "google",
+      stateForContext: TOOL_STATE,
+      capabilities: ENABLED_CAPABILITIES,
+      availableToolNames: new Set(["generate_image"]),
+    });
+
+    const expanded = await resolver.expand(preset?.promptText ?? "");
+
+    expect(expanded).toContain("`generate_image`");
+    expect(expanded).not.toContain("generate_image_nai");
+    expect(expanded).not.toContain("danbooru_search");
+    expect(expanded).not.toContain("{{");
+    expect(expanded).not.toMatch(/\n[^\S\n]*\n[^\S\n]*\n/);
   });
 
   it("does not infer URL-fetch availability from unrelated read tools", async () => {

@@ -102,6 +102,48 @@ export interface HiddenImageTurnParams {
 }
 
 /**
+ * Builds the hidden turn's `[System: ...]` directive. With Danbooru Search off it keeps the original
+ * wording; with it on, the model may look tags up before the image call.
+ */
+export function buildHiddenImageDirective(
+  params: Pick<
+    HiddenImageTurnParams,
+    "backend" | "presetLabel" | "presetInstruction" | "aspectRatio" | "naiOrientation" | "extraDirection"
+  > & { lookupEnabled: boolean },
+): string {
+  const { backend, presetLabel, presetInstruction, aspectRatio, naiOrientation, extraDirection, lookupEnabled } =
+    params;
+  const toolInstruction = lookupEnabled
+    ? backend === "current_provider"
+      ? "Call the generate_image tool to draw the scene. Use the conversation context above, including any Physical Appearance lines for users/personas, to write a detailed prompt describing the scene."
+      : "Call the generate_image_nai tool to draw the scene. Use the conversation context above, including any Physical Appearance lines for users/personas, to construct danbooru-style tags describing the scene."
+    : backend === "current_provider"
+      ? `You MUST call the generate_image tool immediately. Use the conversation context above, including any Physical Appearance lines for users/personas, to construct a detailed prompt describing the scene.`
+      : `You MUST call the generate_image_nai tool immediately. Use the conversation context above, including any Physical Appearance lines for users/personas, to construct danbooru-style tags describing the scene.`;
+
+  const dirLines: string[] = [
+    toolInstruction,
+    `Framing: ${presetLabel} — ${presetInstruction}`,
+    backend === "current_provider" ? `Aspect ratio: ${aspectRatio}` : `Orientation: ${naiOrientation}`,
+  ];
+  if (extraDirection?.trim()) {
+    dirLines.push(`Extra direction from user: ${extraDirection.trim()}`);
+  }
+  if (lookupEnabled) {
+    dirLines.push(
+      "If the scene includes an existing character, outfit, or series whose exact tags or look you are unsure of, first call danbooru_search_tags once with every such name, then call the image tool.",
+      "IMPORTANT: Do not ask for clarification or ask if the user wants you to proceed. Your turn must end with a call to the image tool (generate_image or generate_image_nai).",
+    );
+  } else {
+    dirLines.push(
+      "IMPORTANT: You MUST call the image tool (generate_image or generate_image_nai) immediately. Do not ask for clarification or ask if the user wants you to proceed. Just call the tool now with the scene information from above.",
+    );
+  }
+
+  return `[System: ${dirLines.join(" ")}]`;
+}
+
+/**
  * Runs a hidden bot turn that generates an image of the current channel scene.
  *
  * The turn uses the full `buildContext()` pipeline so the model sees the same
@@ -267,26 +309,22 @@ export async function runHiddenImageTurn(params: HiddenImageTurnParams): Promise
     };
   }
 
-  const toolInstruction =
-    backend === "current_provider"
-      ? `You MUST call the generate_image tool immediately. Use the conversation context above, including any Physical Appearance lines for users/personas, to construct a detailed prompt describing the scene.`
-      : `You MUST call the generate_image_nai tool immediately. Use the conversation context above, including any Physical Appearance lines for users/personas, to construct danbooru-style tags describing the scene.`;
-
-  const dirLines: string[] = [
-    toolInstruction,
-    `Framing: ${presetLabel} — ${presetInstruction}`,
-    backend === "current_provider" ? `Aspect ratio: ${aspectRatio}` : `Orientation: ${naiOrientation}`,
-  ];
-  if (extraDirection?.trim()) {
-    dirLines.push(`Extra direction from user: ${extraDirection.trim()}`);
-  }
-  dirLines.push(
-    "IMPORTANT: You MUST call the image tool (generate_image or generate_image_nai) immediately. Do not ask for clarification or ask if the user wants you to proceed. Just call the tool now with the scene information from above.",
-  );
-
   const agentDirective: StructuredContextItem = {
     role: "user",
-    parts: [{ type: "text", text: `[System: ${dirLines.join(" ")}]` }],
+    parts: [
+      {
+        type: "text",
+        text: buildHiddenImageDirective({
+          backend,
+          presetLabel,
+          presetInstruction,
+          aspectRatio,
+          naiOrientation,
+          extraDirection,
+          lookupEnabled: tomoriState.config.danbooru_enabled === true,
+        }),
+      },
+    ],
     metadataTag: ContextItemTag.DIALOGUE_HISTORY,
   };
   contextItems = [...contextItems, agentDirective];
